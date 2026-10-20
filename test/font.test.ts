@@ -20,3 +20,41 @@ describe('fuente de píxel', () => {
     for (const ch of 'ÁÉÍÓÚÑÜ¿¡') expect(FONT_CHARS).toContain(ch);
   });
 });
+
+describe('escala de la interfaz', async () => {
+  const { uiScaleFor, wrapText } = await import('../src/engine/view/font');
+  it.each([
+    ['escritorio (s=2, dpr 1)', 2, 1, 1],
+    ['portátil (s=1, dpr 1)', 1, 1, 2],
+    ['tapa del Flip (s=1, dpr 1,75)', 1, 1.75, 3],
+    ['Flip abierto (s=2, dpr 3)', 2, 3, 3],
+  ])('%s → x%i', (_n, s, dpr, expected) => {
+    expect(uiScaleFor(s, dpr)).toBe(expected);
+  });
+
+  it('los signos que la fuente no tiene se sustituyen, no desaparecen', async () => {
+    const { normalize, FONT_CHARS } = await import('../src/engine/view/font');
+    const out = normalize('−3 % de velocidad… “sí”');
+    for (const ch of out) expect(FONT_CHARS, ch).toContain(ch);
+    expect(out.startsWith('-3 %')).toBe(true);
+  });
+
+  it('wrapText no deja cuatro puntos al recortar tras un punto', () => {
+    expect(wrapText('Grapas rápidas. Ideal para muchos', 17, 1)).toEqual(['Grapas rápidas...']);
+    // el caso real del Post-it en el Flip abierto
+    expect(wrapText('Cada 10 bajas, el enemigo suelta un material extra. Lo apuntas todo.', 18, 3)[2]).toBe('material extra...');
+  });
+
+  it('wrapText parte por palabras y recorta con "..."', () => {
+    expect(wrapText('uno dos tres cuatro', 8)).toEqual(['uno dos', 'tres', 'cuatro']);
+    expect(wrapText('uno dos tres cuatro', 8, 2)).toEqual(['uno dos', 'tres...']);
+  });
+});
+
+describe('tamaño de fuente', async () => {
+  const { fontSizeFor, CHAR_W } = await import('../src/engine/view/font');
+  it('el size de Phaser es el ancho de celda × escala entera (RetroFont escala por fontSize / ancho)', () => {
+    expect(fontSizeFor(1)).toBe(CHAR_W);
+    expect(fontSizeFor(3) / CHAR_W).toBe(3);
+  });
+});

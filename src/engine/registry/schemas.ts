@@ -32,6 +32,7 @@ export const ENGINE_STATS = ['max-hp', 'speed-pct', 'armor', 'dodge-pct'] as con
 export const CHARACTER_ANIMS = ['idle', 'walk'] as const;
 export const ENEMY_ANIMS = ['walk'] as const;
 export const WEAPON_ANIMS = ['idle'] as const;
+export const ITEM_ANIMS = ['icon'] as const;
 export const LEVEL_ANIMS = ['material'] as const;
 export const MAX_WEAPONS = 6;
 
@@ -150,6 +151,16 @@ export const levelSchema = z.strictObject({
       clusterSpread: z.number().min(0).default(40), // tamaño del grupo (cluster)
     })
     .default({ minDistance: 64, edgeMargin: 12, ringRadius: 120, clusterSpread: 40 }),
+  // Reglas de la tienda entre oleadas: viven en el nivel para poder hacer un modo fácil o corto sin código
+  shop: z
+    .strictObject({
+      slots: z.number().int().min(1).max(8).default(4),
+      reroll: z
+        .strictObject({ base: z.number().min(0), perWave: z.number().min(0), step: z.number().min(0) })
+        .default({ base: 1, perWave: 0.5, step: 1 }),
+      priceScale: z.strictObject({ perWave: z.number().min(0) }).default({ perWave: 0.1 }),
+    })
+    .default({ slots: 4, reroll: { base: 1, perWave: 0.5, step: 1 }, priceScale: { perWave: 0.1 } }),
   // Hoja del nivel: losetas del suelo y el material que sueltan los enemigos
   sprites: spritesSchema,
   floor: z
@@ -196,6 +207,12 @@ export const enemySchema = z.strictObject({
   sprites: spritesSchema,
 });
 
+const shopEntrySchema = z.strictObject({
+  price: z.number().int().positive(),
+  weight: z.number().positive().default(1),
+  minWave: z.number().int().min(1).default(1),
+});
+
 const tierSchema = z.strictObject({
   damage: z.number().min(0),
   cooldown: z.number().positive(),   // segundos entre ataques
@@ -212,16 +229,23 @@ export const weaponSchema = z.strictObject({
   // Cuánto suma de cada stat del jugador al daño: { 'ranged-damage': 1 } = 100 %
   scaling: z.record(idSchema, z.number()).default({}),
   tiers: z.array(tierSchema).min(1).max(4, 'un arma tiene como mucho 4 niveles (I–IV)'),
+  // Direcciones en que se DIBUJA el arma: 0 = giro libre; 16 = pasos de 22,5°. La puntería no cambia.
+  aimSteps: z.number().int().min(0).default(0),
   // Punto de agarre en píxeles de la celda idle; por defecto, el borde izquierdo a media altura
   grip: z.strictObject({ x: z.number(), y: z.number() }).optional(),
-  shop: z
-    .strictObject({
-      price: z.number().int().positive(),
-      weight: z.number().positive().default(1),
-      minWave: z.number().int().min(1).default(1),
-    })
-    .optional(),
+  shop: shopEntrySchema.optional(),
   sprites: spritesSchema,
+});
+
+export const itemSchema = z.strictObject({
+  ...manifest,
+  kind: z.literal('item'),
+  modifiers: z.array(modifierSchema).default([]),
+  maxStack: z.number().int().positive().default(99),
+  shop: shopEntrySchema.optional(),
+  // Opcional mientras no haya arte: sin icono, la tienda pinta la inicial sobre un cuadro
+  sprites: spritesSchema.optional(),
+  hooks,
 });
 
 export const SPAWN_PATTERNS = ['random', 'edge', 'ring', 'cluster'] as const;
@@ -257,6 +281,7 @@ export const SCHEMAS = {
   behavior: behaviorSchema,
   character: characterSchema,
   weapon: weaponSchema,
+  item: itemSchema,
   enemy: enemySchema,
   wave: waveSchema,
   level: levelSchema,
@@ -269,6 +294,7 @@ export type CharacterModule = z.infer<typeof characterSchema>;
 export type EnemyModule = z.infer<typeof enemySchema>;
 export type WeaponModule = z.infer<typeof weaponSchema>;
 export type WeaponTier = z.infer<typeof tierSchema>;
+export type ItemModule = z.infer<typeof itemSchema>;
 export type WaveModule = z.infer<typeof waveSchema>;
 export type LevelModule = z.infer<typeof levelSchema>;
-export type ContentModule = StatModule | BehaviorModule | CharacterModule | WeaponModule | EnemyModule | WaveModule | LevelModule;
+export type ContentModule = StatModule | BehaviorModule | CharacterModule | WeaponModule | ItemModule | EnemyModule | WaveModule | LevelModule;

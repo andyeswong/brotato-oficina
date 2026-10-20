@@ -18,7 +18,7 @@ export class EndScene extends Phaser.Scene {
     const detail = result === 'victory'
       ? `${run.totalWaves} oleadas superadas`
       : `en la oleada ${run.waveNumber} de ${run.totalWaves}`;
-    const u = uiScale(this);
+    const u = uiScale();
     const line = FONT_SIZE * u;
     const maxWidth = this.scale.width - 8 * u; // en pantallas estrechas el texto se parte en líneas
     const lines = [

@@ -1,9 +1,10 @@
 import type { GameApi, HookFn, Point } from '../api';
-import type { CharacterModule, CounterId, HookEvent, LevelModule } from '../registry/schemas';
+import { MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type LevelModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
 import { resolveBody, type Body } from './body';
 import { createRng, type Rng } from './rng';
+import { Shop, type ShopResult } from './Shop';
 import { World } from './World';
 
 interface HookSource {
@@ -22,6 +23,9 @@ export class Run {
   // Armas equipadas (hasta 6): id y nivel (0 = I)
   readonly weapons: Array<{ id: string; tier: number }>;
   readonly startingWeaponIds: string[];
+  // Ítems comprados, uno por unidad (tres cafés = tres entradas)
+  readonly items: string[] = [];
+  readonly shop: Shop;
   world: World | null = null;
 
   // La vista se engancha aquí
@@ -46,6 +50,7 @@ export class Run {
     this.stats.setSource(`character:${character.id}`, character.modifiers ?? []);
     this.startingWeaponIds = (options.weapons ?? character.startingWeapons ?? []).slice(0, 6);
     this.weapons = this.startingWeaponIds.map((id) => ({ id, tier: 0 }));
+    this.shop = new Shop(this);
 
     this.api = new RunApi(this);
   }
@@ -68,7 +73,7 @@ export class Run {
       case 'kills': return this.kills;
       case 'materials': return this.materials;
       case 'distinct-weapons': return new Set(this.weapons.map((w) => w.id)).size;
-      case 'items': return 0;            // llega con la tienda (hito 3)
+      case 'items': return this.items.length;
     }
   }
 
@@ -111,6 +116,38 @@ export class Run {
     return 'next';
   }
 
+  spend(amount: number): void {
+    this.materials -= amount;
+    this.stats.invalidate();
+  }
+
+  itemCount(id: string): number {
+    return this.items.filter((i) => i === id).length;
+  }
+
+  // Cada unidad de un ítem es una fuente de modificadores propia: venderla será quitar solo esa
+  addItem(id: string): ShopResult {
+    const item = this.registry.item(id);
+    if (this.itemCount(id) >= item.maxStack) return { ok: false, reason: `Ya tienes el máximo de ${item.name}` };
+    this.items.push(id);
+    this.stats.setSource(`item:${id}#${this.itemCount(id)}`, item.modifiers);
+    return { ok: true };
+  }
+
+  // Con hueco, el arma entra; con las 6 llenas, se fusiona con una igual del mismo nivel (sube de nivel)
+  addWeapon(id: string, tier = 0): ShopResult {
+    if (this.weapons.length < MAX_WEAPONS) {
+      this.weapons.push({ id, tier });
+      this.stats.invalidate();
+      return { ok: true };
+    }
+    const maxTier = this.registry.weapon(id).tiers.length - 1;
+    const twin = this.weapons.find((w) => w.id === id && w.tier === tier && w.tier < maxTier);
+    if (!twin) return { ok: false, reason: `Ya llevas ${MAX_WEAPONS} armas` };
+    twin.tier++;
+    return { ok: true };
+  }
+
   lose(): void {
     this.emit('onRunEnd', { result: 'defeat' });
   }
@@ -135,6 +172,11 @@ export class Run {
   private hookSources(): HookSource[] {
     const sources: HookSource[] = [];
     if (this.character.hooks) sources.push({ id: `character:${this.character.id}`, hooks: this.character.hooks as HookSource['hooks'] });
+    // Un hook por unidad de ítem, como sus modificadores
+    this.items.forEach((id, i) => {
+      const hooks = this.registry.item(id).hooks;
+      if (hooks) sources.push({ id: `item:${id}#${i}`, hooks: hooks as HookSource['hooks'] });
+    });
     return sources;
   }
 }

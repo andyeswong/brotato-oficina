@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { currentLayout } from './pixel';
 
 // Fuente de píxel de relleno, 5×7 con una fila de acento encima, generada en código y montada como
 // RetroFont (bitmap, a tamaño nativo). La O es redonda y el 0 lleva barra, para que no se confundan.
@@ -8,7 +9,7 @@ const GLYPH_W = 5;
 const GLYPH_H = 7;
 const CELL_W = GLYPH_W + 1;   // 1 px de separación entre letras
 const CELL_H = GLYPH_H + 2;   // fila de acento + 7 filas + 1 de separación
-export const FONT_SIZE = CELL_H;
+export const FONT_SIZE = CELL_H; // alto de línea a escala x1 (no es el "size" de Phaser: ver fontSizeFor)
 
 // Cada glifo: 7 filas de 5 píxeles separadas por espacios ('#' = píxel encendido).
 // La fila de acento va aparte, en ACCENTED.
@@ -91,12 +92,63 @@ export function createPixelFont(scene: Phaser.Scene): void {
   scene.cache.bitmapFont.add(FONT, data);
 }
 
-// La fuente solo tiene mayúsculas: todo texto pasa por aquí. scale es entero (UI x1, x2…)
-export function text(scene: Phaser.Scene, x: number, y: number, value: string, scale = 1): Phaser.GameObjects.BitmapText {
-  return scene.add.bitmapText(x, y, FONT, value.toUpperCase(), FONT_SIZE * scale);
+// En RetroFont, el "size" de la fuente es el ANCHO de la celda: Phaser escala por fontSize / size.
+// Para una escala entera hay que pedir CELL_W × escala; pedir el alto daría ×1,5 y rompería el pixel-perfect.
+export function fontSizeFor(scale: number): number {
+  return CELL_W * scale;
 }
 
-// Escala entera de la interfaz: x1 hasta 539 px lógicos de lado corto, x2 desde 540…
-export function uiScale(scene: Phaser.Scene): number {
-  return Math.max(1, Math.floor(Math.min(scene.scale.width, scene.scale.height) / 270));
+// La fuente solo tiene mayúsculas: todo texto pasa por aquí. scale es entero (UI x1, x2…)
+export function text(scene: Phaser.Scene, x: number, y: number, value: string, scale = 1): Phaser.GameObjects.BitmapText {
+  return scene.add.bitmapText(x, y, FONT, normalize(value), fontSizeFor(scale));
+}
+
+// Mayúsculas, y los signos tipográficos que la fuente no tiene, a su equivalente (−3 % → -3 %)
+const SUBSTITUTES: Record<string, string> = { '−': '-', '–': '-', '—': '-', '…': '...', '“': '"', '”': '"', '‘': "'", '’': "'" };
+
+export function normalize(value: string): string {
+  return [...value.toUpperCase()].map((ch) => SUBSTITUTES[ch] ?? ch).join('');
+}
+
+// Escala entera de la interfaz: la menor que deje cada letra con al menos MIN_GLYPH_CSS píxeles CSS de
+// alto en la pantalla real. Depende de s y del dpr, no del tamaño lógico: con el mismo mundo,
+// el escritorio queda x1 y la tapa del Flip (s=1, dpr 1,75) x3.
+const MIN_GLYPH_CSS = 11;
+
+export function uiScale(): number {
+  const { scale } = currentLayout();
+  return uiScaleFor(scale, window.devicePixelRatio || 1);
+}
+
+export function uiScaleFor(pixelScale: number, dpr: number): number {
+  return Math.max(1, Math.ceil((MIN_GLYPH_CSS * dpr) / (GLYPH_H * pixelScale)));
+}
+
+export const CHAR_W = CELL_W; // ancho de una letra a escala x1, en píxeles lógicos
+
+// Parte un texto en líneas de como mucho maxChars, por palabras; si sobran líneas, la última acaba en "..."
+export function wrapText(value: string, maxChars: number, maxLines = Infinity): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const word of value.split(/\s+/).filter(Boolean)) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxChars) current = next;
+    else {
+      if (current) lines.push(current);
+      current = word.length > maxChars ? word.slice(0, maxChars) : word;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+  const kept = lines.slice(0, Math.max(0, maxLines));
+  if (kept.length > 0) {
+    const last = kept[kept.length - 1]!;
+    // Se quitan palabras del final hasta que quepa "...", y luego la puntuación suelta ("extra." + "..." = 4 puntos)
+    const words = last.split(' ');
+    const trimmed = () => words.join(' ').replace(/[\s.,;:]+$/, '');
+    while (words.length > 1 && trimmed().length + 3 > maxChars) words.pop();
+    const base = trimmed();
+    kept[kept.length - 1] = (base.length + 3 <= maxChars ? base : base.slice(0, maxChars - 3)) + '...';
+  }
+  return kept;
 }

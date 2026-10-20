@@ -3,6 +3,7 @@ import {
   CHARACTER_ANIMS,
   ENEMY_ANIMS,
   ENGINE_STATS,
+  ITEM_ANIMS,
   LEVEL_ANIMS,
   MAX_WEAPONS,
   WEAPON_ANIMS,
@@ -14,6 +15,7 @@ import {
   type CharacterModule,
   type ContentModule,
   type EnemyModule,
+  type ItemModule,
   type LevelModule,
   type ModuleKind,
   type Modifier,
@@ -52,6 +54,7 @@ export class Registry {
 
   enemies(): EnemyModule[] { return this.all('enemy') as EnemyModule[]; }
   weapons(): WeaponModule[] { return this.all('weapon') as WeaponModule[]; }
+  items(): ItemModule[] { return this.all('item') as ItemModule[]; }
 
   character(id: string): CharacterModule { return this.get('character', id) as CharacterModule; }
   level(id: string): LevelModule { return this.get('level', id) as LevelModule; }
@@ -59,6 +62,7 @@ export class Registry {
   enemy(id: string): EnemyModule { return this.get('enemy', id) as EnemyModule; }
   behavior(id: string): BehaviorModule { return this.get('behavior', id) as BehaviorModule; }
   weapon(id: string): WeaponModule { return this.get('weapon', id) as WeaponModule; }
+  item(id: string): ItemModule { return this.get('item', id) as ItemModule; }
 
   private get(kind: ModuleKind, id: string): ContentModule {
     const mod = this.byKind.get(kind)?.get(id);
@@ -167,6 +171,12 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
         if (!statIds.includes(key)) err(`no existe la estadística "${key}".${suggest(key, statIds)}`, `scaling.${key}`);
       }
       checkSprites(mod.sprites, WEAPON_ANIMS, err);
+    }
+
+    if (mod.kind === 'item') {
+      checkModifiers(mod.modifiers, statIds, err);
+      if (mod.sprites) checkSprites(mod.sprites, ITEM_ANIMS, err);
+      checkHooks(mod.hooks, err);
     }
 
     if (mod.kind === 'wave') {

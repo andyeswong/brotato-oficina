@@ -10,7 +10,7 @@ export class MoveInput {
   private readonly touch = new Phaser.Math.Vector2();
   private readonly gfx: Phaser.GameObjects.Graphics;
 
-  constructor(private readonly scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene) {
     const kb = scene.input.keyboard!;
     const K = Phaser.Input.Keyboard.KeyCodes;
     this.keys = {
@@ -52,12 +52,12 @@ export class MoveInput {
   draw(): void {
     this.gfx.clear();
     if (!this.origin) return;
-    const u = uiScale(this.scene);
+    const u = uiScale();
     this.gfx.lineStyle(u, 0xffffff, 0.35).strokeCircle(this.origin.x, this.origin.y, this.radius());
     this.gfx.fillStyle(0xffffff, 0.5).fillCircle(Math.round(this.origin.x + this.touch.x), Math.round(this.origin.y + this.touch.y), 6 * u);
   }
 
   private radius(): number {
-    return JOYSTICK_RADIUS * uiScale(this.scene);
+    return JOYSTICK_RADIUS * uiScale();
   }
 }

@@ -5,7 +5,7 @@ import { createRng } from '../../sim/rng';
 import type { Projectile, WeaponState, World } from '../../sim/World';
 import { animKey, frameOf, textureKey } from '../anims';
 import { cameraScroll } from '../camera';
-import { FONT_SIZE, text, uiScale } from '../font';
+import { FONT_SIZE, fontSizeFor, text, uiScale } from '../font';
 import { MoveInput } from '../input';
 import { setPaused, showContentErrors } from '../overlay';
 
@@ -147,9 +147,12 @@ export class ArenaScene extends Phaser.Scene {
       this.scene.start('End', { run: this.run, result: 'victory' });
       return;
     }
-    // Hito 3: aquí va la tienda. Por ahora, la siguiente oleada directa tras un respiro
+    // Un respiro para ver que se acabó, y a la tienda
     this.floatText(`Oleada ${this.run.waveNumber - 1} superada`, undefined, COLORS.gold);
-    this.time.delayedCall(1200, () => this.scene.restart({ run: this.run }));
+    this.time.delayedCall(1200, () => {
+      this.run.shop.open();
+      this.scene.start('Shop', { run: this.run });
+    });
   }
 
   private render(dt: number): void {
@@ -239,14 +242,18 @@ export class ArenaScene extends Phaser.Scene {
   // Las armas giran hacia su objetivo desde el punto de agarre; apuntando a la izquierda se voltean
   // en vertical para no quedar boca abajo
   private syncWeapons(): void {
+    // ?aimSteps=16 fuerza los pasos de giro de todas las armas, para probarlo sin tocar módulos
+    const forced = Number(new URLSearchParams(location.search).get('aimSteps') ?? NaN);
     this.world.weapons.forEach((w: WeaponState, i) => {
       const s = this.weaponSprites[i]!;
       const grip = w.def.grip ?? { x: 0, y: w.cell.h / 2 };
-      const left = Math.cos(w.angle) < 0;
+      const steps = Number.isInteger(forced) && forced >= 0 ? forced : w.def.aimSteps;
+      const angle = steps > 0 ? Math.round(w.angle / ((Math.PI * 2) / steps)) * ((Math.PI * 2) / steps) : w.angle;
+      const left = Math.cos(angle) < 0;
       s.setFlipY(left).setOrigin(grip.x / w.cell.w, left ? 1 - grip.y / w.cell.h : grip.y / w.cell.h);
       const lunge = w.lunge * w.cell.w * 0.8;
-      s.setPosition(Math.round(w.x + Math.cos(w.angle) * lunge), Math.round(w.y + Math.sin(w.angle) * lunge));
-      s.setRotation(w.angle).setDepth(2 + (w.y + 1) / 10000);
+      s.setPosition(Math.round(w.x + Math.cos(angle) * lunge), Math.round(w.y + Math.sin(angle) * lunge));
+      s.setRotation(angle).setDepth(2 + (w.y + 1) / 10000);
       const anim = animKey('weapon', w.def.id, w.fireT > 0 && 'fire' in w.def.sprites.anims ? 'fire' : 'idle');
       if (s.anims.currentAnim?.key !== anim) s.play(anim);
     });
@@ -285,7 +292,7 @@ export class ArenaScene extends Phaser.Scene {
   // El aviso antes de que aparezca un enemigo: una X roja que parpadea más rápido al final
   private drawTelegraphs(): void {
     const g = this.telegraphs.clear();
-    const u = uiScale(this); // la X crece con la UI para que se vea igual en todas las pantallas
+    const u = uiScale(); // la X crece con la UI para que se vea igual en todas las pantallas
     for (const t of this.world.telegraphs) {
       if (Math.floor(t.t * (t.t < 0.4 ? 16 : 8)) % 2 === 1) continue;
       const x = Math.round(t.x);
@@ -324,7 +331,7 @@ export class ArenaScene extends Phaser.Scene {
   // Sin "at", sigue al jugador y sale sobre su cabeza; con "at", se queda en ese punto
   private floatText(value: string, at: Point | undefined, color: number, lift = this.textLift()): void {
     const p = at ?? this.world?.player ?? { x: 0, y: 0 };
-    const obj = text(this, 0, 0, value, uiScale(this)).setTint(color).setDepth(50).setOrigin(0.5, 1);
+    const obj = text(this, 0, 0, value, uiScale()).setTint(color).setDepth(50).setOrigin(0.5, 1);
     obj.setPosition(Math.round(p.x), Math.round(p.y) - lift);
     this.floating.push({ obj, life: at ? 0.7 : 1.4, at: at ? { x: at.x, y: at.y } : null, lift });
   }
@@ -367,8 +374,8 @@ export class ArenaScene extends Phaser.Scene {
 
   // Anclado a las esquinas del área visible, que cambia con cada pantalla. Todo a escala entera u.
   private layoutHud(): void {
-    const u = uiScale(this);
-    for (const t of [this.hud.hp, this.hud.wave, this.hud.timer, this.hud.materials]) t.setFontSize(FONT_SIZE * u);
+    const u = uiScale();
+    for (const t of [this.hud.hp, this.hud.wave, this.hud.timer, this.hud.materials]) t.setFontSize(fontSizeFor(u));
     this.hud.hp.setPosition((4 + BAR_W + 3) * u, 3 * u);
     // Materiales debajo de la vida: icono a la escala entera de la UI y el número al lado
     const icon = this.hud.materialIcon.setScale(u).setPosition(4 * u, (4 + BAR_H + 3) * u);
@@ -378,7 +385,7 @@ export class ArenaScene extends Phaser.Scene {
 
   // "OLEADA" va centrada; si en una pantalla estrecha chocaría con la vida, pasa a la esquina derecha
   private placeWave(): void {
-    const u = uiScale(this);
+    const u = uiScale();
     const w = this.scale.width;
     const hpRight = this.hud.hp.x + this.hud.hp.width + 4 * u;
     const centered = Math.floor(w / 2) - Math.ceil(this.hud.wave.width / 2) >= hpRight;
@@ -390,7 +397,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   private updateHud(): void {
-    const u = uiScale(this);
+    const u = uiScale();
     const p = this.world.player;
     const g = this.hud.bar.clear();
     g.fillStyle(COLORS.hpBack).fillRect(4 * u, 4 * u, BAR_W * u, BAR_H * u);
@@ -421,30 +428,33 @@ export class ArenaScene extends Phaser.Scene {
     else this.anims.resumeAll();
   }
 
-  // Losetas del nivel, al azar según su peso pero siempre iguales para el mismo nivel,
-  // horneadas una vez en una textura (no miles de objetos)
+  // Losetas del nivel, al azar según su peso pero siempre iguales para el mismo nivel. Se hornean UNA vez
+  // por nivel en una textura con nombre y se reutiliza en cada oleada: crear un framebuffer de 1280×1280
+  // en cada oleada es caro y, en algún navegador sin GPU, ha llegado a fallar ("Framebuffer Unsupported").
   private drawFloor(width: number, height: number): void {
     const level = this.run.level;
-    const key = textureKey('level', level.id);
-    const frames = level.floor.map((f) => ({ frame: frameOf(level.sprites, f.anim), weight: f.weight }));
-    const total = frames.reduce((sum, f) => sum + f.weight, 0);
-    const tile = this.textures.getFrame(key, frames[0]!.frame);
-    const tw = tile.width;
-    const th = tile.height;
-    const rng = createRng([...level.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7));
-    performance.mark('floor-start');
-    const rt = this.add.renderTexture(0, 0, width, height).setOrigin(0, 0).setDepth(0);
-    // En un solo lote: con drawFrame suelto, cada loseta es una pasada de dibujo (miles en una arena grande)
-    rt.beginDraw();
-    for (let y = 0; y < height; y += th) {
-      for (let x = 0; x < width; x += tw) {
-        let roll = rng() * total;
-        const pick = frames.find((f) => (roll -= f.weight) < 0) ?? frames[0]!;
-        rt.batchDrawFrame(key, pick.frame, x, y);
+    const floorKey = `floor:${level.id}`;
+    if (!this.textures.exists(floorKey)) {
+      performance.mark('floor-start');
+      const key = textureKey('level', level.id);
+      const frames = level.floor.map((f) => ({ frame: frameOf(level.sprites, f.anim), weight: f.weight }));
+      const total = frames.reduce((sum, f) => sum + f.weight, 0);
+      const tile = this.textures.getFrame(key, frames[0]!.frame);
+      const rng = createRng([...level.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7));
+      const floor = this.textures.addDynamicTexture(floorKey, width, height)!;
+      // En un solo lote: con drawFrame suelto, cada loseta es una pasada de dibujo (miles en una arena grande)
+      floor.beginDraw();
+      for (let y = 0; y < height; y += tile.height) {
+        for (let x = 0; x < width; x += tile.width) {
+          let roll = rng() * total;
+          const pick = frames.find((f) => (roll -= f.weight) < 0) ?? frames[0]!;
+          floor.batchDrawFrame(key, pick.frame, x, y);
+        }
       }
+      floor.endDraw();
+      performance.measure('floor', 'floor-start');
     }
-    rt.endDraw();
-    performance.measure('floor', 'floor-start');
+    this.add.image(0, 0, floorKey).setOrigin(0, 0).setDepth(0);
     this.cameras.main.setBackgroundColor('#12101c');
   }
 }

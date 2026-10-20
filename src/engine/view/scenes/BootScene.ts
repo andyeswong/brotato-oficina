@@ -41,15 +41,28 @@ export class BootScene extends Phaser.Scene {
       showContentErrors('✗ No hay ningún personaje o ningún nivel en src/content/.');
       return;
     }
-    // ?weapons=buzon,regla cambia las armas iniciales: sirve para probar armas antes de que exista la tienda
-    const override = new URLSearchParams(location.search).get('weapons');
+    // Parámetros de prueba (para verificar sin jugar hasta ahí):
+    //   ?weapons=buzon,regla  armas iniciales   ?wave=4  empezar en esa oleada
+    //   ?materials=50  materiales iniciales      ?shop    empezar en la tienda
+    const query = new URLSearchParams(location.search);
+    const override = query.get('weapons');
     const weapons = override?.split(',').map((w) => w.trim()).filter(Boolean);
     const unknown = weapons?.filter((w) => !this.registry_.has('weapon', w)) ?? [];
     if (unknown.length > 0) {
       showContentErrors(`✗ ?weapons= pide armas que no existen: ${unknown.join(', ')}.\n\n  Hay: ${this.registry_.ids('weapon').join(', ')}`);
       return;
     }
-    this.scene.start('Arena', { run: new Run(this.registry_, character, level, undefined, { weapons }) });
+    const run = new Run(this.registry_, character, level, undefined, { weapons });
+    const wave = Number(query.get('wave'));
+    if (Number.isInteger(wave) && wave >= 1) run.waveIndex = Math.min(wave, run.totalWaves) - 1;
+    const materials = Number(query.get('materials'));
+    if (Number.isInteger(materials) && materials > 0) run.materials = materials;
+    if (query.has('shop')) {
+      run.shop.open();
+      this.scene.start('Shop', { run });
+      return;
+    }
+    this.scene.start('Arena', { run });
   }
 
   private sheets(): Array<[string, string, Sprites]> {
@@ -58,6 +71,7 @@ export class BootScene extends Phaser.Scene {
       ...this.registry_.enemies().map((e) => ['enemy', e.id, e.sprites] as [string, string, Sprites]),
       ...this.registry_.weapons().map((w) => ['weapon', w.id, w.sprites] as [string, string, Sprites]),
       ...this.registry_.levels().map((l) => ['level', l.id, l.sprites] as [string, string, Sprites]),
+      ...this.registry_.items().filter((i) => i.sprites).map((i) => ['item', i.id, i.sprites!] as [string, string, Sprites]),
     ];
   }
 }

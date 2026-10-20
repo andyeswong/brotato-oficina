@@ -69,9 +69,9 @@ describe('validateContent', () => {
     expect(errors.some((e) => e.message.includes('"speed-pct"'))).toBe(true);
   });
 
-  it('un tipo que el motor aún no carga da un error claro, no se ignora', () => {
-    const { errors } = validateContent([...base, { path: '/src/content/items/cafe/module.ts', value: { kind: 'item' } }]);
-    expect(errors[0]?.message).toContain('todavía no sabe cargar');
+  it('un kind que no corresponde a su carpeta da un error claro, no se ignora', () => {
+    const { errors } = validateContent([...base, { path: '/src/content/items/cafe/module.ts', value: { kind: 'upgrade' } }]);
+    expect(errors[0]?.message).toContain('declara kind "upgrade"');
   });
 });
 

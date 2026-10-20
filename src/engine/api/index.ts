@@ -8,6 +8,7 @@ import type {
   HookEvent,
   levelSchema,
   statSchema,
+  itemSchema,
   waveSchema,
   weaponSchema,
 } from '../registry/schemas';
@@ -105,6 +106,10 @@ export function defineEnemyBehavior<P extends z.ZodType>(def: {
   update(self: EnemySelf, dt: number, api: EnemyApi, params: z.infer<P>): void;
 }) {
   return { ...def, kind: 'behavior' as const, target: 'enemy' as const };
+}
+
+export function defineItem(def: Omit<Input<typeof itemSchema>, 'hooks'> & { hooks?: Hooks }) {
+  return { ...def, kind: 'item' as const };
 }
 
 export function defineWeapon(def: Input<typeof weaponSchema>) {

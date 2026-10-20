@@ -379,7 +379,7 @@ export class World {
     this.fx.push({ type: 'enemy-die', x: e.x, y: e.y - e.cell.h / 2 });
     this.dropMaterials({ x: e.x, y: e.y - e.cell.h / 2 }, e.def.loot.materials);
     this.deps.onKill(e.def);
-    this.deps.emit('onKill', { enemy: e.def.id, source });
+    this.deps.emit('onKill', { enemy: e.def.id, source, at: { x: e.x, y: e.y - e.cell.h / 2 } });
   }
 
   private removeDead(): void {
