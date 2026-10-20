@@ -25,7 +25,7 @@ const character = (over: Record<string, unknown> = {}): DiscoveredModule => ({
   },
 });
 
-const base = [stat('max-hp'), stat('speed-pct')];
+const base = [stat('max-hp'), stat('speed-pct'), stat('armor'), stat('dodge-pct')];
 
 describe('validateContent', () => {
   it('acepta un contenido correcto', () => {
@@ -65,7 +65,7 @@ describe('validateContent', () => {
   });
 
   it('el motor exige sus estadísticas', () => {
-    const { errors } = validateContent([stat('max-hp'), character()]);
+    const { errors } = validateContent([stat('max-hp'), stat('armor'), stat('dodge-pct'), character()]);
     expect(errors.some((e) => e.message.includes('"speed-pct"'))).toBe(true);
   });
 

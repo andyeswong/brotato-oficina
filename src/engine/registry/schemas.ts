@@ -26,10 +26,15 @@ export const HOOK_EVENTS = [
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 // Estadísticas que el motor lee por su id: el contenido base tiene que traerlas
-export const ENGINE_STATS = ['max-hp', 'speed-pct'] as const;
+export const ENGINE_STATS = ['max-hp', 'speed-pct', 'armor', 'dodge-pct'] as const;
 
-// Animaciones que el motor pide a cada personaje
+// Animaciones que el motor pide a cada tipo
 export const CHARACTER_ANIMS = ['idle', 'walk'] as const;
+export const ENEMY_ANIMS = ['walk'] as const;
+
+// Contadores de partida que un modificador "per" puede usar
+export const COUNTERS = ['distinct-weapons', 'wave', 'kills', 'materials', 'items'] as const;
+export type CounterId = (typeof COUNTERS)[number];
 
 export const idSchema = z
   .string()
@@ -56,7 +61,7 @@ export const modifierSchema = z
     mul: z.number().optional(),
     per: z
       .strictObject({
-        counter: z.string(),
+        counter: z.enum(COUNTERS),
         every: z.number().positive(),
         max: z.number().optional(),
       })
@@ -122,18 +127,90 @@ export const levelSchema = z.strictObject({
     width: z.number().int().positive(),
     height: z.number().int().positive(),
   }),
-  waves: z.array(idSchema).optional(),
+  waves: z.array(idSchema).min(1, 'un nivel necesita al menos una oleada'),
 });
+
+// Un esquema de zod que trae el propio comportamiento para validar los params de quien lo usa
+const paramsSchema = z.custom<z.ZodType>(
+  (v) => typeof v === 'object' && v !== null && typeof (v as { safeParse?: unknown }).safeParse === 'function',
+  'params tiene que ser un esquema de zod (z.object({ … }))',
+);
+
+export const behaviorSchema = z
+  .strictObject({
+    ...manifest,
+    kind: z.literal('behavior'),
+    target: z.enum(['enemy', 'weapon']),
+    params: paramsSchema,
+    update: hookFn.optional(),
+    fire: hookFn.optional(),
+  })
+  .refine((b) => (b.target === 'enemy' ? b.update !== undefined : b.fire !== undefined), {
+    message: 'un comportamiento de enemigo necesita update(); uno de arma, fire()',
+  });
+
+export const enemySchema = z.strictObject({
+  ...manifest,
+  kind: z.literal('enemy'),
+  hp: z.number().positive(),
+  hpPerWave: z.number().min(0).default(0),
+  contactDamage: z.number().min(0),
+  damagePerWave: z.number().min(0).default(0),
+  speed: z.number().min(0),          // píxeles lógicos por segundo
+  radius: z.number().positive(),     // círculo de colisión
+  behavior: idSchema,
+  params: z.record(z.string(), z.unknown()).default({}),
+  loot: z
+    .strictObject({
+      materials: z.number().int().min(0),
+      consumableChance: z.number().min(0).max(1).default(0),
+    })
+    .default({ materials: 1, consumableChance: 0 }),
+  sprites: spritesSchema,
+});
+
+export const SPAWN_PATTERNS = ['random', 'edge', 'ring', 'cluster'] as const;
+
+export const waveSchema = z
+  .strictObject({
+    ...manifest,
+    kind: z.literal('wave'),
+    duration: z.number().positive(),  // segundos
+    groups: z
+      .array(
+        z
+          .strictObject({
+            enemy: idSchema,
+            from: z.number().min(0),
+            to: z.number().positive(),
+            every: z.number().positive(),
+            count: z.number().int().positive(),
+            pattern: z.enum(SPAWN_PATTERNS).default('random'),
+          })
+          .refine((g) => g.from < g.to, { message: 'from tiene que ser menor que to', path: ['from'] }),
+      )
+      .min(1, 'una oleada necesita al menos un grupo de enemigos'),
+  })
+  .refine((w) => w.groups.every((g) => g.to <= w.duration), {
+    message: 'algún grupo termina después de que acabe la oleada (to > duration)',
+    path: ['groups'],
+  });
 
 // Tipos que el motor ya sabe cargar. El resto llega en F1.
 export const SCHEMAS = {
   stat: statSchema,
+  behavior: behaviorSchema,
   character: characterSchema,
+  enemy: enemySchema,
+  wave: waveSchema,
   level: levelSchema,
 } as const satisfies Partial<Record<ModuleKind, z.ZodType>>;
 
 export type SupportedKind = keyof typeof SCHEMAS;
 export type StatModule = z.infer<typeof statSchema>;
+export type BehaviorModule = z.infer<typeof behaviorSchema>;
 export type CharacterModule = z.infer<typeof characterSchema>;
+export type EnemyModule = z.infer<typeof enemySchema>;
+export type WaveModule = z.infer<typeof waveSchema>;
 export type LevelModule = z.infer<typeof levelSchema>;
-export type ContentModule = StatModule | CharacterModule | LevelModule;
+export type ContentModule = StatModule | BehaviorModule | CharacterModule | EnemyModule | WaveModule | LevelModule;

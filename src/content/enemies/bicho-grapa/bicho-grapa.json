@@ -1,0 +1,64 @@
+{
+ "frames": {
+  "bicho-grapa_walk_0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 12
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 12
+   },
+   "sourceSize": {
+    "w": 12,
+    "h": 12
+   },
+   "duration": 167
+  },
+  "bicho-grapa_walk_1": {
+   "frame": {
+    "x": 13,
+    "y": 0,
+    "w": 12,
+    "h": 12
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 12
+   },
+   "sourceSize": {
+    "w": 12,
+    "h": 12
+   },
+   "duration": 167
+  }
+ },
+ "meta": {
+  "app": "pxl",
+  "image": "bicho-grapa.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 25,
+   "h": 12
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "bicho-grapa_walk",
+    "from": 0,
+    "to": 1,
+    "direction": "forward"
+   }
+  ]
+ }
+}

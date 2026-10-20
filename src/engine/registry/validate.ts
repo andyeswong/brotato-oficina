@@ -1,19 +1,23 @@
 import { formatField, suggest, type ContentError } from './ContentError';
 import {
   CHARACTER_ANIMS,
+  ENEMY_ANIMS,
   ENGINE_STATS,
   HOOK_EVENTS,
   KIND_FOLDERS,
   MODULE_KINDS,
   SCHEMAS,
+  type BehaviorModule,
   type CharacterModule,
   type ContentModule,
+  type EnemyModule,
   type LevelModule,
   type ModuleKind,
   type Modifier,
   type Sprites,
   type StatModule,
   type SupportedKind,
+  type WaveModule,
 } from './schemas';
 
 export interface DiscoveredModule {
@@ -42,8 +46,13 @@ export class Registry {
   characters(): CharacterModule[] { return this.all('character') as CharacterModule[]; }
   levels(): LevelModule[] { return this.all('level') as LevelModule[]; }
 
+  enemies(): EnemyModule[] { return this.all('enemy') as EnemyModule[]; }
+
   character(id: string): CharacterModule { return this.get('character', id) as CharacterModule; }
   level(id: string): LevelModule { return this.get('level', id) as LevelModule; }
+  wave(id: string): WaveModule { return this.get('wave', id) as WaveModule; }
+  enemy(id: string): EnemyModule { return this.get('enemy', id) as EnemyModule; }
+  behavior(id: string): BehaviorModule { return this.get('behavior', id) as BehaviorModule; }
 
   private get(kind: ModuleKind, id: string): ContentModule {
     const mod = this.byKind.get(kind)?.get(id);
@@ -140,8 +149,25 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
       checkHooks(mod.hooks, err);
     }
 
+    if (mod.kind === 'enemy') {
+      if (!registry.has('behavior', mod.behavior)) {
+        err(`no existe ningún behavior "${mod.behavior}".${suggest(mod.behavior, registry.ids('behavior'))}`, 'behavior');
+      } else {
+        const behavior = registry.behavior(mod.behavior);
+        if (behavior.target !== 'enemy') err(`"${mod.behavior}" es un comportamiento de ${behavior.target}, no de enemigo`, 'behavior');
+        // Los params los valida el esquema que trae el propio comportamiento
+        const parsed = behavior.params.safeParse(mod.params);
+        if (!parsed.success) for (const issue of parsed.error.issues) err(issue.message, formatField(['params', ...issue.path]));
+      }
+      checkSprites(mod.sprites, ENEMY_ANIMS, err);
+    }
+
+    if (mod.kind === 'wave') {
+      mod.groups.forEach((g, i) => ref('enemy', g.enemy, `groups[${i}].enemy`));
+    }
+
     if (mod.kind === 'level') {
-      mod.waves?.forEach((w, i) => ref('wave', w, `waves[${i}]`));
+      mod.waves.forEach((w, i) => ref('wave', w, `waves[${i}]`));
     }
   }
 

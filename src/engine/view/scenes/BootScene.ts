@@ -1,8 +1,11 @@
 import Phaser from 'phaser';
 import { formatErrors } from '../../registry/ContentError';
 import { discoverContent } from '../../registry/discover';
+import type { Sprites } from '../../registry/schemas';
 import { validateContent, type Registry } from '../../registry/validate';
+import { Run } from '../../sim/Run';
 import { createAnims, loadSheet, textureKey } from '../anims';
+import { createPixelFont } from '../font';
 import { showContentErrors } from '../overlay';
 
 // Descubrir → validar → (errores: se para aquí) → cargar hojas → crear animaciones → arena
@@ -23,12 +26,13 @@ export class BootScene extends Phaser.Scene {
       return;
     }
     this.registry_ = registry;
-    for (const c of registry.characters()) loadSheet(this, textureKey('character', c.id), c.sprites);
+    for (const [kind, id, sprites] of this.sheets()) loadSheet(this, textureKey(kind, id), sprites);
   }
 
   create(): void {
     if (!this.registry_) return;
-    for (const c of this.registry_.characters()) createAnims(this, textureKey('character', c.id), c.sprites, 'character', c.id);
+    createPixelFont(this);
+    for (const [kind, id, sprites] of this.sheets()) createAnims(this, textureKey(kind, id), sprites, kind, id);
 
     // Hasta que exista la pantalla de selección: el primer personaje y el primer nivel
     const character = this.registry_.characters()[0];
@@ -37,6 +41,13 @@ export class BootScene extends Phaser.Scene {
       showContentErrors('✗ No hay ningún personaje o ningún nivel en src/content/.');
       return;
     }
-    this.scene.start('Arena', { registry: this.registry_, characterId: character.id, levelId: level.id });
+    this.scene.start('Arena', { run: new Run(this.registry_, character, level) });
+  }
+
+  private sheets(): Array<[string, string, Sprites]> {
+    return [
+      ...this.registry_.characters().map((c) => ['character', c.id, c.sprites] as [string, string, Sprites]),
+      ...this.registry_.enemies().map((e) => ['enemy', e.id, e.sprites] as [string, string, Sprites]),
+    ];
   }
 }

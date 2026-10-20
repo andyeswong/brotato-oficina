@@ -1,6 +1,6 @@
 {
  "frames": {
-  "maia32_0": {
+  "maia_idle_0": {
    "frame": {
     "x": 0,
     "y": 0,
@@ -21,7 +21,7 @@
    },
    "duration": 200
   },
-  "maia32_1": {
+  "maia_idle_1": {
    "frame": {
     "x": 33,
     "y": 0,
@@ -42,115 +42,94 @@
    },
    "duration": 200
   },
-  "maia32_walk_0": {
+  "maia_walk_0": {
    "frame": {
     "x": 66,
     "y": 0,
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "rotated": false,
    "trimmed": false,
    "spriteSourceSize": {
     "x": 0,
     "y": 0,
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "sourceSize": {
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "duration": 125
   },
-  "maia32_walk_1": {
+  "maia_walk_1": {
    "frame": {
     "x": 0,
-    "y": 35,
-    "w": 34,
-    "h": 34
+    "y": 33,
+    "w": 32,
+    "h": 32
    },
    "rotated": false,
    "trimmed": false,
    "spriteSourceSize": {
     "x": 0,
     "y": 0,
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "sourceSize": {
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "duration": 125
   },
-  "maia32_walk_2": {
+  "maia_walk_2": {
    "frame": {
-    "x": 35,
-    "y": 35,
-    "w": 34,
-    "h": 34
+    "x": 33,
+    "y": 33,
+    "w": 32,
+    "h": 32
    },
    "rotated": false,
    "trimmed": false,
    "spriteSourceSize": {
     "x": 0,
     "y": 0,
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "sourceSize": {
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "duration": 125
   },
-  "maia32_walk_3": {
+  "maia_walk_3": {
    "frame": {
-    "x": 70,
-    "y": 35,
-    "w": 34,
-    "h": 34
+    "x": 66,
+    "y": 33,
+    "w": 32,
+    "h": 32
    },
    "rotated": false,
    "trimmed": false,
    "spriteSourceSize": {
     "x": 0,
     "y": 0,
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "sourceSize": {
-    "w": 34,
-    "h": 34
+    "w": 32,
+    "h": 32
    },
    "duration": 125
   },
-  "maia48_0": {
+  "maia_portrait_0": {
    "frame": {
     "x": 0,
-    "y": 70,
-    "w": 48,
-    "h": 48
-   },
-   "rotated": false,
-   "trimmed": false,
-   "spriteSourceSize": {
-    "x": 0,
-    "y": 0,
-    "w": 48,
-    "h": 48
-   },
-   "sourceSize": {
-    "w": 48,
-    "h": 48
-   },
-   "duration": 200
-  },
-  "maia48_1": {
-   "frame": {
-    "x": 49,
-    "y": 70,
+    "y": 66,
     "w": 48,
     "h": 48
    },
@@ -171,30 +150,30 @@
  },
  "meta": {
   "app": "pxl",
-  "image": "maia_hoja.png",
+  "image": "maia.png",
   "format": "RGBA8888",
   "size": {
-   "w": 104,
-   "h": 118
+   "w": 98,
+   "h": 114
   },
   "scale": "1",
   "frameTags": [
    {
-    "name": "maia32",
+    "name": "maia_idle",
     "from": 0,
     "to": 1,
     "direction": "forward"
    },
    {
-    "name": "maia32_walk",
+    "name": "maia_walk",
     "from": 2,
     "to": 5,
     "direction": "forward"
    },
    {
-    "name": "maia48",
+    "name": "maia_portrait",
     "from": 6,
-    "to": 7,
+    "to": 6,
     "direction": "forward"
    }
   ]
