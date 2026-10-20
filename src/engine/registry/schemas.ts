@@ -116,6 +116,14 @@ export const characterSchema = z.strictObject({
   baseStats: z.record(idSchema, z.number()).optional(),
   modifiers: z.array(modifierSchema).optional(),
   startingWeapons: z.array(idSchema).optional(),
+  // El cuerpo en píxeles lógicos. Lo que no se dé sale de la celda de su animación idle (ver body.ts)
+  body: z
+    .strictObject({
+      radius: z.number().positive().optional(),    // círculo de colisión
+      centerY: z.number().min(0).optional(),       // altura del centro del cuerpo sobre los pies
+      speed: z.number().positive().optional(),     // píxeles lógicos por segundo con speed-pct = 0
+    })
+    .optional(),
   sprites: spritesSchema,
   hooks,
 });

@@ -2,11 +2,9 @@ import type { EnemyApi, EnemySelf, Point } from '../api';
 import type { BehaviorModule, EnemyModule, HookEvent, WaveModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import type { Rng } from './rng';
+import type { Body } from './body';
 import { SpatialHash } from './SpatialHash';
 
-export const BASE_SPEED = 90;          // píxeles lógicos por segundo con speed-pct = 0
-export const PLAYER_RADIUS = 6;
-export const PLAYER_BODY_OFFSET = 10;  // el centro del cuerpo está 10 px por encima de los pies
 const TELEGRAPH_TIME = 1;              // aviso antes de que aparezca un enemigo
 const MIN_SPAWN_DISTANCE = 64;
 const IFRAMES = 0.6;                   // invulnerabilidad tras un golpe
@@ -57,6 +55,7 @@ export interface WorldDeps {
   wave: WaveModule;
   waveNumber: number;
   arena: { width: number; height: number };
+  body: Body;
   rng: Rng;
   stat(id: string): number;
   emit(event: HookEvent, data?: Record<string, unknown>): void;
@@ -71,7 +70,8 @@ export class World {
   readonly telegraphs: Telegraph[] = [];
   readonly fx: WorldFx[] = [];
 
-  private readonly hash = new SpatialHash<EnemyState>(32);
+  private readonly hash = new SpatialHash<EnemyState>(32); // tamaño de celda: solo rendimiento, vale a cualquier escala
+  private maxEnemyRadius = 0;
   private readonly near: EnemyState[] = [];
   private readonly nextSpawn: number[];
   private uid = 0;
@@ -117,12 +117,12 @@ export class World {
 
   private movePlayer(dt: number, move: Point): void {
     const p = this.player;
-    const speed = BASE_SPEED * (1 + this.deps.stat('speed-pct') / 100);
+    const { body, arena } = this.deps;
+    const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100);
     p.vx = move.x * speed;
     p.vy = move.y * speed;
-    const { width, height } = this.deps.arena;
-    p.x = clamp(p.x + p.vx * dt, 8, width - 8);
-    p.y = clamp(p.y + p.vy * dt, PLAYER_BODY_OFFSET + PLAYER_RADIUS, height - 2);
+    p.x = clamp(p.x + p.vx * dt, body.radius, arena.width - body.radius);
+    p.y = clamp(p.y + p.vy * dt, body.centerY + body.radius, arena.height - 2);
     if (p.iframes > 0) p.iframes -= dt;
   }
 
@@ -169,6 +169,7 @@ export class World {
       alive: true,
     };
     this.enemies.push(e);
+    this.maxEnemyRadius = Math.max(this.maxEnemyRadius, def.radius);
     this.fx.push({ type: 'spawn', uid: e.uid });
   }
 
@@ -211,14 +212,15 @@ export class World {
   private contactDamage(): void {
     const p = this.player;
     if (p.iframes > 0) return;
+    const { body } = this.deps;
     const px = p.x;
-    const py = p.y - PLAYER_BODY_OFFSET;
+    const py = p.y - body.centerY;
     this.hash.clear();
     for (const e of this.enemies) this.hash.insert(e);
-    for (const e of this.hash.query(px, py, PLAYER_RADIUS + 16, this.near)) {
+    for (const e of this.hash.query(px, py, body.radius + this.maxEnemyRadius * 2, this.near)) {
       const dx = e.x - px;
       const dy = e.y - e.def.radius - py;
-      const min = PLAYER_RADIUS + e.def.radius;
+      const min = body.radius + e.def.radius;
       if (dx * dx + dy * dy >= min * min) continue;
       this.hitPlayer(e.contactDamage, e);
       return;

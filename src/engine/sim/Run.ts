@@ -2,6 +2,7 @@ import type { GameApi, HookFn, Point } from '../api';
 import type { CharacterModule, CounterId, HookEvent, LevelModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
+import { resolveBody, type Body } from './body';
 import { createRng, type Rng } from './rng';
 import { World } from './World';
 
@@ -14,6 +15,7 @@ interface HookSource {
 export class Run {
   readonly rng: Rng;
   readonly stats: StatSheet;
+  readonly body: Body;
   waveIndex = 0;
   kills = 0;
   materials = 0;
@@ -34,6 +36,7 @@ export class Run {
     readonly seed = Date.now() >>> 0,
   ) {
     this.rng = createRng(seed);
+    this.body = resolveBody(character);
     const defs = new Map<string, StatDef>(registry.stats().map((s) => [s.id, s]));
     this.stats = new StatSheet(defs, character.baseStats, (c) => this.counter(c as CounterId));
     this.stats.setSource(`character:${character.id}`, character.modifiers ?? []);
@@ -71,6 +74,7 @@ export class Run {
       wave,
       waveNumber: this.waveNumber,
       arena: this.level.arena,
+      body: this.body,
       rng: this.rng,
       stat: (id) => this.stats.get(id),
       emit: (event, data) => this.emit(event, data),

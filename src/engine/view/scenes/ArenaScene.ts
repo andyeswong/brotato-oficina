@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { Point } from '../../api';
 import type { Run } from '../../sim/Run';
-import { PLAYER_BODY_OFFSET, type World } from '../../sim/World';
+import type { World } from '../../sim/World';
 import { animKey, textureKey } from '../anims';
 import { text } from '../font';
 import { MoveInput } from '../input';
@@ -9,7 +9,7 @@ import { setPaused, showContentErrors } from '../overlay';
 
 const STEP = 1 / 60;          // la simulación corre a paso fijo
 const MAX_STEPS = 5;          // tras un tirón no se intenta recuperar más de 5 pasos
-const TILE = 16;
+const TILE = 16; // solo el suelo de relleno; el bueno saldrá de las losetas del nivel
 const COLORS = { hp: 0xff4d5e, hpBack: 0x12101c, threat: 0xff4d5e, text: 0xfdf6ff, gold: 0xf0b951 };
 
 interface Floating {
@@ -143,7 +143,7 @@ export class ArenaScene extends Phaser.Scene {
 
     // La cámara se pega a la posición YA redondeada: si se redondean por separado, el personaje tiembla 1 px
     const cam = this.cameras.main;
-    cam.setScroll(px - Math.floor(cam.width / 2), py - PLAYER_BODY_OFFSET - Math.floor(cam.height / 2));
+    cam.setScroll(px - Math.floor(cam.width / 2), py - this.run.body.centerY - Math.floor(cam.height / 2));
     this.input_.draw();
   }
 
@@ -201,8 +201,13 @@ export class ArenaScene extends Phaser.Scene {
   private floatText(value: string, at: Point | undefined, color: number): void {
     const p = at ?? this.world?.player ?? { x: 0, y: 0 };
     const obj = text(this, 0, 0, value).setTint(color).setDepth(50).setOrigin(0.5, 1);
-    obj.setPosition(Math.round(p.x), Math.round(p.y) - 34);
+    obj.setPosition(Math.round(p.x), Math.round(p.y) - this.textLift());
     this.floating.push({ obj, life: 1.4, at: at ? { x: at.x, y: at.y } : null });
+  }
+
+  // El texto flotante sale justo encima de la cabeza, mida lo que mida el personaje
+  private textLift(): number {
+    return this.run.body.cellH + 2;
   }
 
   private updateFloating(dt: number): void {
@@ -215,7 +220,7 @@ export class ArenaScene extends Phaser.Scene {
       }
       const base = f.at ?? p;
       const rise = Math.round((1.4 - f.life) * 10);
-      f.obj.setPosition(Math.round(base.x), Math.round(base.y) - 34 - rise);
+      f.obj.setPosition(Math.round(base.x), Math.round(base.y) - this.textLift() - rise);
       f.obj.setAlpha(f.life < 0.3 ? 0.5 : 1);
       return true;
     });
