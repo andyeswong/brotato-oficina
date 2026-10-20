@@ -1,0 +1,191 @@
+import { formatField, suggest, type ContentError } from './ContentError';
+import {
+  CHARACTER_ANIMS,
+  ENGINE_STATS,
+  HOOK_EVENTS,
+  KIND_FOLDERS,
+  MODULE_KINDS,
+  SCHEMAS,
+  type CharacterModule,
+  type ContentModule,
+  type LevelModule,
+  type ModuleKind,
+  type Modifier,
+  type Sprites,
+  type StatModule,
+  type SupportedKind,
+} from './schemas';
+
+export interface DiscoveredModule {
+  path: string;   // '/src/content/characters/maia/module.ts'
+  value: unknown; // el export default del módulo
+}
+
+export class Registry {
+  private readonly byKind = new Map<ModuleKind, Map<string, ContentModule>>();
+
+  add(mod: ContentModule): void {
+    const list = this.byKind.get(mod.kind) ?? new Map<string, ContentModule>();
+    list.set(mod.id, mod);
+    this.byKind.set(mod.kind, list);
+  }
+
+  has(kind: ModuleKind, id: string): boolean {
+    return this.byKind.get(kind)?.has(id) ?? false;
+  }
+
+  ids(kind: ModuleKind): string[] {
+    return [...(this.byKind.get(kind)?.keys() ?? [])];
+  }
+
+  stats(): StatModule[] { return this.all('stat') as StatModule[]; }
+  characters(): CharacterModule[] { return this.all('character') as CharacterModule[]; }
+  levels(): LevelModule[] { return this.all('level') as LevelModule[]; }
+
+  character(id: string): CharacterModule { return this.get('character', id) as CharacterModule; }
+  level(id: string): LevelModule { return this.get('level', id) as LevelModule; }
+
+  private get(kind: ModuleKind, id: string): ContentModule {
+    const mod = this.byKind.get(kind)?.get(id);
+    if (!mod) throw new Error(`Registry: no existe ningún ${kind} "${id}"`);
+    return mod;
+  }
+
+  private all(kind: ModuleKind): ContentModule[] {
+    return [...(this.byKind.get(kind)?.values() ?? [])];
+  }
+}
+
+const FOLDER_TO_KIND = new Map(MODULE_KINDS.map((k) => [KIND_FOLDERS[k], k]));
+const PATH_RE = /\/content\/([^/]+)\/([^/]+)\/module\.ts$/;
+
+// Junta TODOS los errores antes de devolver: un módulo roto no esconde a los demás
+export function validateContent(found: readonly DiscoveredModule[]): { registry: Registry; errors: ContentError[] } {
+  const errors: ContentError[] = [];
+  const registry = new Registry();
+  const paths = new Map<ContentModule, string>();
+
+  for (const { path, value } of found) {
+    const err = (message: string, field?: string) => errors.push({ path, field, message });
+    const m = PATH_RE.exec(path);
+    if (!m) {
+      err('el módulo tiene que estar en src/content/<tipo>/<id>/module.ts');
+      continue;
+    }
+    const [, folder, folderId] = m as unknown as [string, string, string];
+    const kind = FOLDER_TO_KIND.get(folder);
+    if (!kind) {
+      err(`"${folder}" no es una carpeta de contenido.${suggest(folder, FOLDER_TO_KIND.keys())}`);
+      continue;
+    }
+    if (typeof value !== 'object' || value === null) {
+      err('el módulo no exporta nada por defecto: falta "export default define…({ … })"');
+      continue;
+    }
+    const declared = (value as { kind?: unknown }).kind;
+    if (declared !== kind) {
+      err(`está en la carpeta de ${folder} pero declara kind "${String(declared)}": usa el define* de su tipo`, 'kind');
+      continue;
+    }
+    const schema = SCHEMAS[kind as SupportedKind];
+    if (!schema) {
+      err(`el motor todavía no sabe cargar módulos de tipo "${kind}" (llegan en F1)`);
+      continue;
+    }
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) err(issue.message, formatField(issue.path) || undefined);
+      continue;
+    }
+    const mod = parsed.data as ContentModule;
+    if (mod.id !== folderId) {
+      err(`el id "${mod.id}" no coincide con el nombre de su carpeta "${folderId}"`, 'id');
+      continue;
+    }
+    if (registry.has(kind, mod.id)) {
+      err(`ya existe otro ${kind} con id "${mod.id}"`, 'id');
+      continue;
+    }
+    registry.add(mod);
+    paths.set(mod, path);
+  }
+
+  // Segunda pasada: referencias entre módulos, ya con todos registrados
+  const statIds = registry.ids('stat');
+  for (const stat of ENGINE_STATS) {
+    if (!statIds.includes(stat)) {
+      errors.push({ path: `src/content/stats/${stat}/module.ts`, message: `falta la estadística "${stat}", que el motor necesita para funcionar` });
+    }
+  }
+
+  for (const [mod, path] of paths) {
+    const err = (message: string, field?: string) => errors.push({ path, field, message });
+    const ref = (kind: ModuleKind, id: string, field: string) => {
+      if (!registry.has(kind, id)) err(`no existe ningún ${kind} "${id}".${suggest(id, registry.ids(kind))}`, field);
+    };
+
+    mod.requires?.forEach((r, i) => {
+      const [kind, id] = r.split(':') as [string, string];
+      if (!(MODULE_KINDS as readonly string[]).includes(kind)) err(`"${kind}" no es un tipo de módulo.${suggest(kind, MODULE_KINDS)}`, `requires[${i}]`);
+      else ref(kind as ModuleKind, id, `requires[${i}]`);
+    });
+
+    if (mod.kind === 'character') {
+      checkModifiers(mod.modifiers ?? [], statIds, err);
+      for (const key of Object.keys(mod.baseStats ?? {})) {
+        if (!statIds.includes(key)) err(`no existe la estadística "${key}".${suggest(key, statIds)}`, `baseStats.${key}`);
+      }
+      mod.startingWeapons?.forEach((w, i) => ref('weapon', w, `startingWeapons[${i}]`));
+      checkSprites(mod.sprites, CHARACTER_ANIMS, err);
+      checkHooks(mod.hooks, err);
+    }
+
+    if (mod.kind === 'level') {
+      mod.waves?.forEach((w, i) => ref('wave', w, `waves[${i}]`));
+    }
+  }
+
+  return { registry, errors };
+}
+
+type Report = (message: string, field?: string) => void;
+
+function checkModifiers(mods: readonly Modifier[], statIds: string[], err: Report): void {
+  mods.forEach((m, i) => {
+    if (!statIds.includes(m.stat)) err(`no existe la estadística "${m.stat}".${suggest(m.stat, statIds)}`, `modifiers[${i}].stat`);
+  });
+}
+
+function checkHooks(hooks: Record<string, unknown> | undefined, err: Report): void {
+  for (const name of Object.keys(hooks ?? {})) {
+    if (!(HOOK_EVENTS as readonly string[]).includes(name)) {
+      err(`"${name}" no es un evento: este hook no se llamaría nunca.${suggest(name, HOOK_EVENTS)}`, `hooks.${name}`);
+    }
+  }
+}
+
+// Las hojas de pxl: cada animación pedida existe y todos sus frames miden lo mismo
+function checkSprites(sprites: Sprites, required: readonly string[], err: Report): void {
+  const frames = Object.values(sprites.atlas.frames);
+  const tags = new Map(sprites.atlas.meta.frameTags.map((t) => [t.name, t]));
+
+  for (const name of required) {
+    if (!(name in sprites.anims)) err(`falta la animación "${name}", que el motor necesita`, 'sprites.anims');
+  }
+  const wanted: Array<readonly [string, string]> = Object.entries(sprites.anims).map(([k, tag]) => [`sprites.anims.${k}`, tag]);
+  if (sprites.portrait) wanted.push(['sprites.portrait', sprites.portrait]);
+
+  for (const [field, tagName] of wanted) {
+    const tag = tags.get(tagName);
+    if (!tag) {
+      err(`la hoja no tiene ningún frameTag "${tagName}".${suggest(tagName, tags.keys())}`, field);
+      continue;
+    }
+    if (tag.to < tag.from || tag.to >= frames.length) {
+      err(`el frameTag "${tagName}" apunta a los frames ${tag.from}–${tag.to} y la hoja tiene ${frames.length}`, field);
+      continue;
+    }
+    const sizes = new Set(frames.slice(tag.from, tag.to + 1).map((f) => `${f.frame.w}×${f.frame.h}`));
+    if (sizes.size > 1) err(`los frames de "${tagName}" no miden lo mismo (${[...sizes].join(', ')})`, field);
+  }
+}
