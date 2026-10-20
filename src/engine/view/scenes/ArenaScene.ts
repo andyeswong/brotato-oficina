@@ -3,13 +3,16 @@ import type { Point } from '../../api';
 import type { Run } from '../../sim/Run';
 import type { World } from '../../sim/World';
 import { animKey, textureKey } from '../anims';
-import { text } from '../font';
+import { cameraScroll } from '../camera';
+import { FONT_SIZE, text, uiScale } from '../font';
 import { MoveInput } from '../input';
 import { setPaused, showContentErrors } from '../overlay';
 
 const STEP = 1 / 60;          // la simulación corre a paso fijo
 const MAX_STEPS = 5;          // tras un tirón no se intenta recuperar más de 5 pasos
 const TILE = 16; // solo el suelo de relleno; el bueno saldrá de las losetas del nivel
+const BAR_W = 52;
+const BAR_H = 7;
 const COLORS = { hp: 0xff4d5e, hpBack: 0x12101c, threat: 0xff4d5e, text: 0xfdf6ff, gold: 0xf0b951 };
 
 interface Floating {
@@ -143,7 +146,8 @@ export class ArenaScene extends Phaser.Scene {
 
     // La cámara se pega a la posición YA redondeada: si se redondean por separado, el personaje tiembla 1 px
     const cam = this.cameras.main;
-    cam.setScroll(px - Math.floor(cam.width / 2), py - this.run.body.centerY - Math.floor(cam.height / 2));
+    const scroll = cameraScroll({ x: px, y: py - this.run.body.centerY }, cam, this.run.level.arena);
+    cam.setScroll(scroll.x, scroll.y);
     this.input_.draw();
   }
 
@@ -200,7 +204,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private floatText(value: string, at: Point | undefined, color: number): void {
     const p = at ?? this.world?.player ?? { x: 0, y: 0 };
-    const obj = text(this, 0, 0, value).setTint(color).setDepth(50).setOrigin(0.5, 1);
+    const obj = text(this, 0, 0, value, uiScale(this)).setTint(color).setDepth(50).setOrigin(0.5, 1);
     obj.setPosition(Math.round(p.x), Math.round(p.y) - this.textLift());
     this.floating.push({ obj, life: 1.4, at: at ? { x: at.x, y: at.y } : null });
   }
@@ -239,22 +243,37 @@ export class ArenaScene extends Phaser.Scene {
     this.layoutHud();
   }
 
-  // Anclado a las esquinas del área visible, que cambia con cada pantalla
+  // Anclado a las esquinas del área visible, que cambia con cada pantalla. Todo a escala entera u.
   private layoutHud(): void {
+    const u = uiScale(this);
+    for (const t of [this.hud.hp, this.hud.wave, this.hud.timer]) t.setFontSize(FONT_SIZE * u);
+    this.hud.hp.setPosition((4 + BAR_W + 3) * u, 3 * u);
+    this.placeWave();
+  }
+
+  // "OLEADA" va centrada; si en una pantalla estrecha chocaría con la vida, pasa a la esquina derecha
+  private placeWave(): void {
+    const u = uiScale(this);
     const w = this.scale.width;
-    this.hud.hp.setPosition(4 + 52 + 3, 3);
-    this.hud.wave.setPosition(Math.floor(w / 2), 3);
-    this.hud.timer.setPosition(Math.floor(w / 2), 11);
+    const hpRight = this.hud.hp.x + this.hud.hp.width + 4 * u;
+    const centered = Math.floor(w / 2) - Math.ceil(this.hud.wave.width / 2) >= hpRight;
+    const x = centered ? Math.floor(w / 2) : w - 4 * u;
+    const originX = centered ? 0.5 : 1;
+    this.hud.wave.setOrigin(originX, 0).setPosition(x, 3 * u);
+    // Una línea entera de aire entre "OLEADA" y el temporizador
+    this.hud.timer.setOrigin(originX, 0).setPosition(x, (3 + FONT_SIZE + 3) * u);
   }
 
   private updateHud(): void {
+    const u = uiScale(this);
     const p = this.world.player;
     const g = this.hud.bar.clear();
-    g.fillStyle(COLORS.hpBack).fillRect(4, 4, 52, 5);
-    g.fillStyle(COLORS.hp).fillRect(4, 4, Math.round((52 * p.hp) / p.maxHp), 5);
+    g.fillStyle(COLORS.hpBack).fillRect(4 * u, 4 * u, BAR_W * u, BAR_H * u);
+    g.fillStyle(COLORS.hp).fillRect(4 * u, 4 * u, Math.round((BAR_W * p.hp) / p.maxHp) * u, BAR_H * u);
     this.hud.hp.setText(`${p.hp}/${p.maxHp}`);
     this.hud.wave.setText(`OLEADA ${this.run.waveNumber}/${this.run.totalWaves}`);
     this.hud.timer.setText(String(Math.ceil(this.world.timeLeft)));
+    this.placeWave();
   }
 
   private hookError(message: string): void {

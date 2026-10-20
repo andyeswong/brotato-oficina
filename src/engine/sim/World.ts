@@ -2,7 +2,7 @@ import type { EnemyApi, EnemySelf, Point } from '../api';
 import type { BehaviorModule, EnemyModule, HookEvent, WaveModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import type { Rng } from './rng';
-import type { Body } from './body';
+import { cellOf, keepInside, type Body } from './body';
 import { SpatialHash } from './SpatialHash';
 
 const TELEGRAPH_TIME = 1;              // aviso antes de que aparezca un enemigo
@@ -29,6 +29,7 @@ export interface EnemyState extends EnemySelf {
   readonly uid: number;
   readonly def: EnemyModule;
   readonly behavior: BehaviorModule;
+  readonly cell: { w: number; h: number };
   hp: number;
   readonly maxHp: number;
   readonly contactDamage: number;
@@ -121,8 +122,9 @@ export class World {
     const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100);
     p.vx = move.x * speed;
     p.vy = move.y * speed;
-    p.x = clamp(p.x + p.vx * dt, body.radius, arena.width - body.radius);
-    p.y = clamp(p.y + p.vy * dt, body.centerY + body.radius, arena.height - 2);
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    keepInside(p, { w: body.cellW, h: body.cellH }, arena);
     if (p.iframes > 0) p.iframes -= dt;
   }
 
@@ -157,6 +159,7 @@ export class World {
       uid: ++this.uid,
       def,
       behavior: this.deps.registry.behavior(def.behavior),
+      cell: cellOf(def.sprites, 'walk'),
       x,
       y,
       vx: 0,
@@ -168,6 +171,7 @@ export class World {
       contactDamage: Math.round(def.contactDamage + def.damagePerWave * w),
       alive: true,
     };
+    keepInside(e, e.cell, this.deps.arena);
     this.enemies.push(e);
     this.maxEnemyRadius = Math.max(this.maxEnemyRadius, def.radius);
     this.fx.push({ type: 'spawn', uid: e.uid });
@@ -202,10 +206,10 @@ export class World {
       }
     }
 
-    const { width, height } = this.deps.arena;
     for (const e of this.enemies) {
-      e.x = clamp(e.x + e.vx * dt, e.def.radius, width - e.def.radius);
-      e.y = clamp(e.y + e.vy * dt, e.def.radius * 2, height - 1);
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      keepInside(e, e.cell, this.deps.arena);
     }
   }
 
