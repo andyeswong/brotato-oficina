@@ -12,7 +12,8 @@
     "prebuild": "npm run validate && npm run lint && npm run typecheck",
     "build": "vite build",
     "preview": "vite preview --host",
-    "curva": "CURVA=1 vitest run scripts/curve.test.ts --silent=false"
+    "curva": "CURVA=1 vitest run scripts/curve.test.ts --silent=false",
+    "deploy": "npm run build && systemctl --user restart brotato-preview"
   },
   "dependencies": {
     "phaser": "3.90.0",

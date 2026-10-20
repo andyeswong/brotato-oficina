@@ -12,6 +12,17 @@ describe('fuente de píxel', () => {
     }
   });
 
+  it('todo glifo salvo el espacio tiene algún píxel encendido (uno vacío desaparecería en pantalla)', () => {
+    for (const ch of FONT_CHARS) {
+      if (ch === ' ') continue;
+      expect(glyphRows(ch).join('').includes('#'), `"${ch}"`).toBe(true);
+    }
+  });
+
+  it('el ";" se dibuja: un punto arriba y una coma abajo', () => {
+    expect(glyphRows(';').slice(1)).toEqual(['.....', '.##..', '.##..', '.....', '.##..', '..#..', '.#...']);
+  });
+
   it('la O y el 0 no se confunden', () => {
     expect(glyphRows('O')).not.toEqual(glyphRows('0'));
   });
