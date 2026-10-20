@@ -10,5 +10,6 @@ export default defineWave({
     { enemy: 'bicho-grapa', from: 25, to: 48, every: 4, count: 6, pattern: 'cluster' },
     { enemy: 'bicho-clip', from: 3, to: 48, every: 2.2, count: 2, pattern: 'edge' },
     { enemy: 'bicho-grapa', from: 35, to: 45, every: 10, count: 8, pattern: 'ring' },
+    { enemy: 'bicho-taza', from: 5, to: 48, every: 6, count: 2, pattern: 'edge' },
   ],
 });

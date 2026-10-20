@@ -3,6 +3,9 @@ import {
   CHARACTER_ANIMS,
   ENEMY_ANIMS,
   ENGINE_STATS,
+  LEVEL_ANIMS,
+  MAX_WEAPONS,
+  WEAPON_ANIMS,
   HOOK_EVENTS,
   KIND_FOLDERS,
   MODULE_KINDS,
@@ -18,6 +21,7 @@ import {
   type StatModule,
   type SupportedKind,
   type WaveModule,
+  type WeaponModule,
 } from './schemas';
 
 export interface DiscoveredModule {
@@ -47,12 +51,14 @@ export class Registry {
   levels(): LevelModule[] { return this.all('level') as LevelModule[]; }
 
   enemies(): EnemyModule[] { return this.all('enemy') as EnemyModule[]; }
+  weapons(): WeaponModule[] { return this.all('weapon') as WeaponModule[]; }
 
   character(id: string): CharacterModule { return this.get('character', id) as CharacterModule; }
   level(id: string): LevelModule { return this.get('level', id) as LevelModule; }
   wave(id: string): WaveModule { return this.get('wave', id) as WaveModule; }
   enemy(id: string): EnemyModule { return this.get('enemy', id) as EnemyModule; }
   behavior(id: string): BehaviorModule { return this.get('behavior', id) as BehaviorModule; }
+  weapon(id: string): WeaponModule { return this.get('weapon', id) as WeaponModule; }
 
   private get(kind: ModuleKind, id: string): ContentModule {
     const mod = this.byKind.get(kind)?.get(id);
@@ -145,21 +151,22 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
         if (!statIds.includes(key)) err(`no existe la estadística "${key}".${suggest(key, statIds)}`, `baseStats.${key}`);
       }
       mod.startingWeapons?.forEach((w, i) => ref('weapon', w, `startingWeapons[${i}]`));
+      if ((mod.startingWeapons?.length ?? 0) > MAX_WEAPONS) err(`como mucho ${MAX_WEAPONS} armas`, 'startingWeapons');
       checkSprites(mod.sprites, CHARACTER_ANIMS, err);
       checkHooks(mod.hooks, err);
     }
 
     if (mod.kind === 'enemy') {
-      if (!registry.has('behavior', mod.behavior)) {
-        err(`no existe ningún behavior "${mod.behavior}".${suggest(mod.behavior, registry.ids('behavior'))}`, 'behavior');
-      } else {
-        const behavior = registry.behavior(mod.behavior);
-        if (behavior.target !== 'enemy') err(`"${mod.behavior}" es un comportamiento de ${behavior.target}, no de enemigo`, 'behavior');
-        // Los params los valida el esquema que trae el propio comportamiento
-        const parsed = behavior.params.safeParse(mod.params);
-        if (!parsed.success) for (const issue of parsed.error.issues) err(issue.message, formatField(['params', ...issue.path]));
-      }
+      checkBehavior(registry, mod, 'enemy', err);
       checkSprites(mod.sprites, ENEMY_ANIMS, err);
+    }
+
+    if (mod.kind === 'weapon') {
+      checkBehavior(registry, mod, 'weapon', err);
+      for (const key of Object.keys(mod.scaling)) {
+        if (!statIds.includes(key)) err(`no existe la estadística "${key}".${suggest(key, statIds)}`, `scaling.${key}`);
+      }
+      checkSprites(mod.sprites, WEAPON_ANIMS, err);
     }
 
     if (mod.kind === 'wave') {
@@ -168,6 +175,10 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
 
     if (mod.kind === 'level') {
       mod.waves.forEach((w, i) => ref('wave', w, `waves[${i}]`));
+      checkSprites(mod.sprites, LEVEL_ANIMS, err);
+      mod.floor.forEach((f, i) => {
+        if (!(f.anim in mod.sprites.anims)) err(`"${f.anim}" no está en sprites.anims.${suggest(f.anim, Object.keys(mod.sprites.anims))}`, `floor[${i}].anim`);
+      });
     }
   }
 
@@ -175,6 +186,25 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
 }
 
 type Report = (message: string, field?: string) => void;
+
+// El comportamiento existe, es del tipo correcto, y los params cumplen el esquema que él mismo trae.
+// Los params se sustituyen por los ya resueltos, con los valores por defecto del esquema aplicados:
+// si no, un default que el módulo no escribe llega como undefined al comportamiento.
+function checkBehavior(registry: Registry, mod: { behavior: string; params: Record<string, unknown> }, target: 'enemy' | 'weapon', err: Report): void {
+  const id = mod.behavior;
+  if (!registry.has('behavior', id)) {
+    err(`no existe ningún behavior "${id}".${suggest(id, registry.ids('behavior'))}`, 'behavior');
+    return;
+  }
+  const behavior = registry.behavior(id);
+  if (behavior.target !== target) {
+    err(`"${id}" es un comportamiento de ${behavior.target === 'enemy' ? 'enemigo' : 'arma'}, no de ${target === 'enemy' ? 'enemigo' : 'arma'}`, 'behavior');
+    return;
+  }
+  const parsed = behavior.params.safeParse(mod.params);
+  if (!parsed.success) for (const issue of parsed.error.issues) err(issue.message, formatField(['params', ...issue.path]));
+  else mod.params = parsed.data as Record<string, unknown>;
+}
 
 function checkModifiers(mods: readonly Modifier[], statIds: string[], err: Report): void {
   mods.forEach((m, i) => {

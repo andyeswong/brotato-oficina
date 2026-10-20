@@ -70,7 +70,18 @@ describe('validateContent', () => {
   });
 
   it('un tipo que el motor aún no carga da un error claro, no se ignora', () => {
-    const { errors } = validateContent([...base, { path: '/src/content/weapons/buzon/module.ts', value: { kind: 'weapon' } }]);
+    const { errors } = validateContent([...base, { path: '/src/content/items/cafe/module.ts', value: { kind: 'item' } }]);
     expect(errors[0]?.message).toContain('todavía no sabe cargar');
+  });
+});
+
+describe('params de comportamiento', () => {
+  it('llegan al juego con los valores por defecto del esquema aplicados', async () => {
+    const { discoverContent } = await import('../src/engine/registry/discover');
+    const { registry } = validateContent(discoverContent());
+    // bicho-clip no escribe "recover"; el esquema de dash lo pone a 0.8
+    expect(registry.enemy('bicho-clip').params.recover).toBe(0.8);
+    // buzon no escribe "count"; el esquema de projectile lo pone a 1
+    expect(registry.weapon('buzon').params.count).toBe(1);
   });
 });

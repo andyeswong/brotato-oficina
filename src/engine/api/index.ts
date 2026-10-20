@@ -9,6 +9,7 @@ import type {
   levelSchema,
   statSchema,
   waveSchema,
+  weaponSchema,
 } from '../registry/schemas';
 
 export { z } from 'zod';
@@ -32,6 +33,8 @@ export interface GameApi {
   counter(id: CounterId): number;
   rng(): number;                  // [0, 1), con la semilla de la partida
   floatingText(text: string, at?: Point): void;
+  heal(amount: number): void;
+  dropMaterials(at: Point, amount: number): void;
 }
 
 export type HookFn = (event: Record<string, unknown>, api: GameApi) => void;
@@ -53,6 +56,30 @@ export interface EnemyApi {
   readonly player: Point;
   readonly time: number;           // segundos desde que empezó la oleada
   rng(): number;
+  // Dispara un proyectil enemigo desde el centro del cuerpo de self, con el daño de contacto del enemigo
+  shoot(self: EnemySelf, angle: number, speed: number, opts?: { radius?: number; range?: number }): void;
+}
+
+// ---------- Comportamientos de arma ----------
+
+// Lo que el motor ya calculó para este ataque: daño con escalado y modificadores, alcance, crítico
+export interface WeaponShot {
+  readonly x: number;              // punta del arma
+  readonly y: number;
+  readonly angle: number;          // hacia el objetivo, en radianes
+  readonly target: Point;
+  readonly damage: number;
+  readonly range: number;
+  readonly critChance: number;
+  readonly critMult: number;
+}
+
+export interface WeaponApi {
+  rng(): number;
+  // Un proyectil del jugador. anim: nombre semántico en sprites.anims del arma (p. ej. 'projectile')
+  projectile(shot: WeaponShot, opts: { angle?: number; speed: number; pierce?: number; radius?: number; anim?: string }): void;
+  // Golpe cuerpo a cuerpo instantáneo: una franja desde el arma hacia angle, de largo reach y ancho width
+  melee(shot: WeaponShot, opts: { reach: number; width: number }): void;
 }
 
 // ---------- define* ----------
@@ -80,6 +107,21 @@ export function defineEnemyBehavior<P extends z.ZodType>(def: {
   return { ...def, kind: 'behavior' as const, target: 'enemy' as const };
 }
 
+export function defineWeapon(def: Input<typeof weaponSchema>) {
+  return { ...def, kind: 'weapon' as const };
+}
+
+export function defineWeaponBehavior<P extends z.ZodType>(def: {
+  format: 1;
+  id: string;
+  name: string;
+  description?: string;
+  params: P;
+  fire(shot: WeaponShot, api: WeaponApi, params: z.infer<P>): void;
+}) {
+  return { ...def, kind: 'behavior' as const, target: 'weapon' as const };
+}
+
 export function defineWave(def: Input<typeof waveSchema>) {
   return { ...def, kind: 'wave' as const };
 }
@@ -89,6 +131,10 @@ export function defineLevel(def: Input<typeof levelSchema>) {
 }
 
 // Utilidades pequeñas que comparten los comportamientos
+export function angleTo(from: Point, to: Point): number {
+  return Math.atan2(to.y - from.y, to.x - from.x);
+}
+
 export function steerTowards(self: EnemySelf, target: Point, speed: number): void {
   const dx = target.x - self.x;
   const dy = target.y - self.y;

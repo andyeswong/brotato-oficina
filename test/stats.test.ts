@@ -43,3 +43,13 @@ describe('StatSheet', () => {
     expect(new StatSheet(defs, { 'max-hp': 15 }).get('max-hp')).toBe(15);
   });
 });
+
+describe('StatSheet con weaponTag', () => {
+  it('un modificador con weaponTag solo cuenta para las armas de ese tag', () => {
+    const s = new StatSheet(defs);
+    s.setSource('character:maia', [{ stat: 'damage-pct', add: -50, weaponTag: 'cuerpo-a-cuerpo' }, { stat: 'damage-pct', add: 10 }]);
+    expect(s.get('damage-pct')).toBe(10);
+    expect(s.get('damage-pct', ['distancia'])).toBe(10);
+    expect(s.get('damage-pct', ['cuerpo-a-cuerpo'])).toBe(-40);
+  });
+});

@@ -19,6 +19,9 @@ export class Run {
   waveIndex = 0;
   kills = 0;
   materials = 0;
+  // Armas equipadas (hasta 6): id y nivel (0 = I)
+  readonly weapons: Array<{ id: string; tier: number }>;
+  readonly startingWeaponIds: string[];
   world: World | null = null;
 
   // La vista se engancha aquí
@@ -34,12 +37,15 @@ export class Run {
     readonly character: CharacterModule,
     readonly level: LevelModule,
     readonly seed = Date.now() >>> 0,
+    options: { weapons?: string[] } = {},
   ) {
     this.rng = createRng(seed);
     this.body = resolveBody(character);
     const defs = new Map<string, StatDef>(registry.stats().map((s) => [s.id, s]));
     this.stats = new StatSheet(defs, character.baseStats, (c) => this.counter(c as CounterId));
     this.stats.setSource(`character:${character.id}`, character.modifiers ?? []);
+    this.startingWeaponIds = (options.weapons ?? character.startingWeapons ?? []).slice(0, 6);
+    this.weapons = this.startingWeaponIds.map((id) => ({ id, tier: 0 }));
 
     this.api = new RunApi(this);
   }
@@ -61,7 +67,7 @@ export class Run {
       case 'wave': return this.waveNumber;
       case 'kills': return this.kills;
       case 'materials': return this.materials;
-      case 'distinct-weapons': return 0; // llega con las armas (hito 2)
+      case 'distinct-weapons': return new Set(this.weapons.map((w) => w.id)).size;
       case 'items': return 0;            // llega con la tienda (hito 3)
     }
   }
@@ -75,9 +81,18 @@ export class Run {
       waveNumber: this.waveNumber,
       arena: this.level.arena,
       body: this.body,
+      weapons: this.weapons,
       rng: this.rng,
-      stat: (id) => this.stats.get(id),
+      stat: (id, tags) => this.stats.get(id, tags),
       emit: (event, data) => this.emit(event, data),
+      onKill: () => {
+        this.kills++;
+        this.stats.invalidate(); // por si algún modificador escala con las muertes
+      },
+      onMaterials: (amount) => {
+        this.materials += amount;
+        this.stats.invalidate();
+      },
     });
     if (this.waveIndex === 0) this.emit('onRunStart');
     this.emit('onWaveStart', { wave: this.waveNumber });
@@ -154,5 +169,13 @@ class RunApi implements GameApi {
 
   floatingText(text: string, at?: Point): void {
     this.run.onFloatingText(text, at);
+  }
+
+  heal(amount: number): void {
+    this.run.world?.heal(amount);
+  }
+
+  dropMaterials(at: Point, amount: number): void {
+    this.run.world?.dropMaterials(at, amount);
   }
 }

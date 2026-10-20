@@ -30,7 +30,7 @@ export class EndScene extends Phaser.Scene {
 
     // Medio segundo de gracia: que una tecla pulsada al morir no salte la pantalla
     this.time.delayedCall(500, () => {
-      const again = () => this.scene.start('Arena', { run: new Run(run.registry, run.character, run.level) });
+      const again = () => this.scene.start('Arena', { run: new Run(run.registry, run.character, run.level, undefined, { weapons: run.startingWeaponIds }) });
       this.input.keyboard?.once('keydown', again);
       this.input.once('pointerdown', again);
     });

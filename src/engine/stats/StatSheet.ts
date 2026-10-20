@@ -36,8 +36,11 @@ export class StatSheet {
     this.cache.clear();
   }
 
-  get(stat: string): number {
-    const cached = this.cache.get(stat);
+  // Sin tags: el valor del jugador (los modificadores con weaponTag no cuentan).
+  // Con los tags de un arma: además, los modificadores cuyo weaponTag lleva esa arma.
+  get(stat: string, weaponTags: readonly string[] = []): number {
+    const key = weaponTags.length ? `${stat}|${weaponTags.join(',')}` : stat;
+    const cached = this.cache.get(key);
     if (cached !== undefined) return cached;
 
     const def = this.defs.get(stat);
@@ -49,6 +52,7 @@ export class StatSheet {
     for (const mods of this.sources.values()) {
       for (const m of mods) {
         if (m.stat !== stat) continue;
+        if (m.weaponTag !== undefined && !weaponTags.includes(m.weaponTag)) continue;
         const k = this.factor(m);
         if (m.add !== undefined) add += m.add * k;
         if (m.pct !== undefined) pct += m.pct * k;
@@ -57,7 +61,7 @@ export class StatSheet {
     }
     const base = this.baseOverrides[stat] ?? def.base;
     const value = Math.min(def.max, Math.max(def.min, (base + add) * (1 + pct / 100) * mul));
-    this.cache.set(stat, value);
+    this.cache.set(key, value);
     return value;
   }
 

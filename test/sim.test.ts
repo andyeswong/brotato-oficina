@@ -16,8 +16,8 @@ function simulate(run: Run, seconds: number) {
 }
 
 describe('World', () => {
-  it('quedarse quieto en la oleada 1 mata a MAIA antes de que acabe', () => {
-    const run = new Run(registry, maia, oficina, 42);
+  it('sin armas, quedarse quieta en la oleada 1 mata a MAIA antes de que acabe', () => {
+    const run = new Run(registry, maia, oficina, 42, { weapons: [] }); // sin armas no hay forma de aguantar quieta
     const world = simulate(run, 20);
     expect(world.status).toBe('dead');
     expect(world.player.hp).toBe(0);

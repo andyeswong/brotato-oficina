@@ -31,6 +31,9 @@ export const ENGINE_STATS = ['max-hp', 'speed-pct', 'armor', 'dodge-pct'] as con
 // Animaciones que el motor pide a cada tipo
 export const CHARACTER_ANIMS = ['idle', 'walk'] as const;
 export const ENEMY_ANIMS = ['walk'] as const;
+export const WEAPON_ANIMS = ['idle'] as const;
+export const LEVEL_ANIMS = ['material'] as const;
+export const MAX_WEAPONS = 6;
 
 // Contadores de partida que un modificador "per" puede usar
 export const COUNTERS = ['distinct-weapons', 'wave', 'kills', 'materials', 'items'] as const;
@@ -59,6 +62,8 @@ export const modifierSchema = z
     add: z.number().optional(),
     pct: z.number().optional(),
     mul: z.number().optional(),
+    // Solo aplica al calcular las armas que llevan este tag (p. ej. "cuerpo-a-cuerpo")
+    weaponTag: z.string().optional(),
     per: z
       .strictObject({
         counter: z.enum(COUNTERS),
@@ -136,6 +141,11 @@ export const levelSchema = z.strictObject({
     height: z.number().int().positive(),
   }),
   waves: z.array(idSchema).min(1, 'un nivel necesita al menos una oleada'),
+  // Hoja del nivel: losetas del suelo y el material que sueltan los enemigos
+  sprites: spritesSchema,
+  floor: z
+    .array(z.strictObject({ anim: z.string(), weight: z.number().positive().default(1) }))
+    .min(1, 'el suelo necesita al menos una loseta'),
 });
 
 // Un esquema de zod que trae el propio comportamiento para validar los params de quien lo usa
@@ -177,6 +187,34 @@ export const enemySchema = z.strictObject({
   sprites: spritesSchema,
 });
 
+const tierSchema = z.strictObject({
+  damage: z.number().min(0),
+  cooldown: z.number().positive(),   // segundos entre ataques
+  range: z.number().positive(),      // píxeles lógicos
+  critChance: z.number().min(0).max(1).default(0),
+  critMult: z.number().min(1).default(2),
+});
+
+export const weaponSchema = z.strictObject({
+  ...manifest,
+  kind: z.literal('weapon'),
+  behavior: idSchema,
+  params: z.record(z.string(), z.unknown()).default({}),
+  // Cuánto suma de cada stat del jugador al daño: { 'ranged-damage': 1 } = 100 %
+  scaling: z.record(idSchema, z.number()).default({}),
+  tiers: z.array(tierSchema).min(1).max(4, 'un arma tiene como mucho 4 niveles (I–IV)'),
+  // Punto de agarre en píxeles de la celda idle; por defecto, el borde izquierdo a media altura
+  grip: z.strictObject({ x: z.number(), y: z.number() }).optional(),
+  shop: z
+    .strictObject({
+      price: z.number().int().positive(),
+      weight: z.number().positive().default(1),
+      minWave: z.number().int().min(1).default(1),
+    })
+    .optional(),
+  sprites: spritesSchema,
+});
+
 export const SPAWN_PATTERNS = ['random', 'edge', 'ring', 'cluster'] as const;
 
 export const waveSchema = z
@@ -209,6 +247,7 @@ export const SCHEMAS = {
   stat: statSchema,
   behavior: behaviorSchema,
   character: characterSchema,
+  weapon: weaponSchema,
   enemy: enemySchema,
   wave: waveSchema,
   level: levelSchema,
@@ -219,6 +258,8 @@ export type StatModule = z.infer<typeof statSchema>;
 export type BehaviorModule = z.infer<typeof behaviorSchema>;
 export type CharacterModule = z.infer<typeof characterSchema>;
 export type EnemyModule = z.infer<typeof enemySchema>;
+export type WeaponModule = z.infer<typeof weaponSchema>;
+export type WeaponTier = z.infer<typeof tierSchema>;
 export type WaveModule = z.infer<typeof waveSchema>;
 export type LevelModule = z.infer<typeof levelSchema>;
-export type ContentModule = StatModule | BehaviorModule | CharacterModule | EnemyModule | WaveModule | LevelModule;
+export type ContentModule = StatModule | BehaviorModule | CharacterModule | WeaponModule | EnemyModule | WaveModule | LevelModule;

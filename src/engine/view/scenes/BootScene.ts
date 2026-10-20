@@ -41,13 +41,23 @@ export class BootScene extends Phaser.Scene {
       showContentErrors('✗ No hay ningún personaje o ningún nivel en src/content/.');
       return;
     }
-    this.scene.start('Arena', { run: new Run(this.registry_, character, level) });
+    // ?weapons=buzon,regla cambia las armas iniciales: sirve para probar armas antes de que exista la tienda
+    const override = new URLSearchParams(location.search).get('weapons');
+    const weapons = override?.split(',').map((w) => w.trim()).filter(Boolean);
+    const unknown = weapons?.filter((w) => !this.registry_.has('weapon', w)) ?? [];
+    if (unknown.length > 0) {
+      showContentErrors(`✗ ?weapons= pide armas que no existen: ${unknown.join(', ')}.\n\n  Hay: ${this.registry_.ids('weapon').join(', ')}`);
+      return;
+    }
+    this.scene.start('Arena', { run: new Run(this.registry_, character, level, undefined, { weapons }) });
   }
 
   private sheets(): Array<[string, string, Sprites]> {
     return [
       ...this.registry_.characters().map((c) => ['character', c.id, c.sprites] as [string, string, Sprites]),
       ...this.registry_.enemies().map((e) => ['enemy', e.id, e.sprites] as [string, string, Sprites]),
+      ...this.registry_.weapons().map((w) => ['weapon', w.id, w.sprites] as [string, string, Sprites]),
+      ...this.registry_.levels().map((l) => ['level', l.id, l.sprites] as [string, string, Sprites]),
     ];
   }
 }

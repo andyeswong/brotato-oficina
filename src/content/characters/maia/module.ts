@@ -21,8 +21,11 @@ export default defineCharacter({
     { stat: 'range', add: 24 },
     // Desventaja: no hace trabajo de campo
     { stat: 'speed-pct', add: -10 },
-    // Pendiente (hito 2, con las armas): −50 % de daño en las armas con tag "cuerpo-a-cuerpo"
+    // Desventaja: las armas cuerpo a cuerpo hacen la mitad de daño
+    { stat: 'damage-pct', add: -50, weaponTag: 'cuerpo-a-cuerpo' },
   ],
+
+  startingWeapons: ['buzon'],
 
   sprites: {
     image: sheetPng,

@@ -1,0 +1,43 @@
+{
+ "frames": {
+  "regla_idle_0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 7
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 7
+   },
+   "sourceSize": {
+    "w": 20,
+    "h": 7
+   },
+   "duration": 200
+  }
+ },
+ "meta": {
+  "app": "pxl",
+  "image": "regla.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 20,
+   "h": 7
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "regla_idle",
+    "from": 0,
+    "to": 0,
+    "direction": "forward"
+   }
+  ]
+ }
+}

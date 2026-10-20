@@ -1,0 +1,70 @@
+{
+ "frames": {
+  "grapadora_idle_0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 14
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 20,
+    "h": 14
+   },
+   "sourceSize": {
+    "w": 20,
+    "h": 14
+   },
+   "duration": 200
+  },
+  "grapadora_tiro_0": {
+   "frame": {
+    "x": 21,
+    "y": 0,
+    "w": 7,
+    "h": 5
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 7,
+    "h": 5
+   },
+   "sourceSize": {
+    "w": 7,
+    "h": 5
+   },
+   "duration": 200
+  }
+ },
+ "meta": {
+  "app": "pxl",
+  "image": "grapadora.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 28,
+   "h": 14
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "grapadora_idle",
+    "from": 0,
+    "to": 0,
+    "direction": "forward"
+   },
+   {
+    "name": "grapadora_tiro",
+    "from": 1,
+    "to": 1,
+    "direction": "forward"
+   }
+  ]
+ }
+}

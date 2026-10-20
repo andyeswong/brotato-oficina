@@ -38,3 +38,9 @@ export function createAnims(scene: Phaser.Scene, key: string, sprites: Sprites, 
     });
   }
 }
+
+// Nombre del frame n de una animación (para pintar estáticos: losetas, iconos)
+export function frameOf(sprites: Sprites, anim: string, n = 0): string {
+  const tag = sprites.atlas.meta.frameTags.find((t) => t.name === sprites.anims[anim]);
+  return Object.keys(sprites.atlas.frames)[(tag?.from ?? 0) + n]!;
+}
