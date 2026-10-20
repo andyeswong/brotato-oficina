@@ -34,7 +34,7 @@ export class BootScene extends Phaser.Scene {
     createPixelFont(this);
     for (const [kind, id, sprites] of this.sheets()) createAnims(this, textureKey(kind, id), sprites, kind, id);
 
-    // Hasta que exista la pantalla de selección: el primer personaje y el primer nivel
+    // Un solo nivel por ahora: el primero. Con parámetros de prueba, también el primer personaje
     const character = this.registry_.characters()[0];
     const level = this.registry_.levels()[0];
     if (!character || !level) {
@@ -50,6 +50,11 @@ export class BootScene extends Phaser.Scene {
     const unknown = weapons?.filter((w) => !this.registry_.has('weapon', w)) ?? [];
     if (unknown.length > 0) {
       showContentErrors(`✗ ?weapons= pide armas que no existen: ${unknown.join(', ')}.\n\n  Hay: ${this.registry_.ids('weapon').join(', ')}`);
+      return;
+    }
+    // Sin parámetros de prueba, se empieza eligiendo agente
+    if (!['weapons', 'wave', 'materials', 'shop'].some((k) => query.has(k))) {
+      this.scene.start('Select', { registry: this.registry_, level });
       return;
     }
     const run = new Run(this.registry_, character, level, undefined, { weapons });

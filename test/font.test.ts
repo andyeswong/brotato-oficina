@@ -24,12 +24,13 @@ describe('fuente de píxel', () => {
 describe('escala de la interfaz', async () => {
   const { uiScaleFor, wrapText } = await import('../src/engine/view/font');
   it.each([
-    ['escritorio (s=2, dpr 1)', 2, 1, 1],
-    ['portátil (s=1, dpr 1)', 1, 1, 2],
-    ['tapa del Flip (s=1, dpr 1,75)', 1, 1.75, 3],
-    ['Flip abierto (s=2, dpr 3)', 2, 3, 3],
-  ])('%s → x%i', (_n, s, dpr, expected) => {
-    expect(uiScaleFor(s, dpr)).toBe(expected);
+    ['escritorio 960×540', 960, 540, 2],
+    ['portátil 960×768', 960, 768, 3],
+    ['tapa del Flip 747×654', 747, 654, 2],
+    ['Flip abierto 540×960', 540, 960, 3],
+    ['pantalla diminuta 200×150', 200, 150, 1],
+  ])('%s → x%i', (_n, w, h, expected) => {
+    expect(uiScaleFor(w, h)).toBe(expected);
   });
 
   it('los signos que la fuente no tiene se sustituyen, no desaparecen', async () => {

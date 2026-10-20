@@ -4,6 +4,7 @@ import { currentLayout, watchLayout } from '@engine/view/pixel';
 import { ArenaScene } from '@engine/view/scenes/ArenaScene';
 import { BootScene } from '@engine/view/scenes/BootScene';
 import { EndScene } from '@engine/view/scenes/EndScene';
+import { SelectScene } from '@engine/view/scenes/SelectScene';
 import { ShopScene } from '@engine/view/scenes/ShopScene';
 
 const first = currentLayout();
@@ -17,7 +18,7 @@ const game = new Phaser.Game({
   pixelArt: true,     // texturas NEAREST, sin antialias
   roundPixels: true,
   scale: { mode: Phaser.Scale.NONE, autoRound: false },
-  scene: [BootScene, ArenaScene, ShopScene, EndScene],
+  scene: [BootScene, SelectScene, ArenaScene, ShopScene, EndScene],
 });
 
 // Etiqueta de depuración (F2 la oculta): sirve para verificar el escalado en cada pantalla

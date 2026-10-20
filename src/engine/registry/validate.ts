@@ -64,7 +64,8 @@ export class Registry {
   weapon(id: string): WeaponModule { return this.get('weapon', id) as WeaponModule; }
   item(id: string): ItemModule { return this.get('item', id) as ItemModule; }
 
-  private get(kind: ModuleKind, id: string): ContentModule {
+  // Acceso genérico: el de cada tipo (character, weapon…) ya viene tipado; este sirve para recorrerlos todos
+  get(kind: ModuleKind, id: string): ContentModule {
     const mod = this.byKind.get(kind)?.get(id);
     if (!mod) throw new Error(`Registry: no existe ningún ${kind} "${id}"`);
     return mod;

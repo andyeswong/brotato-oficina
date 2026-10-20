@@ -115,11 +115,11 @@ export class ShopScene extends Phaser.Scene {
     const messageTop = weaponsTop - line - 2 * u;
     if (this.message) text(this, left, messageTop, this.message, u).setTint(this.messageColor);
 
-    // Filas: el alto que quede, repartido; como mucho el que necesita una descripción de 3 líneas
+    // Filas: el alto que quede, repartido; como mucho el que necesita una descripción de 4 líneas
     const n = run.shop.offers.length;
     const gap = 2 * u;
     const space = messageTop - gap - y;
-    const rowH = Math.min(Math.floor((space - gap * (n - 1)) / n), ICON * u + line * 4 + 6 * u);
+    const rowH = Math.min(Math.floor((space - gap * (n - 1)) / n), line * 6 + 6 * u);
     run.shop.offers.forEach((offer, i) => this.row(offer, i, left, y + i * (rowH + gap), rowW, rowH, u));
   }
 

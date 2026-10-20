@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "prebuild": "npm run validate && npm run lint && npm run typecheck",
     "build": "vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "curva": "CURVA=1 vitest run scripts/curve.test.ts --silent=false"
   },
   "dependencies": {
     "phaser": "3.90.0",

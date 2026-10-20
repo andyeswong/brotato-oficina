@@ -43,7 +43,8 @@ const GLYPHS: Record<string, string> = {
   "'": '..#.. ..#.. .#... ..... ..... ..... .....', '"': '.#.#. .#.#. ..... ..... ..... ..... .....',
   '×': '..... #...# .#.#. ..#.. .#.#. #...# .....', '·': '..... ..... ..... ..#.. ..... ..... .....',
   '=': '..... ..... ##### ..... ##### ..... .....', '«': '..... ..#.# .#.#. #.#.. .#.#. ..#.# .....',
-  '»': '..... #.#.. .#.#. ..#.# .#.#. #.#.. .....',
+  '»': '..... #.#.. .#.#. ..#.# .#.#. #.#.. .....', ';': '..... .##.. .##.. ..... .##.. ..#.. .#...',
+  '&': '.##.. #..#. .##.. .#... #.#.# #..#. .##.#', '#': '.#.#. ##### .#.#. .#.#. .#.#. ##### .#.#.',
 };
 const ACCENTED: Record<string, [string, string]> = {
   'Á': ['A', ACUTE], 'É': ['E', ACUTE], 'Í': ['I', ACUTE], 'Ó': ['O', ACUTE], 'Ú': ['U', ACUTE],
@@ -110,18 +111,19 @@ export function normalize(value: string): string {
   return [...value.toUpperCase()].map((ch) => SUBSTITUTES[ch] ?? ch).join('');
 }
 
-// Escala entera de la interfaz: la menor que deje cada letra con al menos MIN_GLYPH_CSS píxeles CSS de
-// alto en la pantalla real. Depende de s y del dpr, no del tamaño lógico: con el mismo mundo,
-// el escritorio queda x1 y la tapa del Flip (s=1, dpr 1,75) x3.
-const MIN_GLYPH_CSS = 11;
+// Escala entera de la interfaz. La UI se diseña para caber en UI_DESIGN_H × UI_DESIGN_W píxeles lógicos a x1
+// (la tienda con 4 filas de 2+ líneas de descripción es lo más alto) y se amplía al mayor entero que quepa.
+// Con 540/960: escritorio x2 (960×540), tapa del Flip x2 (747×654), Flip abierto x3 (540×960).
+const UI_DESIGN_H = 250;
+const UI_DESIGN_W = 180;
 
 export function uiScale(): number {
-  const { scale } = currentLayout();
-  return uiScaleFor(scale, window.devicePixelRatio || 1);
+  const { width, height } = currentLayout();
+  return uiScaleFor(width, height);
 }
 
-export function uiScaleFor(pixelScale: number, dpr: number): number {
-  return Math.max(1, Math.ceil((MIN_GLYPH_CSS * dpr) / (GLYPH_H * pixelScale)));
+export function uiScaleFor(width: number, height: number): number {
+  return Math.max(1, Math.min(Math.floor(height / UI_DESIGN_H), Math.floor(width / UI_DESIGN_W)));
 }
 
 export const CHAR_W = CELL_W; // ancho de una letra a escala x1, en píxeles lógicos

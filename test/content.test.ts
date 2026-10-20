@@ -16,3 +16,23 @@ describe('contenido', () => {
     expect(registry.levels().length).toBeGreaterThan(0);
   });
 });
+
+describe('textos del contenido', () => {
+  it('todo carácter de nombres y descripciones existe en la fuente (si no, desaparece en pantalla)', async () => {
+    const { vi } = await import('vitest');
+    vi.doMock('phaser', () => ({ default: {} }));
+    const { FONT_CHARS, normalize } = await import('../src/engine/view/font');
+    const { registry } = validateContent(discoverContent());
+    const kinds = ['stat', 'character', 'weapon', 'item', 'enemy', 'level'] as const;
+    const missing: string[] = [];
+    for (const kind of kinds) {
+      for (const id of registry.ids(kind)) {
+        const mod = registry.get(kind, id);
+        for (const ch of normalize(`${mod.name} ${mod.description ?? ''}`)) {
+          if (!FONT_CHARS.includes(ch)) missing.push(`${kind}:${id} → "${ch}"`);
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});
