@@ -13,7 +13,7 @@ const STEP = 1 / 60;          // la simulación corre a paso fijo
 const MAX_STEPS = 5;          // tras un tirón no se intenta recuperar más de 5 pasos
 const BAR_W = 52;
 const BAR_H = 7;
-const COLORS = { hp: 0xff4d5e, hpBack: 0x12101c, threat: 0xff4d5e, text: 0xfdf6ff, gold: 0xf0b951, outline: 0x12101c };
+const COLORS = { hp: 0xff4d5e, hpBack: 0x12101c, threat: 0xff4d5e, text: 0xfdf6ff, gold: 0xf0b951, outline: 0x12101c, heal: 0x7bd88f };
 const HIT_FLASH_MS = 60;
 
 interface Floating {
@@ -321,6 +321,8 @@ export class ArenaScene extends Phaser.Scene {
           this.time.delayedCall(HIT_FLASH_MS, () => s.active && s.clearTint());
         }
         this.floatText(String(fx.amount), { x: fx.x, y: fx.y }, fx.crit ? COLORS.gold : COLORS.text, 2);
+      } else if (fx.type === 'heal') {
+        this.floatText(`+${fx.amount}`, undefined, COLORS.heal);
       } else if (fx.type === 'enemy-die') {
         this.puffs.push({ x: fx.x, y: fx.y, t: 0.25 });
       }

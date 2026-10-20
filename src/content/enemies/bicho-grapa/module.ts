@@ -10,7 +10,7 @@ export default defineEnemy({
   hp: 3,
   hpPerWave: 2,
   contactDamage: 1,
-  damagePerWave: 0.6,
+  damagePerWave: 0.3,
   speed: 100,
   radius: 5,
   behavior: 'chase',

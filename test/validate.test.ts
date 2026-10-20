@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ENGINE_STATS } from '../src/engine/registry/schemas';
 import { validateContent, type DiscoveredModule } from '../src/engine/registry/validate';
 
 const stat = (id: string): DiscoveredModule => ({
@@ -25,7 +26,8 @@ const character = (over: Record<string, unknown> = {}): DiscoveredModule => ({
   },
 });
 
-const base = [stat('max-hp'), stat('speed-pct'), stat('armor'), stat('dodge-pct')];
+// Las estadísticas que el motor exige, sacadas de la lista del propio motor
+const base = ENGINE_STATS.map((id) => stat(id));
 
 describe('validateContent', () => {
   it('acepta un contenido correcto', () => {
@@ -65,7 +67,7 @@ describe('validateContent', () => {
   });
 
   it('el motor exige sus estadísticas', () => {
-    const { errors } = validateContent([stat('max-hp'), stat('armor'), stat('dodge-pct'), character()]);
+    const { errors } = validateContent([...ENGINE_STATS.filter((id) => id !== 'speed-pct').map((id) => stat(id)), character()]);
     expect(errors.some((e) => e.message.includes('"speed-pct"'))).toBe(true);
   });
 

@@ -79,3 +79,21 @@ describe('bicho-taza', () => {
     expect(enemyShots).toBeGreaterThan(0);
   });
 });
+
+describe('vida', async () => {
+  const { regenInterval } = await import('../src/engine/sim/World');
+  it('regeneración al estilo de Brotato', () => {
+    expect(regenInterval(0)).toBe(Infinity);
+    expect(regenInterval(1)).toBe(5);
+    expect(regenInterval(3.25)).toBeCloseTo(2.5);
+  });
+
+  it('con regeneración, MAIA herida se cura sola', () => {
+    const run = new Run(registry, maia, oficina, 1, { weapons: [] });
+    run.stats.setSource('test', [{ stat: 'hp-regen', add: 1 }]);
+    const world = run.startWave();
+    world.player.hp = 5;
+    for (let t = 0; t < 5.05; t += 1 / 60) world.step(1 / 60, { x: 0, y: 0 });
+    expect(world.player.hp).toBeGreaterThanOrEqual(6);
+  });
+});

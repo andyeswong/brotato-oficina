@@ -26,7 +26,7 @@ export const HOOK_EVENTS = [
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
 // Estadísticas que el motor lee por su id: el contenido base tiene que traerlas
-export const ENGINE_STATS = ['max-hp', 'speed-pct', 'armor', 'dodge-pct'] as const;
+export const ENGINE_STATS = ['max-hp', 'speed-pct', 'armor', 'dodge-pct', 'hp-regen', 'life-steal-pct'] as const;
 
 // Animaciones que el motor pide a cada tipo
 export const CHARACTER_ANIMS = ['idle', 'walk'] as const;

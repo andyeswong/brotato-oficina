@@ -9,6 +9,12 @@ const TELEGRAPH_TIME = 1;              // aviso antes de que aparezca un enemigo
 const IFRAMES = 0.6;                   // invulnerabilidad tras un golpe
 const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de disparo
 const MAGNET_SPEED_FACTOR = 3;         // los materiales vuelan a 3× la velocidad base del jugador
+const LIFE_STEAL_COOLDOWN = 0.1;       // como mucho una curación por robo de vida cada 0,1 s
+
+// Regeneración al estilo de Brotato: con N puntos, 1 de vida cada 5 / (1 + (N − 1) / 2,25) segundos
+export function regenInterval(hpRegen: number): number {
+  return hpRegen >= 1 ? 5 / (1 + (hpRegen - 1) / 2.25) : Infinity;
+}
 
 // Las formas que el validador ya garantizó para los comportamientos
 type EnemyUpdate = (self: EnemySelf, dt: number, api: EnemyApi, params: unknown) => void;
@@ -93,7 +99,8 @@ export type WorldFx =
   | { type: 'spawn'; uid: number }
   | { type: 'enemy-hit'; uid: number; x: number; y: number; amount: number; crit: boolean }
   | { type: 'enemy-die'; x: number; y: number }
-  | { type: 'pickup'; value: number };
+  | { type: 'pickup'; value: number }
+  | { type: 'heal'; amount: number };
 
 export type WorldStatus = 'playing' | 'dead' | 'cleared';
 
@@ -144,6 +151,8 @@ export class World {
   private readonly near: EnemyState[] = [];
   private readonly nextSpawn: number[];
   private uid = 0;
+  private regenT = 0;
+  private stealT = 0;
   private readonly enemyApi: EnemyApi;
   private readonly weaponApi: WorldWeaponApi;
 
@@ -240,6 +249,20 @@ export class World {
     p.y += p.vy * dt;
     keepInside(p, { w: body.cellW, h: body.cellH }, arena);
     if (p.iframes > 0) p.iframes -= dt;
+    if (this.stealT > 0) this.stealT -= dt;
+
+    // Regeneración: acumula tiempo y cura de 1 en 1
+    const interval = regenInterval(this.deps.stat('hp-regen'));
+    if (p.hp < p.maxHp && interval < Infinity) {
+      this.regenT += dt;
+      while (this.regenT >= interval && p.hp < p.maxHp) {
+        this.regenT -= interval;
+        this.heal(1);
+        this.fx.push({ type: 'heal', amount: 1 });
+      }
+    } else {
+      this.regenT = 0;
+    }
   }
 
   private hitPlayer(raw: number, source: string): void {
@@ -374,6 +397,13 @@ export class World {
     e.hp -= amount;
     this.fx.push({ type: 'enemy-hit', uid: e.uid, x: e.x, y: e.y - e.cell.h, amount, crit });
     this.deps.emit('onHit', { damage: amount, crit, enemy: e.def.id, source });
+    // Robo de vida: cada golpe de un arma del jugador tiene esa probabilidad de curar 1
+    if (source.startsWith('weapon:') && this.stealT <= 0 && this.player.hp < this.player.maxHp
+        && this.deps.rng() * 100 < this.deps.stat('life-steal-pct')) {
+      this.stealT = LIFE_STEAL_COOLDOWN;
+      this.heal(1);
+      this.fx.push({ type: 'heal', amount: 1 });
+    }
     if (e.hp > 0) return;
     e.alive = false;
     this.fx.push({ type: 'enemy-die', x: e.x, y: e.y - e.cell.h / 2 });

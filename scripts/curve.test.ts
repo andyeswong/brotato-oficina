@@ -28,8 +28,17 @@ function kite(world: World, run: Run): Point {
   return len > 0.05 ? { x: fx / len, y: fy / len } : { x: 0, y: 0 };
 }
 
-// Compra: primero armas que MAIA no tenga (su pasivo premia la variedad), luego cualquier arma, luego ítems
+// Compra: primero armas que MAIA no tenga (su pasivo premia la variedad), luego cualquier arma, luego ítems.
+// Si después le sobra dinero, vuelve a tirar (hasta 3 veces por tienda) y sigue comprando, como haría una persona.
 function shop(run: Run): string[] {
+  const bought: string[] = [];
+  for (let rerolls = 0; ; rerolls++) {
+    bought.push(...buyAll(run));
+    if (rerolls >= 3 || run.materials < run.shop.rerollPrice() + 20 || !run.shop.reroll().ok) return bought;
+  }
+}
+
+function buyAll(run: Run): string[] {
   const bought: string[] = [];
   for (let guard = 0; guard < 20; guard++) {
     const offers = run.shop.offers.map((o, i) => ({ o, i })).filter((x) => x.o && x.o.price <= run.materials);
@@ -59,7 +68,7 @@ it.skipIf(!process.env.CURVA)('curva de balance', () => {
       if (result === 'victory') { rows.push(`${line} · VICTORIA`); reached.push(11); break; }
       run.shop.open();
       const bought = shop(run);
-      rows.push(`${line} · compra: ${bought.join(', ') || '—'} · armas ${run.weapons.map((w) => w.id + (w.tier ? `+${w.tier}` : '')).join(',')}`);
+      rows.push(`${line} · compra: ${bought.join(', ') || '—'} · quedan ${run.materials} · armas ${run.weapons.map((w) => w.id + (w.tier ? `+${w.tier}` : '')).join(',')}`);
     }
   }
   console.log(['', ...rows, '', `oleada alcanzada por semilla: ${reached.join(', ')} (11 = victoria)`].join('\n'));

@@ -10,6 +10,8 @@ export default defineLevel({
   arena: { width: 1280, height: 1280 },
   spawn: { minDistance: 128, edgeMargin: 24, ringRadius: 240, clusterSpread: 80 },
   // F1: 10 oleadas
+  // Los precios suben un 20 % por oleada superada: con 10 % sobraban ~200 materiales en la 7 (CURVA-F1.md)
+  shop: { priceScale: { perWave: 0.2 } },
   waves: ['o01', 'o02', 'o03', 'o04', 'o05', 'o06', 'o07', 'o08', 'o09', 'o10'],
   sprites: {
     image: sheetPng,
