@@ -4,7 +4,7 @@ export default defineStat({
   format: 1,
   id: 'pickup-range',
   name: 'Recolección',
-  base: 40,
+  base: 80,
   min: 0,
   max: 400,
   display: 'number',

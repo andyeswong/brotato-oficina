@@ -11,10 +11,10 @@ export default defineEnemy({
   hpPerWave: 3,
   contactDamage: 1,
   damagePerWave: 0.5,
-  speed: 35,
+  speed: 70,
   radius: 6,
   behavior: 'shooter',
-  params: { distance: 120, fireEvery: 2.4, aim: 0.4, projectileSpeed: 100 },
+  params: { distance: 240, fireEvery: 2.4, aim: 0.4, projectileSpeed: 200 },
   loot: { materials: 2, consumableChance: 0.03 },
   sprites: { image: sheetPng, atlas: sheetJson, anims: { walk: 'bicho-taza_walk' } },
 });

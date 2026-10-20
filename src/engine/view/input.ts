@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
+import { uiScale } from './font';
 
-const JOYSTICK_RADIUS = 24; // píxeles lógicos
+const JOYSTICK_RADIUS = 24; // píxeles lógicos a escala x1 de la UI; crece con uiScale
 
 // Teclado (WASD y flechas) y joystick táctil flotante → un solo vector de movimiento de largo ≤ 1
 export class MoveInput {
@@ -9,7 +10,7 @@ export class MoveInput {
   private readonly touch = new Phaser.Math.Vector2();
   private readonly gfx: Phaser.GameObjects.Graphics;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(private readonly scene: Phaser.Scene) {
     const kb = scene.input.keyboard!;
     const K = Phaser.Input.Keyboard.KeyCodes;
     this.keys = {
@@ -27,7 +28,7 @@ export class MoveInput {
     scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (!this.origin || !p.isDown) return;
       this.touch.set(p.x - this.origin.x, p.y - this.origin.y);
-      if (this.touch.length() > JOYSTICK_RADIUS) this.touch.setLength(JOYSTICK_RADIUS);
+      if (this.touch.length() > this.radius()) this.touch.setLength(this.radius());
     });
     const release = () => {
       this.origin = null;
@@ -44,14 +45,19 @@ export class MoveInput {
       (down(this.keys.down) ? 1 : 0) - (down(this.keys.up) ? 1 : 0),
     );
     if (out.lengthSq() > 0) return out.normalize(); // la diagonal no va más rápida
-    if (this.origin) out.set(this.touch.x / JOYSTICK_RADIUS, this.touch.y / JOYSTICK_RADIUS);
+    if (this.origin) out.set(this.touch.x / this.radius(), this.touch.y / this.radius());
     return out;
   }
 
   draw(): void {
     this.gfx.clear();
     if (!this.origin) return;
-    this.gfx.lineStyle(1, 0xffffff, 0.35).strokeCircle(this.origin.x, this.origin.y, JOYSTICK_RADIUS);
-    this.gfx.fillStyle(0xffffff, 0.5).fillCircle(Math.round(this.origin.x + this.touch.x), Math.round(this.origin.y + this.touch.y), 6);
+    const u = uiScale(this.scene);
+    this.gfx.lineStyle(u, 0xffffff, 0.35).strokeCircle(this.origin.x, this.origin.y, this.radius());
+    this.gfx.fillStyle(0xffffff, 0.5).fillCircle(Math.round(this.origin.x + this.touch.x), Math.round(this.origin.y + this.touch.y), 6 * u);
+  }
+
+  private radius(): number {
+    return JOYSTICK_RADIUS * uiScale(this.scene);
   }
 }

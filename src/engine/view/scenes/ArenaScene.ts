@@ -285,14 +285,15 @@ export class ArenaScene extends Phaser.Scene {
   // El aviso antes de que aparezca un enemigo: una X roja que parpadea más rápido al final
   private drawTelegraphs(): void {
     const g = this.telegraphs.clear();
+    const u = uiScale(this); // la X crece con la UI para que se vea igual en todas las pantallas
     for (const t of this.world.telegraphs) {
       if (Math.floor(t.t * (t.t < 0.4 ? 16 : 8)) % 2 === 1) continue;
       const x = Math.round(t.x);
-      const y = Math.round(t.y) - 4;
+      const y = Math.round(t.y) - 4 * u;
       g.fillStyle(COLORS.threat);
       for (let i = -3; i <= 3; i++) {
-        g.fillRect(x + i, y + i, 1, 1);
-        g.fillRect(x + i, y - i, 1, 1);
+        g.fillRect(x + i * u, y + i * u, u, u);
+        g.fillRect(x + i * u, y - i * u, u, u);
       }
     }
   }
@@ -431,14 +432,19 @@ export class ArenaScene extends Phaser.Scene {
     const tw = tile.width;
     const th = tile.height;
     const rng = createRng([...level.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7));
+    performance.mark('floor-start');
     const rt = this.add.renderTexture(0, 0, width, height).setOrigin(0, 0).setDepth(0);
+    // En un solo lote: con drawFrame suelto, cada loseta es una pasada de dibujo (miles en una arena grande)
+    rt.beginDraw();
     for (let y = 0; y < height; y += th) {
       for (let x = 0; x < width; x += tw) {
         let roll = rng() * total;
         const pick = frames.find((f) => (roll -= f.weight) < 0) ?? frames[0]!;
-        rt.drawFrame(key, pick.frame, x, y);
+        rt.batchDrawFrame(key, pick.frame, x, y);
       }
     }
+    rt.endDraw();
+    performance.measure('floor', 'floor-start');
     this.cameras.main.setBackgroundColor('#12101c');
   }
 }

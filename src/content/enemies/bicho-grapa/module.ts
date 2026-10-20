@@ -11,7 +11,7 @@ export default defineEnemy({
   hpPerWave: 2,
   contactDamage: 1,
   damagePerWave: 0.6,
-  speed: 50,
+  speed: 100,
   radius: 5,
   behavior: 'chase',
   params: { turnRate: 0.25 },

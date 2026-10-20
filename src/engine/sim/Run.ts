@@ -80,6 +80,7 @@ export class Run {
       wave,
       waveNumber: this.waveNumber,
       arena: this.level.arena,
+      spawn: this.level.spawn,
       body: this.body,
       weapons: this.weapons,
       rng: this.rng,

@@ -6,9 +6,7 @@ import { cellOf, keepInside, type Body } from './body';
 import { SpatialHash } from './SpatialHash';
 
 const TELEGRAPH_TIME = 1;              // aviso antes de que aparezca un enemigo
-const MIN_SPAWN_DISTANCE = 64;
 const IFRAMES = 0.6;                   // invulnerabilidad tras un golpe
-const EDGE_MARGIN = 12;
 const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de disparo
 const MAGNET_SPEED_FACTOR = 3;         // los materiales vuelan a 3× la velocidad base del jugador
 
@@ -104,6 +102,7 @@ export interface WorldDeps {
   wave: WaveModule;
   waveNumber: number;
   arena: { width: number; height: number };
+  spawn: { minDistance: number; edgeMargin: number; ringRadius: number; clusterSpread: number };
   body: Body;
   weapons: ReadonlyArray<{ id: string; tier: number }>;
   rng: Rng;
@@ -531,6 +530,7 @@ export class World {
 
   private spawnPoint(pattern: string): Point {
     const { width, height } = this.deps.arena;
+    const { edgeMargin: EDGE_MARGIN, minDistance } = this.deps.spawn;
     const rng = this.deps.rng;
     if (pattern === 'edge') {
       const side = Math.floor(rng() * 4);
@@ -545,23 +545,24 @@ export class World {
     let best = { x: 0, y: 0 };
     for (let i = 0; i < 10; i++) {
       best = { x: EDGE_MARGIN + rng() * (width - EDGE_MARGIN * 2), y: EDGE_MARGIN * 2 + rng() * (height - EDGE_MARGIN * 3) };
-      if (Math.hypot(best.x - this.player.x, best.y - this.player.y) >= MIN_SPAWN_DISTANCE) break;
+      if (Math.hypot(best.x - this.player.x, best.y - this.player.y) >= minDistance) break;
     }
     return best;
   }
 
   private patternPoint(pattern: string, center: Point, n: number, count: number): Point {
     const { width, height } = this.deps.arena;
+    const { edgeMargin: EDGE_MARGIN, ringRadius, clusterSpread } = this.deps.spawn;
     const rng = this.deps.rng;
     let x = center.x;
     let y = center.y;
     if (pattern === 'ring') {
       const angle = (n / count) * Math.PI * 2 + rng() * 0.3;
-      x += Math.cos(angle) * 120;
-      y += Math.sin(angle) * 120;
+      x += Math.cos(angle) * ringRadius;
+      y += Math.sin(angle) * ringRadius;
     } else if (pattern === 'cluster') {
-      x += (rng() - 0.5) * 40;
-      y += (rng() - 0.5) * 40;
+      x += (rng() - 0.5) * clusterSpread;
+      y += (rng() - 0.5) * clusterSpread;
     } else if (pattern === 'random' && n > 0) {
       return this.spawnPoint('random');
     } else if (pattern === 'edge' && n > 0) {

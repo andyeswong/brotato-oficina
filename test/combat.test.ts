@@ -29,7 +29,7 @@ describe('armas', () => {
     const run = new Run(registry, maia, oficina, 4, { weapons: [] });
     const world = run.startWave();
     immortal(world);
-    world.dropMaterials({ x: world.player.x + 30, y: world.player.y - 10 }, 1);
+    world.dropMaterials({ x: world.player.x + 60, y: world.player.y - 20 }, 1);
     for (let t = 0; t < 1; t += 1 / 60) world.step(1 / 60, STILL);
     expect(world.materials).toHaveLength(0);
     expect(run.materials).toBe(1);
@@ -60,8 +60,8 @@ describe('armas', () => {
     // regla: 8 × (1 + (5 − 50)/100) = 4,4 → 4 ; buzón: 6 × 1,05 = 6,3 → 6
     expect(regla.damage).toBe(4);
     expect(buzon.damage).toBe(6);
-    // y el alcance de MAIA (+24) se suma a las dos
-    expect(buzon.range).toBe(160 + 24);
+    // y el alcance de MAIA (+48) se suma a las dos
+    expect(buzon.range).toBe(320 + 48);
   });
 });
 

@@ -141,6 +141,15 @@ export const levelSchema = z.strictObject({
     height: z.number().int().positive(),
   }),
   waves: z.array(idSchema).min(1, 'un nivel necesita al menos una oleada'),
+  // Distancias de aparición, en píxeles lógicos: escalan con el mundo, así que son del nivel, no del motor
+  spawn: z
+    .strictObject({
+      minDistance: z.number().min(0).default(64),   // nunca más cerca del jugador que esto (random, cluster)
+      edgeMargin: z.number().min(0).default(12),    // separación del borde (edge)
+      ringRadius: z.number().positive().default(120), // radio del anillo alrededor del jugador (ring)
+      clusterSpread: z.number().min(0).default(40), // tamaño del grupo (cluster)
+    })
+    .default({ minDistance: 64, edgeMargin: 12, ringRadius: 120, clusterSpread: 40 }),
   // Hoja del nivel: losetas del suelo y el material que sueltan los enemigos
   sprites: spritesSchema,
   floor: z
