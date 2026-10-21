@@ -1,0 +1,133 @@
+{
+ "frames": {
+  "maiaa_idle_0": {
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 24
+   },
+   "duration": 200
+  },
+  "maiaa_walk_0": {
+   "frame": {
+    "x": 25,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 24
+   },
+   "duration": 125
+  },
+  "maiaa_walk_1": {
+   "frame": {
+    "x": 50,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 24
+   },
+   "duration": 125
+  },
+  "maiaa_walk_2": {
+   "frame": {
+    "x": 0,
+    "y": 25,
+    "w": 24,
+    "h": 24
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 24
+   },
+   "duration": 125
+  },
+  "maiaa_walk_3": {
+   "frame": {
+    "x": 25,
+    "y": 25,
+    "w": 24,
+    "h": 24
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 24
+   },
+   "sourceSize": {
+    "w": 24,
+    "h": 24
+   },
+   "duration": 125
+  }
+ },
+ "meta": {
+  "app": "pxl",
+  "image": "maiaa.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 74,
+   "h": 49
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "maiaa_idle",
+    "from": 0,
+    "to": 0,
+    "direction": "forward"
+   },
+   {
+    "name": "maiaa_walk",
+    "from": 1,
+    "to": 4,
+    "direction": "forward"
+   }
+  ]
+ }
+}
