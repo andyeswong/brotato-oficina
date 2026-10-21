@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 
 // Un píxel del juego ocupa siempre s×s píxeles FÍSICOS, con s entero. Nunca se escala por fracciones.
-// 540/960 (MAIA, 2026-10-20): con personajes de 64 px, MAIA ocupa un 10–12 % del lado corto en
-// escritorio, tapa del Flip (s=1, sin barras) y abierto. Ver DISENO.md 5.2.
+// 216/384 (MAIA, 2026-10-20): con personajes de 24 px, MAIA ocupa un 9–11 % del lado corto en
+// escritorio (s=5), portátil, monitor grande, tapa del Flip (s=3) y abierto (s=5). Ver DISENO.md 5.2.
 export const PIXEL_RULES = {
-  minShortSide: 540, // lado corto visible mínimo, en píxeles lógicos
-  maxVisible: 960,   // tope del área visible por eje: una pantalla enorme no ve media arena
+  minShortSide: 216, // lado corto visible mínimo, en píxeles lógicos
+  maxVisible: 384,   // tope del área visible por eje: una pantalla enorme no ve media arena
 };
 
 export interface PixelLayout {

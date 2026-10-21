@@ -6,9 +6,9 @@ export default defineLevel({
   format: 1,
   id: 'oficina',
   name: 'La oficina',
-  // Mundo a escala 540/960: la arena es algo más que una pantalla y media en cada eje
-  arena: { width: 1280, height: 1280 },
-  spawn: { minDistance: 128, edgeMargin: 24, ringRadius: 240, clusterSpread: 80 },
+  // Mundo a escala 216/384: la arena es algo más que una pantalla y media en cada eje
+  arena: { width: 512, height: 512 },
+  spawn: { minDistance: 52, edgeMargin: 10, ringRadius: 96, clusterSpread: 32 },
   // F1: 10 oleadas
   // Los precios suben un 20 % por oleada superada: con 10 % sobraban ~200 materiales en la 7 (CURVA-F1.md)
   shop: { priceScale: { perWave: 0.2 } },

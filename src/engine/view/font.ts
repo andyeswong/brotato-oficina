@@ -112,9 +112,9 @@ export function normalize(value: string): string {
 }
 
 // Escala entera de la interfaz. La UI se diseña para caber en UI_DESIGN_H × UI_DESIGN_W píxeles lógicos a x1
-// (la tienda con 4 filas de 2+ líneas de descripción es lo más alto) y se amplía al mayor entero que quepa.
-// Con 540/960: escritorio x2 (960×540), tapa del Flip x2 (747×654), Flip abierto x3 (540×960).
-const UI_DESIGN_H = 250;
+// (la tienda es lo más alto: con poco alto, sus filas recortan la descripción) y se amplía al mayor entero que quepa.
+// Con 216/384 todo queda en x1: escritorio 384×216, tapa del Flip 249×218, Flip abierto 216×384.
+const UI_DESIGN_H = 200;
 const UI_DESIGN_W = 180;
 
 export function uiScale(): number {

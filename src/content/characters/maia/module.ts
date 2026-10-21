@@ -14,14 +14,14 @@ export default defineCharacter({
 
   baseStats: { 'max-hp': 10 },
 
-  // Velocidad del mundo a 540/960. Su hoja actual es de 32 px; con la de 64 saldría sola (≈179)
-  body: { speed: 180 },
+  // Lo que saldría solo de una celda de 24 px (24 × 2,8). Sobra cuando entre la hoja maia24: entonces se quita
+  body: { speed: 67 },
 
   modifiers: [
     // Pasivo «Coordinación»: +5 % de daño por cada arma distinta equipada
     { stat: 'damage-pct', add: 5, per: { counter: 'distinct-weapons', every: 1 } },
-    // +15 % de alcance: "ve el tablero entero". El alcance es plano, así que son ~48 px sobre un arma de 320
-    { stat: 'range', add: 48 },
+    // +15 % de alcance: "ve el tablero entero". El alcance es plano, así que son ~19 px sobre un arma de 128
+    { stat: 'range', add: 19 },
     // Desventaja: no hace trabajo de campo
     { stat: 'speed-pct', add: -10 },
     // Desventaja: las armas cuerpo a cuerpo hacen la mitad de daño

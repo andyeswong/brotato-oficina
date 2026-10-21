@@ -13,15 +13,16 @@ const SEEDS = (process.env.SEEDS ?? '1,2,3,4,5,6,7,8').split(',').map(Number);
 function kite(world: World, run: Run): Point {
   const p = world.player;
   const { width, height } = run.level.arena;
-  let fx = (width / 2 - p.x) * 0.002;
-  let fy = (height / 2 - p.y) * 0.002;
+  const u = width / 1280; // el piloto se diseñó en una arena de 1280: sus distancias escalan con la arena
+  let fx = ((width / 2 - p.x) * 0.002) / u;
+  let fy = ((height / 2 - p.y) * 0.002) / u;
   for (const e of world.enemies) {
-    const dx = p.x - e.x, dy = p.y - e.y, d2 = dx * dx + dy * dy + 1;
+    const dx = (p.x - e.x) / u, dy = (p.y - e.y) / u, d2 = dx * dx + dy * dy + 1;
     if (d2 < 200 * 200) { fx += (dx / d2) * 100; fy += (dy / d2) * 100; }
   }
   for (const pr of world.projectiles) {
     if (pr.owner !== 'enemy') continue;
-    const dx = p.x - pr.x, dy = p.y - pr.y, d2 = dx * dx + dy * dy + 1;
+    const dx = (p.x - pr.x) / u, dy = (p.y - pr.y) / u, d2 = dx * dx + dy * dy + 1;
     if (d2 < 120 * 120) { fx += (dx / d2) * 150; fy += (dy / d2) * 150; }
   }
   const len = Math.hypot(fx, fy);

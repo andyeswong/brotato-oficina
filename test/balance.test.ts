@@ -25,8 +25,9 @@ const still = () => ({ x: 0, y: 0 });
 function kite(world: World, run: Run): Point {
   const p = world.player;
   const { width, height } = run.level.arena;
-  let fx = (width / 2 - p.x) * 0.002;
-  let fy = (height / 2 - p.y) * 0.002;
+  const u = width / 1280; // el piloto se diseñó en una arena de 1280: sus distancias escalan con la arena
+  let fx = ((width / 2 - p.x) * 0.002) / u;
+  let fy = ((height / 2 - p.y) * 0.002) / u;
   for (const e of world.enemies) {
     const dx = p.x - e.x;
     const dy = p.y - e.y;
@@ -38,8 +39,8 @@ function kite(world: World, run: Run): Point {
   }
   for (const pr of world.projectiles) {
     if (pr.owner !== 'enemy') continue;
-    const dx = p.x - pr.x;
-    const dy = p.y - pr.y;
+    const dx = (p.x - pr.x) / u;
+    const dy = (p.y - pr.y) / u;
     const d2 = dx * dx + dy * dy + 1;
     if (d2 < 120 * 120) {
       fx += (dx / d2) * 150;

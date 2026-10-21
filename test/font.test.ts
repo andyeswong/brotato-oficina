@@ -35,10 +35,10 @@ describe('fuente de píxel', () => {
 describe('escala de la interfaz', async () => {
   const { uiScaleFor, wrapText } = await import('../src/engine/view/font');
   it.each([
-    ['escritorio 960×540', 960, 540, 2],
-    ['portátil 960×768', 960, 768, 3],
-    ['tapa del Flip 747×654', 747, 654, 2],
-    ['Flip abierto 540×960', 540, 960, 3],
+    ['escritorio 384×216', 384, 216, 1],
+    ['tapa del Flip 249×218', 249, 218, 1],
+    ['Flip abierto 216×384', 216, 384, 1],
+    ['una ventana grande con otra regla (960×540)', 960, 540, 2],
     ['pantalla diminuta 200×150', 200, 150, 1],
   ])('%s → x%i', (_n, w, h, expected) => {
     expect(uiScaleFor(w, h)).toBe(expected);

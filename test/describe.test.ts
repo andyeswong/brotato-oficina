@@ -12,7 +12,7 @@ describe('describeModifier', () => {
     const lines = (registry.character('maia').modifiers ?? []).map((m) => describeModifier(m, stats));
     expect(lines).toEqual([
       { text: '+5 % de daño por cada arma distinta', good: true },
-      { text: '+48 de alcance', good: true },
+      { text: '+19 de alcance', good: true },
       { text: '-10 % de velocidad', good: false },
       { text: '-50 % de daño con armas cuerpo a cuerpo', good: false },
     ]);

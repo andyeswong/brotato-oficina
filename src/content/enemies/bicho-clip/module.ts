@@ -11,10 +11,10 @@ export default defineEnemy({
   hpPerWave: 2.5,
   contactDamage: 2,
   damagePerWave: 0.5,
-  speed: 80,
+  speed: 32,
   radius: 6,
   behavior: 'dash',
-  params: { triggerRange: 180, windup: 0.55, dashSpeed: 4, dashTime: 0.4 },
+  params: { triggerRange: 72, windup: 0.55, dashSpeed: 4, dashTime: 0.4 },
   loot: { materials: 2, consumableChance: 0.02 },
   sprites: { image: sheetPng, atlas: sheetJson, anims: { walk: 'bicho-clip_walk' } },
 });
