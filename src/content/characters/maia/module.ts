@@ -1,8 +1,8 @@
 import { defineCharacter } from '@engine/api';
-// Hoja provisional: maiaa (abrigo con cinturón), una de las cinco ropas sobre la versión 4 que eligió Andrés.
-// Cuando elija la ropa, solo se cambia este par de archivos.
-import sheetPng from './maiaa.png';
-import sheetJson from './maiaa.json';
+// Hoja de Aseprite (agente de la Alienware, ~/Sync/brotato-oficina/arte/aseprite-maia/), copiada tal cual:
+// celdas 24x34, pies en la fila 33. Solo frente: de lado y de espaldas usa el mismo (el motor voltea a la izquierda).
+import sheetPng from './maia.png';
+import sheetJson from './maia.json';
 
 // Ficha: ~/Sync/brotato-oficina/motor/FICHA-MAIA.md (la valida Andrés). Los números se ajustan jugando.
 const WAVE_LINES = ['Equipo, a lo suyo', 'Lo verifico yo', 'Eso no es mío, es de ECHO', 'Busca primero'];
@@ -15,6 +15,10 @@ export default defineCharacter({
   tags: ['alpha', 'lider'],
 
   baseStats: { 'max-hp': 10 },
+
+  // La velocidad saldría del alto de la celda (2,8 x 34 = 95 px/s); se fija en la que tenía con la
+  // celda de 24 para que cambiar el dibujo no cambie el balance.
+  body: { speed: 67 },
 
   modifiers: [
     // Pasivo «Coordinación»: +5 % de daño por cada arma distinta equipada
@@ -32,7 +36,7 @@ export default defineCharacter({
   sprites: {
     image: sheetPng,
     atlas: sheetJson,
-    anims: { idle: 'maiaa_idle', walk: 'maiaa_walk' },
+    anims: { idle: 'maia_idle', walk: 'maia_walk' },
     // Sin retrato todavía: la selección usa el frame quieto ampliado
   },
 
