@@ -104,6 +104,27 @@
     "h": 10
    },
    "duration": 250
+  },
+  "lampara_idle_0": {
+   "frame": {
+    "x": 22,
+    "y": 17,
+    "w": 12,
+    "h": 28
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 28
+   },
+   "sourceSize": {
+    "w": 12,
+    "h": 28
+   },
+   "duration": 1000
   }
  },
  "meta": {
@@ -112,7 +133,7 @@
   "format": "RGBA8888",
   "size": {
    "w": 50,
-   "h": 27
+   "h": 45
   },
   "scale": "1",
   "frameTags": [
@@ -138,6 +159,12 @@
     "name": "clip-suelto_idle",
     "from": 3,
     "to": 4,
+    "direction": "forward"
+   },
+   {
+    "name": "lampara_idle",
+    "from": 5,
+    "to": 5,
     "direction": "forward"
    }
   ]

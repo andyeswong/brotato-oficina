@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { computeLight, type Light, type Region } from '../lighting';
 import { buildLayers } from '../lighting/shade';
 import { TERRAIN_TILE, type LevelModule } from '../registry/schemas';
+import { animKey, textureKey } from './anims';
 import { analyzeMasses } from '../terrain';
 import { buildWaterAtlas, cellRect, depthStep, TILE } from '../terrain/waterTiles';
 
@@ -52,7 +53,7 @@ export function drawWater(scene: Phaser.Scene, level: LevelModule): void {
 // multiplica, negro en la que suma) y lo pinta un parche aparte encima. Así el coste no depende del scroll
 // ni del tamaño de la pantalla.
 export class LightLayer {
-  private readonly images: Phaser.GameObjects.Image[] = [];
+  private readonly images: Array<Phaser.GameObjects.Image | Phaser.GameObjects.Sprite> = [];
   private readonly patch: { region: Region; multiply: Phaser.Textures.CanvasTexture; add: Phaser.Textures.CanvasTexture } | null = null;
   private lastTick = -1;
 
@@ -69,11 +70,17 @@ export class LightLayer {
     const base = `light:${level.id}`;
     if (!scene.textures.exists(`${base}:multiply`)) {
       const t0 = performance.now();
-      const layers = buildLayers(computeLight(arena, lights, { color: light.ambient }, () => false, 0), arena);
+      const layers = buildLayers(computeLight(arena, lights, { color: light.ambient }, () => false, 0), arena, light.shade);
       if (patchRegion) clearRect(layers, arena.width, patchRegion);
       canvasTexture(scene, `${base}:multiply`, layers.multiply, arena.width, arena.height);
       canvasTexture(scene, `${base}:add`, layers.add, arena.width, arena.height);
       perfSample('light-bake', performance.now() - t0);
+    }
+    // El objeto del que sale cada luz, ordenado por su pie como los personajes (se dibuja bajo la luz)
+    for (const l of light.lights) {
+      if (!l.sprite) continue;
+      this.images.push(scene.add.sprite(l.x, l.y, textureKey('level', level.id)).setOrigin(0.5, 1)
+        .setDepth(2 + l.y / 10000).play(animKey('level', level.id, l.sprite)));
     }
     this.images.push(this.image(`${base}:multiply`, 0, 0, Phaser.BlendModes.MULTIPLY));
     this.images.push(this.image(`${base}:add`, 0, 0, Phaser.BlendModes.ADD));
@@ -98,7 +105,7 @@ export class LightLayer {
     this.lastTick = tick;
     const t0 = performance.now();
     const { region, multiply, add } = this.patch;
-    const layers = buildLayers(computeLight(region, this.light.lights as readonly Light[], { color: this.light.ambient }, () => false, tick / FLICKER_HZ), region);
+    const layers = buildLayers(computeLight(region, this.light.lights as readonly Light[], { color: this.light.ambient }, () => false, tick / FLICKER_HZ), region, this.light.shade);
     paint(multiply, layers.multiply, region.width, region.height);
     paint(add, layers.add, region.width, region.height);
     perfSample('light', performance.now() - t0);

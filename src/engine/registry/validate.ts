@@ -192,6 +192,11 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
         if (!(f.anim in mod.sprites.anims)) err(`"${f.anim}" no está en sprites.anims.${suggest(f.anim, Object.keys(mod.sprites.anims))}`, `floor[${i}].anim`);
       });
       if (mod.terrain) checkTerrain(mod.terrain.water, mod.arena, err);
+      mod.light?.lights.forEach((l, i) => {
+        if (l.sprite !== undefined && !(l.sprite in mod.sprites.anims)) {
+          err(`"${l.sprite}" no está en sprites.anims.${suggest(l.sprite, Object.keys(mod.sprites.anims))}`, `light.lights[${i}].sprite`);
+        }
+      });
     }
   }
 

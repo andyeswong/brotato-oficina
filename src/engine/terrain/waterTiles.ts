@@ -116,14 +116,14 @@ export function cellRect(variant: number, kind: MassKind, step: number): { x: nu
   return { x: variant * TILE, y: row * TILE, w: TILE, h: TILE };
 }
 
-export function buildWaterAtlas(): { width: number; height: number; data: Uint8ClampedArray } {
+export function buildWaterAtlas(palettes: Record<Exclude<MassKind, 'none'>, WaterPalette> = WATER_PALETTES): { width: number; height: number; data: Uint8ClampedArray } {
   const width = BLOB47.length * TILE;
   const height = ATLAS_ROWS * TILE;
   const data = new Uint8ClampedArray(width * height * 4);
   for (const kind of ['puddle', 'lake', 'ocean'] as const) {
     for (let step = 0; step < DEPTH_STEPS; step++) {
       for (let v = 0; v < BLOB47.length; v++) {
-        const rgba = colorize(waterTone(v), WATER_PALETTES[kind], step);
+        const rgba = colorize(waterTone(v), palettes[kind], step);
         const r = cellRect(v, kind, step);
         for (let y = 0; y < TILE; y++) data.set(rgba.subarray(y * TILE * 4, (y + 1) * TILE * 4), ((r.y + y) * width + r.x) * 4);
       }

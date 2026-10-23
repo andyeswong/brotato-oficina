@@ -185,12 +185,15 @@ export const levelSchema = z.strictObject({
         radius: z.number().positive(),
         color: rgbSchema,
         intensity: z.number().min(0),   // por encima de 1 deslumbra
+        sprite: z.string().optional(),  // animación de sprites.anims que se dibuja con el pie en (x, y): la lámpara
         flicker: z.strictObject({
           amount: z.number().min(0).max(1),
           speed: z.number().positive(),  // cambios por segundo
           seed: z.number().int(),
         }).optional(),
       })).default([]),
+      // Cuántos niveles de luz y si se traman sus bordes (por defecto 5 y con trama)
+      shade: z.strictObject({ steps: z.number().int().min(2).max(16).optional(), dither: z.boolean().optional() }).optional(),
     })
     .optional(),
 });

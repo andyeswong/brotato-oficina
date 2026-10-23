@@ -102,11 +102,13 @@ describe('escenario del nivel (terreno y luz)', () => {
     expect(scenery(level({ arena: { width: 60, height: 48 }, terrain: { water: ['....', '....', '....'] } }))).toEqual(['arena']);
   });
 
-  it('los colores de la luz van de 0 a 1', () => {
+  it('los colores de la luz van de 0 a 1 y su sprite existe', () => {
     const lamp = { x: 10, y: 10, radius: 40, color: [1, 0.9, 0.7], intensity: 1 };
     expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [lamp] } }))).toEqual([]);
     expect(scenery(level({ light: { ambient: [0.8, 0.8, 1.2], lights: [] } }))).toEqual(['light.ambient[2]']);
     expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, radius: 0 }] } }))).toEqual(['light.lights[0].radius']);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, sprite: 'farola' }] } }))).toEqual(['light.lights[0].sprite']);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, sprite: 'floor' }] } }))).toEqual([]);
   });
 });
 

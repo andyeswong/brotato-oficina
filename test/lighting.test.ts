@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blocked, computeLight, type Region } from '../src/engine/lighting/lightmap';
-import { lightIntensity, type Light } from '../src/engine/lighting/lights';
+import { lightIntensity, lightOf, lightsOf, SOURCE_PRESETS, type Light, type LightSource, type SourceKind } from '../src/engine/lighting/lights';
 import { applyLayers, buildLayers } from '../src/engine/lighting/shade';
 
 const none = () => false;
@@ -86,6 +86,41 @@ describe('mapa de luz', () => {
     const ms = (performance.now() - t0) / 5;
     console.log(`computeLight 384x216, 8 luces, cell 2: ${ms.toFixed(1)} ms por cuadro`);
     expect(ms).toBeLessThan(120);
+  });
+});
+
+describe('una luz nace de una fuente que se ve', () => {
+  const torch: LightSource = { id: 'muro-5', kind: 'torch', x: 88, y: 32 };
+
+  it('la luz se coloca en la llama de la fuente y conserva su id', () => {
+    const l = lightOf(torch);
+    expect(l.x).toBe(88 + SOURCE_PRESETS.torch.flame.dx);
+    expect(l.y).toBe(32 + SOURCE_PRESETS.torch.flame.dy);
+    expect(l.source).toBe('muro-5');
+    expect(l.color).toEqual(SOURCE_PRESETS.torch.color);
+  });
+
+  it('cada tipo tiene valores válidos y todos los tipos producen luz', () => {
+    for (const [kind, p] of Object.entries(SOURCE_PRESETS)) {
+      expect(p.radius, kind).toBeGreaterThan(0);
+      expect(p.intensity, kind).toBeGreaterThan(0);
+      for (const c of p.color) { expect(c, kind).toBeGreaterThanOrEqual(0); expect(c, kind).toBeLessThanOrEqual(1); }
+      expect(lightOf({ id: `x-${kind}`, kind: kind as SourceKind, x: 10, y: 10 }).source).toBe(`x-${kind}`);
+    }
+  });
+
+  it('el parpadeo sale del id: el mismo id da siempre lo mismo y ids distintos no parpadean a la vez', () => {
+    const a = lightOf(torch), b = lightOf({ ...torch }), c = lightOf({ ...torch, id: 'muro-6' });
+    expect(a.flicker!.seed).toBe(b.flicker!.seed);
+    expect(a.flicker!.seed).not.toBe(c.flicker!.seed);
+    expect(lightOf({ id: 'l', kind: 'lantern', x: 0, y: 0 }).flicker).toBeUndefined();   // la linterna no parpadea
+  });
+
+  it('lightsOf conserva el orden y una luz por fuente, y todas dicen de dónde vienen', () => {
+    const sources: LightSource[] = [torch, { id: 'n1', kind: 'neon-pink', x: 40, y: 20 }, { id: 'l1', kind: 'lantern', x: 5, y: 6 }];
+    const lights = lightsOf(sources);
+    expect(lights).toHaveLength(3);
+    expect(lights.map((l) => l.source)).toEqual(['muro-5', 'n1', 'l1']);
   });
 });
 
