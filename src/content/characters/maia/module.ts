@@ -1,6 +1,7 @@
 import { defineCharacter } from '@engine/api';
-// Hoja de Aseprite (agente de la Alienware, ~/Sync/brotato-oficina/arte/aseprite-maia/), copiada tal cual:
-// celdas 24x34, pies en la fila 33. Solo frente: de lado y de espaldas usa el mismo (el motor voltea a la izquierda).
+// Hoja de Aseprite v2 al estilo Moonlighter (NARUTO, ~/Sync/brotato-oficina/arte/aseprite-maia/v2_moonlighter/),
+// copiada tal cual: celdas 24x34, pies en la fila 33. Solo frente: de lado y de espaldas usa el mismo (el motor
+// voltea a la izquierda).
 import sheetPng from './maia.png';
 import sheetJson from './maia.json';
 
@@ -36,7 +37,9 @@ export default defineCharacter({
   sprites: {
     image: sheetPng,
     atlas: sheetJson,
-    anims: { idle: 'maia_idle', walk: 'maia_walk' },
+    // Sin caminado v2 todavía: anda con el quieto (decisión de MAIA, no mezclar estilos). Cuando llegue
+    // maia_walk v2 solo cambia este tag.
+    anims: { idle: 'maia_idle', walk: 'maia_idle' },
     // Sin retrato todavía: la selección usa el frame quieto ampliado
   },
 
