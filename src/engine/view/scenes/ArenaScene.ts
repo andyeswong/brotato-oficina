@@ -8,6 +8,7 @@ import { cameraScroll } from '../camera';
 import { FONT_SIZE, fontSizeFor, text, uiScale } from '../font';
 import { MoveInput } from '../input';
 import { setPaused, showContentErrors } from '../overlay';
+import { drawWater, LightLayer } from '../scenery';
 
 const STEP = 1 / 60;          // la simulación corre a paso fijo
 const MAX_STEPS = 5;          // tras un tirón no se intenta recuperar más de 5 pasos
@@ -40,6 +41,7 @@ export class ArenaScene extends Phaser.Scene {
   private readonly projectileSprites = new Map<number, Phaser.GameObjects.Sprite>();
   private readonly materialSprites = new Map<number, Phaser.GameObjects.Sprite>();
   private telegraphs!: Phaser.GameObjects.Graphics;
+  private light: LightLayer | null = null;
   private shapes!: Phaser.GameObjects.Graphics; // proyectiles sin sprite y nubecillas de muerte
   private hud!: {
     bar: Phaser.GameObjects.Graphics;
@@ -76,6 +78,8 @@ export class ArenaScene extends Phaser.Scene {
   create(): void {
     const { width, height } = this.run.level.arena;
     this.drawFloor(width, height);
+    drawWater(this, this.run.level);
+    this.light = this.run.level.light ? new LightLayer(this, this.run.level.light, this.run.level) : null;
     this.telegraphs = this.add.graphics().setDepth(1);
     this.shapes = this.add.graphics().setDepth(3);
 
@@ -109,6 +113,8 @@ export class ArenaScene extends Phaser.Scene {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
       this.scale.off('resize', this.layoutHud, this);
+      this.light?.destroy();
+      this.light = null;
       setPaused(false);
     });
   }
@@ -188,6 +194,7 @@ export class ArenaScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const scroll = cameraScroll({ x: px, y: py - this.run.body.centerY }, cam, this.run.level.arena);
     cam.setScroll(scroll.x, scroll.y);
+    this.light?.update(this.time.now / 1000);
     this.input_.draw();
   }
 

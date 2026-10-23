@@ -35,6 +35,8 @@ export const WEAPON_ANIMS = ['idle'] as const;
 export const ITEM_ANIMS = ['icon'] as const;
 export const LEVEL_ANIMS = ['material'] as const;
 export const MAX_WEAPONS = 6;
+// Lado de una celda del mapa de terreno, en píxeles lógicos (el mismo que las piezas de agua)
+export const TERRAIN_TILE = 16;
 
 // Contadores de partida que un modificador "per" puede usar
 export const COUNTERS = ['distinct-weapons', 'wave', 'kills', 'materials', 'items'] as const;
@@ -134,6 +136,8 @@ export const characterSchema = z.strictObject({
   hooks,
 });
 
+const rgbSchema = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)]);
+
 export const levelSchema = z.strictObject({
   ...manifest,
   kind: z.literal('level'),
@@ -166,6 +170,29 @@ export const levelSchema = z.strictObject({
   floor: z
     .array(z.strictObject({ anim: z.string(), weight: z.number().positive().default(1) }))
     .min(1, 'el suelo necesita al menos una loseta'),
+  // Agua sobre el suelo: una fila por cada TERRAIN_TILE px de arena, '~' agua y '.' tierra. Las masas que se tocan
+  // se funden y su tamaño decide si es charco, lago u océano (src/engine/terrain). Sin él, no hay agua.
+  terrain: z
+    .strictObject({ water: z.array(z.string().regex(/^[~.]+$/, "solo '~' (agua) y '.' (tierra)")).min(1) })
+    .optional(),
+  // Luz: el ambiente multiplica todo lo que no alumbra ninguna luz (1, 1, 1 = como sin luz). Colores de 0 a 1.
+  light: z
+    .strictObject({
+      ambient: rgbSchema,
+      lights: z.array(z.strictObject({
+        x: z.number(),
+        y: z.number(),
+        radius: z.number().positive(),
+        color: rgbSchema,
+        intensity: z.number().min(0),   // por encima de 1 deslumbra
+        flicker: z.strictObject({
+          amount: z.number().min(0).max(1),
+          speed: z.number().positive(),  // cambios por segundo
+          seed: z.number().int(),
+        }).optional(),
+      })).default([]),
+    })
+    .optional(),
 });
 
 // Un esquema de zod que trae el propio comportamiento para validar los params de quien lo usa

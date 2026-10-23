@@ -6,6 +6,7 @@ import {
   ITEM_ANIMS,
   LEVEL_ANIMS,
   MAX_WEAPONS,
+  TERRAIN_TILE,
   WEAPON_ANIMS,
   HOOK_EVENTS,
   KIND_FOLDERS,
@@ -190,6 +191,7 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
       mod.floor.forEach((f, i) => {
         if (!(f.anim in mod.sprites.anims)) err(`"${f.anim}" no está en sprites.anims.${suggest(f.anim, Object.keys(mod.sprites.anims))}`, `floor[${i}].anim`);
       });
+      if (mod.terrain) checkTerrain(mod.terrain.water, mod.arena, err);
     }
   }
 
@@ -215,6 +217,20 @@ function checkBehavior(registry: Registry, mod: { behavior: string; params: Reco
   const parsed = behavior.params.safeParse(mod.params);
   if (!parsed.success) for (const issue of parsed.error.issues) err(issue.message, formatField(['params', ...issue.path]));
   else mod.params = parsed.data as Record<string, unknown>;
+}
+
+// El mapa de agua cubre la arena entera, a una fila de caracteres por cada TERRAIN_TILE px
+function checkTerrain(rows: readonly string[], arena: { width: number; height: number }, err: Report): void {
+  if (arena.width % TERRAIN_TILE || arena.height % TERRAIN_TILE) {
+    err(`con terreno, la arena tiene que medir múltiplos de ${TERRAIN_TILE} px (mide ${arena.width}×${arena.height})`, 'arena');
+    return;
+  }
+  const cols = arena.width / TERRAIN_TILE;
+  const want = arena.height / TERRAIN_TILE;
+  if (rows.length !== want) err(`el mapa tiene ${rows.length} filas y la arena pide ${want} (una por cada ${TERRAIN_TILE} px)`, 'terrain.water');
+  rows.forEach((row, i) => {
+    if (row.length !== cols) err(`la fila mide ${row.length} y la arena pide ${cols} (una por cada ${TERRAIN_TILE} px)`, `terrain.water[${i}]`);
+  });
 }
 
 function checkModifiers(mods: readonly Modifier[], statIds: string[], err: Report): void {

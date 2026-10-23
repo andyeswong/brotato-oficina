@@ -77,6 +77,39 @@ describe('validateContent', () => {
   });
 });
 
+describe('escenario del nivel (terreno y luz)', () => {
+  const level = (over: Record<string, unknown>): DiscoveredModule => ({
+    path: '/src/content/levels/charca/module.ts',
+    value: {
+      format: 1, kind: 'level', id: 'charca', name: 'x', arena: { width: 64, height: 48 }, waves: ['w'],
+      sprites: { image: 'x.png', atlas, anims: { material: 'a', floor: 'a' } }, floor: [{ anim: 'floor' }],
+      ...over,
+    },
+  });
+  // Solo los errores del escenario: la oleada 'w' no existe y aquí no importa
+  const scenery = (mod: DiscoveredModule) =>
+    validateContent([...base, mod]).errors.filter((e) => /^(terrain|light|arena)/.test(e.field ?? '')).map((e) => e.field);
+
+  it('sin terreno ni luz el nivel es el de siempre', () => {
+    expect(scenery(level({}))).toEqual([]);
+  });
+
+  it('el mapa de agua mide la arena en celdas de 16 px', () => {
+    expect(scenery(level({ terrain: { water: ['....', '.~~.', '....'] } }))).toEqual([]);
+    expect(scenery(level({ terrain: { water: ['....', '.~~.'] } }))).toEqual(['terrain.water']);
+    expect(scenery(level({ terrain: { water: ['....', '.~~..', '....'] } }))).toEqual(['terrain.water[1]']);
+    expect(scenery(level({ terrain: { water: ['....', '.ww.', '....'] } }))).toEqual(['terrain.water[1]']);
+    expect(scenery(level({ arena: { width: 60, height: 48 }, terrain: { water: ['....', '....', '....'] } }))).toEqual(['arena']);
+  });
+
+  it('los colores de la luz van de 0 a 1', () => {
+    const lamp = { x: 10, y: 10, radius: 40, color: [1, 0.9, 0.7], intensity: 1 };
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [lamp] } }))).toEqual([]);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 1.2], lights: [] } }))).toEqual(['light.ambient[2]']);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, radius: 0 }] } }))).toEqual(['light.lights[0].radius']);
+  });
+});
+
 describe('params de comportamiento', () => {
   it('llegan al juego con los valores por defecto del esquema aplicados', async () => {
     const { discoverContent } = await import('../src/engine/registry/discover');
