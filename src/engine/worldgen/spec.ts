@@ -24,6 +24,17 @@ export interface WaterSpec {
   puddles: number;
 }
 
+// Un mueble o prop con huella w x h celdas (escritorio, mesa...): bloquea paso y luz como una columna. Su dibujo
+// mide w*16 de ancho y sale hacia arriba de su huella (el monitor sobresale). Si emite (la pantalla), es una fuente.
+export interface PropSpec {
+  anim: string;                            // animación del dibujo, con el pie en la fila de abajo de la huella
+  w: number;
+  h: number;
+  count: number;
+  emits?: SourceKind;
+  edge?: boolean;                          // pegado a una pared: no estorba el espacio de la arena y es lo normal en una oficina
+}
+
 export interface GeneratorSpec {
   cols: number;                            // en tiles de 16 px: la arena mide cols*16 x rows*16
   rows: number;
@@ -32,5 +43,6 @@ export interface GeneratorSpec {
   facade: FacadeSpec;
   water: WaterSpec;
   pillars: number;                         // columnas que bloquean luz y paso
+  props?: readonly PropSpec[];             // muebles que bloquean luz y paso
   materials: number;                       // materiales sueltos por el suelo
 }

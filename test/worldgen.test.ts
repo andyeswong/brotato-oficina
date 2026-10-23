@@ -28,7 +28,18 @@ const CYBERPUNK: GeneratorSpec = {
   water: { ocean: false, lake: true, puddles: 6 },
   pillars: 6, materials: 8,
 };
-const THEMES = { medieval: MEDIEVAL, cyberpunk: CYBERPUNK } as const;
+// Oficina: sin lagos ni océano, con escritorios (muebles con pantalla que emite)
+const OFFICE: GeneratorSpec = {
+  ...CYBERPUNK,
+  water: { ocean: false, lake: false, puddles: 4 },
+  pillars: 3,
+  props: [
+    { anim: 'escritorio-pc', w: 2, h: 1, count: 3, emits: 'screen', edge: true },
+    { anim: 'escritorio-laptop', w: 2, h: 1, count: 2, emits: 'screen', edge: true },
+    { anim: 'escritorio-pc', w: 2, h: 1, count: 1, emits: 'screen' },
+  ],
+};
+const THEMES = { medieval: MEDIEVAL, cyberpunk: CYBERPUNK, oficina: OFFICE } as const;
 
 const at = (l: Layout, x: number, y: number) => y * l.cols + x;
 const kinds = (l: Layout) => {
@@ -87,7 +98,7 @@ describe('generador de mapas por semilla', () => {
           l.floor.forEach((a, i) => { if (l.wall[i] === WALL.none) expect(floors.has(a), `suelo ${a}`).toBe(true); else expect(a).toBe(''); });
           for (let x = 1; x < l.cols - 1; x++) expect(allowed.has(l.facade[x]!), `fachada ${l.facade[x]}`).toBe(true);
           expect(l.facade.filter((p) => p === f.door)).toHaveLength(2);
-          const pillars = l.pillar.reduce((a, b) => a + b, 0);
+          const pillars = l.pillar.reduce((a, b, i) => a + (b && !l.prop[i] ? 1 : 0), 0);   // los muebles también son sólidos
           expect(pillars).toBeGreaterThanOrEqual(1);
           expect(pillars).toBeLessThanOrEqual(spec.pillars);
           expect(l.materials.length).toBeGreaterThan(0);
@@ -99,9 +110,10 @@ describe('generador de mapas por semilla', () => {
       it('las fuentes de luz son exactamente las piezas de fachada que emiten, con ids únicos', () => {
         for (const l of layouts) {
           const expected = Array.from({ length: l.cols }, (_, x) => x).filter((x) => x > 0 && x < l.cols - 1 && spec.facade.emits[l.facade[x]!]);
-          expect(l.sources.map((s) => s.id)).toEqual(expected.map((x) => `facade-${x}`));
+          const facadeSources = l.sources.filter((s) => s.id.startsWith('facade-'));
+          expect(facadeSources.map((s) => s.id)).toEqual(expected.map((x) => `facade-${x}`));
           expect(new Set(l.sources.map((s) => s.id)).size).toBe(l.sources.length);
-          l.sources.forEach((s, i) => {
+          facadeSources.forEach((s, i) => {
             expect(s.kind).toBe(spec.facade.emits[l.facade[expected[i]!]!]);
             expect(s.x).toBeGreaterThan(0); expect(s.x).toBeLessThan(l.cols * TILE);
           });
@@ -214,6 +226,35 @@ describe('generador de mapas por semilla', () => {
       }
     });
   }
+
+  it('los muebles salen enteros sobre tierra, sin pisarse ni tocarse, sin tapar la salida, y su pantalla es una fuente', () => {
+    for (const [cols, rows] of [[32, 32], [40, 30]] as const) for (let seed = 1; seed <= 60; seed++) {
+      const l = generateLayout({ ...OFFICE, cols, rows }, seed);
+      const who = `${cols}x${rows} semilla ${seed}`;
+      expect(l.props.length, `${who}: faltan muebles`).toBe(6);
+      const taken = new Set<number>();
+      for (const p of l.props) for (let dy = -1; dy <= p.h; dy++) for (let dx = -1; dx <= p.w; dx++) {
+        const inside = dx >= 0 && dx < p.w && dy >= 0 && dy < p.h;
+        const c = at(l, p.x + dx, p.y + dy);
+        if (inside) {
+          expect(l.water[p.y + dy]![p.x + dx], `${who}: mueble sobre agua`).toBe('.');
+          expect(l.wall[c], `${who}: mueble en una pared`).toBe(WALL.none);
+          expect(l.pillar[c] === 1 && l.prop[c] === 1, `${who}: la huella no es sólida`).toBe(true);
+          expect(taken.has(c), `${who}: dos muebles se pisan`).toBe(false);
+          taken.add(c);
+        }
+      }
+      // sin hueco de una celda entre muebles distintos
+      for (const a of l.props) for (const b of l.props) if (a !== b) {
+        const gapX = Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w)), gapY = Math.max(b.y - (a.y + a.h), a.y - (b.y + b.h));
+        expect(Math.max(gapX, gapY), `${who}: muebles pegados`).toBeGreaterThanOrEqual(1);
+      }
+      const screens = l.sources.filter((s) => s.id.startsWith('prop-'));
+      expect(screens.length).toBe(l.props.length);
+      expect(screens.every((s) => s.kind === 'screen')).toBe(true);
+      expect(new Set(l.sources.map((s) => s.id)).size).toBe(l.sources.length);
+    }
+  });
 
   it('un tema sin agua no genera agua', () => {
     const dry = { ...MEDIEVAL, water: { ocean: false, lake: false, puddles: 0 } };

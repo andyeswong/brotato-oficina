@@ -38,7 +38,7 @@ export function lightIntensity(light: Light, time: number): number {
 // UNA LUZ NUNCA SALE DE LA NADA: nace de un objeto que se ve (antorcha, farol, brasero, letrero de neón,
 // linterna). Una fuente es ese objeto: su tipo dice cómo se ve y cómo alumbra, y la luz se coloca en su
 // llama. Dibujar la fuente es cosa de la vista; aquí solo se fija dónde está la llama y qué luz da.
-export type SourceKind = 'torch' | 'lamp' | 'brazier' | 'neon-pink' | 'neon-cyan' | 'lantern';
+export type SourceKind = 'torch' | 'lamp' | 'brazier' | 'neon-pink' | 'neon-cyan' | 'lantern' | 'screen';
 
 export interface SourcePreset {
   flame: { dx: number; dy: number };         // dónde está la llama respecto al ancla del objeto, en px
@@ -56,6 +56,8 @@ export const SOURCE_PRESETS: Record<SourceKind, SourcePreset> = {
   'neon-pink': { flame: { dx: 0, dy: -1 }, radius: 64, color: [1, 0.31, 0.85], intensity: 1, flicker: { amount: 0.08, speed: 6 } },
   'neon-cyan': { flame: { dx: 0, dy: -1 }, radius: 64, color: [0.21, 0.95, 1], intensity: 1, flicker: { amount: 0.08, speed: 6 } },
   lantern: { flame: { dx: 0, dy: -2 }, radius: 78, color: [0.62, 0.85, 1], intensity: 0.9 },
+  // pantalla de ordenador: fría y corta, con un temblor casi imperceptible
+  screen: { flame: { dx: 0, dy: -8 }, radius: 52, color: [0.45, 0.7, 1], intensity: 0.7, flicker: { amount: 0.04, speed: 3 } },
 };
 
 // Un objeto que emite luz. (x, y) es el ancla del objeto en el mundo, en píxeles. Lo que no se da sale del

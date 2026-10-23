@@ -11,6 +11,14 @@ export const NORTH = 1 + FACADE_ROWS;       // filas de la pared norte: tapa + f
 
 export const WALL = { none: 0, cap: 1, facadeTop: 2, facadeBottom: 3 } as const;
 
+export interface PlacedProp {
+  anim: string;
+  x: number;                                // celda de la esquina noroeste de su huella
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Layout {
   seed: number;
   cols: number;
@@ -20,9 +28,11 @@ export interface Layout {
   floor: string[];                          // animación del suelo de cada celda ('' bajo las paredes)
   water: string[];                          // una fila por tile: '~' agua, '.' tierra (el contrato del nivel)
   masses: MassMap;
-  pillar: Uint8Array;                       // 1 donde hay una columna
+  pillar: Uint8Array;                       // 1 donde algo sólido bloquea paso y luz: columnas y muebles
+  props: PlacedProp[];                      // muebles (sus celdas también están en pillar)
+  prop: Uint8Array;                         // 1 donde hay un mueble (para que la vista no dibuje ahí una columna)
   facade: string[];                         // pieza de la fachada de cada columna
-  sources: LightSource[];                   // fuentes de luz (las piezas de fachada que emiten)
+  sources: LightSource[];                   // fuentes de luz: las piezas de fachada que emiten y después los muebles que emiten
   materials: Array<{ x: number; y: number }>;
   spawn: { x: number; y: number };          // los pies del jugador, en píxeles
 }
@@ -138,8 +148,37 @@ export function generateLayout(spec: GeneratorSpec, seed: number): Layout {
     if (d < best) { best = d; sx = x; sy = y; }
   }
 
-  // Columnas: sobre tierra, lejos del agua, de las paredes, del punto de partida y entre sí
   const pillar = new Uint8Array(cols * rows);
+  const prop = new Uint8Array(cols * rows);
+  const props: PlacedProp[] = [];
+  const propSources: LightSource[] = [];
+
+  // Muebles: huella entera sobre tierra, con una celda libre alrededor (para poder rodearlos), lejos de la salida
+  for (const ps of spec.props ?? []) for (let n = 0; n < ps.count; n++) {
+    for (let tries = 0; tries < 300; tries++) {
+      let x = 2 + Math.floor(rng() * (cols - 3 - ps.w)), y = NORTH + 3 + Math.floor(rng() * (rows - NORTH - 5 - ps.h));
+      if (ps.edge) {                                                  // pegado a una pared, elegida al azar
+        const side = Math.floor(rng() * 4);
+        if (side === 0) y = NORTH; else if (side === 1) y = rows - 1 - ps.h;
+        else { y = NORTH + 2 + Math.floor(rng() * (rows - NORTH - 4 - ps.h)); x = side === 2 ? 1 : cols - 1 - ps.w; }
+      }
+      let ok = true;
+      for (let dy = -1; dy <= ps.h && ok; dy++) for (let dx = -1; dx <= ps.w && ok; dx++) {
+        const cx = x + dx, cy = y + dy;
+        const inside = dx >= 0 && dx < ps.w && dy >= 0 && dy < ps.h;
+        if (cx < 0 || cy < 0 || cx >= cols || cy >= rows || water[at(cx, cy)] === 1 || pillar[at(cx, cy)] === 1) ok = false;
+        else if (wall[at(cx, cy)] !== WALL.none && (inside || !ps.edge)) ok = false;   // pegado a la pared sí, dentro de ella no
+      }
+      for (let dy = 0; dy < ps.h && ok; dy++) for (let dx = 0; dx < ps.w; dx++) if (Math.hypot(x + dx - sx, y + dy - sy) < 4.5) ok = false;
+      if (!ok) continue;
+      for (let dy = 0; dy < ps.h; dy++) for (let dx = 0; dx < ps.w; dx++) { pillar[at(x + dx, y + dy)] = 1; prop[at(x + dx, y + dy)] = 1; }
+      if (ps.emits) propSources.push({ id: `prop-${props.length}`, kind: ps.emits, x: (x + ps.w / 2) * TILE, y: y * TILE + 1 });
+      props.push({ anim: ps.anim, x, y, w: ps.w, h: ps.h });
+      break;
+    }
+  }
+
+  // Columnas: sobre tierra, lejos del agua, de las paredes, del punto de partida y entre sí
   let placed = 0;
   for (let tries = 0; tries < 400 && placed < spec.pillars; tries++) {
     const x = 3 + Math.floor(rng() * (cols - 6)), y = NORTH + 2 + Math.floor(rng() * (rows - NORTH - 5));
@@ -184,6 +223,7 @@ export function generateLayout(spec: GeneratorSpec, seed: number): Layout {
     const kind = f.emits[facade[x]!];
     if (kind) sources.push({ id: `facade-${x}`, kind, x: x * TILE + 8, y: TILE + TILE });
   }
+  sources.push(...propSources);
 
   // Suelo: al azar con peso, distinto en cada nivel (la semilla entra en el azar de cada celda)
   const floor: string[] = new Array<string>(cols * rows).fill('');
@@ -205,5 +245,5 @@ export function generateLayout(spec: GeneratorSpec, seed: number): Layout {
     for (let x = 0; x < cols; x++) line += water[at(x, y)] ? '~' : '.';
     waterRows.push(line);
   }
-  return { seed, cols, rows, caps: spec.caps, wall, floor, water: waterRows, masses, pillar, facade, sources, materials, spawn: { x: sx * TILE + 8, y: sy * TILE + 12 } };
+  return { seed, cols, rows, caps: spec.caps, wall, floor, water: waterRows, masses, pillar, props, prop, facade, sources, materials, spawn: { x: sx * TILE + 8, y: sy * TILE + 12 } };
 }

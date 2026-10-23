@@ -12,6 +12,30 @@ export interface Region {
 export interface LightOptions {
   cell: number;   // px de mundo por celda del mapa de luz (2 o 4: más grande, más barato y más "pixel")
   tile: number;   // px de mundo por tile del mapa de oclusión
+  occluders?: readonly Occluder[];   // cuerpos que se mueven (el personaje, un enemigo) y también dan sombra
+}
+
+// Un cuerpo opaco que no cabe en la rejilla de tiles: una elipse de centro (x, y) en píxeles de mundo.
+// Da sombra a lo que queda detrás de él visto desde una luz, pero no a sí mismo ni a la luz que lleva
+// dentro (el farol del personaje no se tapa con el personaje).
+export interface Occluder {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+}
+
+// ¿El segmento a-b pasa por el cuerpo? Se escala la elipse a un círculo unidad y se mide la distancia al segmento.
+export function shadowedBy(ax: number, ay: number, bx: number, by: number, o: Occluder): boolean {
+  const ux = (ax - o.x) / o.rx, uy = (ay - o.y) / o.ry;
+  const vx = (bx - o.x) / o.rx, vy = (by - o.y) / o.ry;
+  if (ux * ux + uy * uy < 1 || vx * vx + vy * vy < 1) return false;   // luz o destino dentro del cuerpo
+  const dx = vx - ux, dy = vy - uy;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return false;
+  const t = Math.min(1, Math.max(0, -(ux * dx + uy * dy) / len2));
+  const cx = ux + t * dx, cy = uy + t * dy;
+  return cx * cx + cy * cy < 1;
 }
 
 export const DEFAULT_LIGHT_OPTIONS: LightOptions = { cell: 2, tile: 16 };
@@ -64,6 +88,7 @@ export function computeLight(
   options: Partial<LightOptions> = {},
 ): LightField {
   const { cell, tile } = { ...DEFAULT_LIGHT_OPTIONS, ...options };
+  const occluders = options.occluders ?? [];
   const cols = Math.ceil(region.width / cell);
   const rows = Math.ceil(region.height / cell);
   const total = new Float32Array(cols * rows * 3);
@@ -88,6 +113,7 @@ export function computeLight(
         const att = k * k * strength;
         if (att < 0.002) continue;
         if (blocked(light.x, light.y, px, py, tile, opaque)) continue;
+        if (occluders.some((o) => shadowedBy(light.x, light.y, px, py, o))) continue;
         const i = (r * cols + c) * 3;
         total[i] = total[i]! + light.color[0] * att;
         total[i + 1] = total[i + 1]! + light.color[1] * att;

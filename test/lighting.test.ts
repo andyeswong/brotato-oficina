@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blocked, computeLight, type Region } from '../src/engine/lighting/lightmap';
+import { blocked, computeLight, shadowedBy, type Region } from '../src/engine/lighting/lightmap';
 import { lightIntensity, lightOf, lightsOf, maxSafeIntensity, SOURCE_PRESETS, type Light, type LightSource, type SourceKind } from '../src/engine/lighting/lights';
 import { applyLayers, buildLayers } from '../src/engine/lighting/shade';
 
@@ -47,6 +47,32 @@ describe('mapa de luz', () => {
     expect(at(f, 130, 56)).toBeGreaterThan(0.25);                       // más arriba, también alumbrado
     const sin = computeLight(region, [lamp({ radius: 90 })], dark, none, 0);
     expect(at(sin, 130, 88)).toBeGreaterThan(0.25);                     // sin columna, ahí sí llega
+  });
+
+  it('un cuerpo que se mueve (el personaje) también da sombra, pero no a sí mismo ni a la luz que lleva', () => {
+    const body = { x: 100, y: 80, rx: 5, ry: 7 };
+    const con = computeLight(region, [lamp({ x: 60, y: 80, radius: 90 })], dark, none, 0, { occluders: [body] });
+    const sin = computeLight(region, [lamp({ x: 60, y: 80, radius: 90 })], dark, none, 0);
+    expect(at(con, 120, 80)).toBeCloseTo(0.2);                          // justo detrás del cuerpo: a oscuras
+    expect(at(sin, 120, 80)).toBeGreaterThan(0.25);                     // sin cuerpo, llega
+    expect(at(con, 120, 112)).toBeGreaterThan(0.2);                     // a un lado, fuera del cono: alumbrado
+    expect(at(con, 80, 80)).toBeCloseTo(at(sin, 80, 80));               // delante del cuerpo, igual
+    expect(at(con, 100, 80)).toBeCloseTo(at(sin, 100, 80));             // el propio cuerpo recibe luz
+    // el farol que lleva el personaje, dentro de su cuerpo, alumbra a todos lados
+    const farol = computeLight(region, [lamp({ x: 101, y: 78, radius: 60 })], dark, none, 0, { occluders: [body] });
+    const farolSin = computeLight(region, [lamp({ x: 101, y: 78, radius: 60 })], dark, none, 0);
+    expect(at(farol, 120, 78)).toBeCloseTo(at(farolSin, 120, 78));
+    expect(at(farol, 80, 78)).toBeCloseTo(at(farolSin, 80, 78));
+  });
+
+  it('shadowedBy: solo bloquea si el cuerpo está entre la luz y el punto', () => {
+    const o = { x: 50, y: 50, rx: 4, ry: 6 };
+    expect(shadowedBy(10, 50, 90, 50, o)).toBe(true);                   // en medio
+    expect(shadowedBy(10, 50, 40, 50, o)).toBe(false);                  // el punto llega antes del cuerpo
+    expect(shadowedBy(10, 20, 90, 20, o)).toBe(false);                  // pasa por arriba
+    expect(shadowedBy(10, 50, 50, 50, o)).toBe(false);                  // destino dentro del cuerpo
+    expect(shadowedBy(50, 50, 90, 50, o)).toBe(false);                  // luz dentro del cuerpo
+    expect(shadowedBy(10, 56, 90, 56, o)).toBe(false);                  // roza por debajo del eje vertical (ry)
   });
 
   it('una luz pegada a un muro lo alumbra, y una pared recibe luz en su cara', () => {
