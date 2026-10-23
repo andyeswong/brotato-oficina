@@ -151,6 +151,28 @@ describe('generador de mapas por semilla', () => {
     }
   });
 
+  it('hay espacio libre para pelear: todo lo caminable se alcanza desde la salida y es la mayor parte de la arena', () => {
+    // el agua es decorado, así que solo paredes y columnas estorban
+    for (const [name, spec] of Object.entries(THEMES)) for (let seed = 1; seed <= 60; seed++) {
+      const l = generateLayout(spec, seed);
+      const free = (x: number, y: number) => x >= 0 && y >= 0 && x < l.cols && y < l.rows && l.wall[at(l, x, y)] === WALL.none && l.pillar[at(l, x, y)] === 0;
+      let total = 0;
+      for (let y = 0; y < l.rows; y++) for (let x = 0; x < l.cols; x++) if (free(x, y)) total++;
+      const seen = new Set<number>();
+      const queue = [at(l, Math.floor(l.spawn.x / TILE), Math.floor((l.spawn.y - 2) / TILE))];
+      while (queue.length) {
+        const c = queue.pop()!;
+        if (seen.has(c)) continue;
+        const x = c % l.cols, y = Math.floor(c / l.cols);
+        if (!free(x, y)) continue;
+        seen.add(c);
+        queue.push(c + 1, c - 1, c + l.cols, c - l.cols);
+      }
+      expect(seen.size, `${name} semilla ${seed}: hay suelo inalcanzable`).toBe(total);
+      expect(total / ((l.cols - 2) * (l.rows - 3)), `${name} semilla ${seed}: demasiado ocupado`).toBeGreaterThan(0.85);
+    }
+  });
+
   it('un tema sin agua no genera agua', () => {
     const dry = { ...MEDIEVAL, water: { ocean: false, lake: false, puddles: 0 } };
     for (let seed = 1; seed <= 10; seed++) expect(generateLayout(dry, seed).water.join('')).not.toContain('~');
