@@ -143,7 +143,7 @@ export function generateLayout(spec: GeneratorSpec, seed: number): Layout {
   let placed = 0;
   for (let tries = 0; tries < 400 && placed < spec.pillars; tries++) {
     const x = 3 + Math.floor(rng() * (cols - 6)), y = NORTH + 2 + Math.floor(rng() * (rows - NORTH - 5));
-    if (!landish(x, y, 1) || Math.abs(x - sx) + Math.abs(y - sy) < 5) continue;
+    if (!landish(x, y, 1) || Math.hypot(x - sx, y - sy) < 4.5) continue; // 4,5 celdas: deja >= 48 px libres para pelear
     let near = false;
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (pillar[at(x + dx, y + dy)]) near = true;
     if (near) continue;

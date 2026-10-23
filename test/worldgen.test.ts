@@ -173,6 +173,48 @@ describe('generador de mapas por semilla', () => {
     }
   });
 
+  // Parámetros de aparición de la oficina (src/content/levels/oficina/module.ts), en píxeles
+  const SPAWN = { minDistance: 52, edgeMargin: 10, ringRadius: 96, fightRadius: 48 };
+  for (const [cols, rows] of [[32, 32], [40, 30]] as const) {
+    it(`en ${cols}x${rows} hay hueco para pelear y sitio para que salgan enemigos (60 semillas por tema)`, () => {
+      for (const [name, base] of Object.entries(THEMES)) for (let seed = 1; seed <= 60; seed++) {
+        const l = generateLayout({ ...base, cols, rows }, seed);
+        const blocked = (x: number, y: number) => x < 0 || y < 0 || x >= l.cols || y >= l.rows || l.wall[at(l, x, y)] !== WALL.none || l.pillar[at(l, x, y)] === 1;
+        // distancia de un punto al rectángulo de una celda
+        const gap = (px: number, py: number, cx: number, cy: number) => Math.hypot(Math.max(cx * TILE - px, 0, px - (cx + 1) * TILE), Math.max(cy * TILE - py, 0, py - (cy + 1) * TILE));
+        const cells: [number, number][] = [];
+        for (let y = 0; y < l.rows; y++) for (let x = 0; x < l.cols; x++) if (blocked(x, y)) cells.push([x, y]);
+        const { x: sx, y: sy } = l.spawn;
+        const who = `${name} ${cols}x${rows} semilla ${seed}`;
+
+        // (a) ninguna celda ocupada toca el círculo de pelea alrededor de la salida
+        const nearest = Math.min(...cells.map(([x, y]) => gap(sx, sy, x, y)));
+        expect(nearest, `${who}: el hueco libre alrededor de la salida es de ${nearest.toFixed(1)} px`).toBeGreaterThanOrEqual(SPAWN.fightRadius);
+
+        // (b1) al menos la mitad de lo caminable está lejos de la salida y de cualquier pared o columna
+        let walkable = 0, good = 0;
+        for (let y = 0; y < l.rows; y++) for (let x = 0; x < l.cols; x++) {
+          if (blocked(x, y)) continue;
+          walkable++;
+          const px = x * TILE + TILE / 2, py = y * TILE + TILE / 2;
+          if (Math.hypot(px - sx, py - sy) < SPAWN.minDistance) continue;
+          if (cells.some(([bx, by]) => gap(px, py, bx, by) < SPAWN.edgeMargin + TILE)) continue;
+          good++;
+        }
+        expect(good / walkable, `${who}: solo ${good} de ${walkable} celdas sirven para que salga un enemigo`).toBeGreaterThanOrEqual(0.5);
+
+        // (b2) al menos la mitad del anillo de aparición es caminable
+        const N = 72;
+        let open = 0;
+        for (let i = 0; i < N; i++) {
+          const a = (i / N) * Math.PI * 2;
+          if (!blocked(Math.floor((sx + Math.cos(a) * SPAWN.ringRadius) / TILE), Math.floor((sy + Math.sin(a) * SPAWN.ringRadius) / TILE))) open++;
+        }
+        expect(open / N, `${who}: el anillo de aparición es caminable en ${(open / N * 100).toFixed(0)} %`).toBeGreaterThanOrEqual(0.5);
+      }
+    });
+  }
+
   it('un tema sin agua no genera agua', () => {
     const dry = { ...MEDIEVAL, water: { ocean: false, lake: false, puddles: 0 } };
     for (let seed = 1; seed <= 10; seed++) expect(generateLayout(dry, seed).water.join('')).not.toContain('~');
