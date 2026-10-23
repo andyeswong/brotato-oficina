@@ -95,6 +95,21 @@ export function generateLayout(spec: GeneratorSpec, seed: number): Layout {
       masses = analyze(water);
     }
   }
+  // Un charco tiene que PARECER un charco: 1 celda, 2 pegadas o un 2x2. Una L o una raya de tres se lee como una tubería.
+  // Los que salieron con otra forma se recortan a lo que sí es válido (nunca se borra del todo).
+  let trimmed = false;
+  masses.regionSizes.forEach((size, id) => {
+    if (size > DEFAULT_MASS_OPTIONS.puddleMax || size < 3) return;
+    const cells: Array<[number, number]> = [];
+    for (let i = 0; i < masses.region.length; i++) if (masses.region[i] === id) cells.push([i % cols, Math.floor(i / cols)]);
+    const xs = cells.map((c) => c[0]), ys = cells.map((c) => c[1]);
+    const square = size === 4 && Math.max(...xs) - Math.min(...xs) === 1 && Math.max(...ys) - Math.min(...ys) === 1;
+    if (square) return;
+    const keep = cells[0]!;
+    const mate = cells.find((c) => Math.abs(c[0] - keep[0]) + Math.abs(c[1] - keep[1]) === 1) ?? keep;
+    for (const [x, y] of cells) if (!((x === keep[0] && y === keep[1]) || (x === mate[0] && y === mate[1]))) { water[at(x, y)] = 0; trimmed = true; }
+  });
+  if (trimmed) masses = analyze(water);
   // Y si se pidieron charcos tiene que haber al menos uno: si no salió ninguno se pone uno de una celda
   if (spec.water.puddles > 0 && !masses.regionSizes.some((n) => n <= DEFAULT_MASS_OPTIONS.puddleMax)) {
     for (let tries = 0; tries < 200; tries++) {
@@ -138,7 +153,11 @@ export function generateLayout(spec: GeneratorSpec, seed: number): Layout {
   // Fachada norte: dos puertas con su pieza a cada lado, escudo en el centro, estandartes repartidos, y el resto al azar
   const f = spec.facade;
   const facade: string[] = new Array<string>(cols).fill(f.neutral);
-  const d1 = 5 + Math.floor(rng() * 7), d2 = 22 + Math.floor(rng() * 11);
+  // Las posiciones son proporcionales al ancho: la arena puede ser de cualquier tamaño (con posiciones fijas
+  // para 40 columnas, una puerta caía fuera de la pared en arenas más estrechas)
+  const clampCol = (x: number) => Math.min(Math.max(Math.round(x), 3), cols - 4);
+  const d1 = clampCol(cols * 0.14 + rng() * cols * 0.17);
+  const d2 = Math.max(clampCol(cols * 0.55 + rng() * cols * 0.25), Math.min(d1 + 6, cols - 4));
   const fixed = new Map<number, string>();
   for (const d of [d1, d2]) {
     fixed.set(d, f.door);

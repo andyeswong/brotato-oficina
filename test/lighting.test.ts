@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { blocked, computeLight, type Region } from '../src/engine/lighting/lightmap';
-import { lightIntensity, lightOf, lightsOf, SOURCE_PRESETS, type Light, type LightSource, type SourceKind } from '../src/engine/lighting/lights';
+import { lightIntensity, lightOf, lightsOf, maxSafeIntensity, SOURCE_PRESETS, type Light, type LightSource, type SourceKind } from '../src/engine/lighting/lights';
 import { applyLayers, buildLayers } from '../src/engine/lighting/shade';
 
 const none = () => false;
@@ -124,6 +124,40 @@ describe('una luz nace de una fuente que se ve', () => {
   });
 });
 
+describe('fuentes con ajustes propios y la intensidad segura', () => {
+  it('cada dibujo pone su llama a su altura, y una fuente puede ajustar intensidad, radio y color', () => {
+    const l = lightOf({ id: 'lampara-1', kind: 'lamp', x: 100, y: 200, sprite: 'lampara_idle', flame: { dx: 1, dy: -22 }, intensity: 0.4, radius: 70, color: [1, 0.72, 0.38] });
+    expect(l.x).toBe(101);
+    expect(l.y).toBe(178);
+    expect(l.intensity).toBe(0.4);
+    expect(l.radius).toBe(70);
+    expect(l.source).toBe('lampara-1');
+    const dflt = lightOf({ id: 'l2', kind: 'lamp', x: 100, y: 200 });
+    expect(dflt.y).toBe(200 + SOURCE_PRESETS.lamp.flame.dy);
+    expect(dflt.intensity).toBe(SOURCE_PRESETS.lamp.intensity);
+  });
+
+  it('maxSafeIntensity: ningún canal pasa de 1 contando el pico del parpadeo', () => {
+    // el dato medido por FERN: [1, 0.72, 0.38] sobre un ambiente de 0.6 -> 0.4
+    expect(maxSafeIntensity([0.6, 0.6, 0.6], [1, 0.72, 0.38])).toBeCloseTo(0.4);
+    for (const flicker of [0, 0.06, 0.25]) {
+      for (const ambient of [[0.4, 0.46, 0.64], [0.6, 0.6, 0.6], [0.2, 0.2, 0.3]] as const) {
+        for (const color of [[1, 0.62, 0.28], [1, 0.72, 0.38], [0.62, 0.85, 1]] as const) {
+          const i = maxSafeIntensity(ambient, color, flicker);
+          for (let ch = 0; ch < 3; ch++) expect(ambient[ch]! + i * (1 + flicker) * color[ch]!).toBeLessThanOrEqual(1 + 1e-9);
+          expect(i).toBeGreaterThan(0);
+        }
+      }
+    }
+    expect(maxSafeIntensity([1, 1, 1], [1, 1, 1])).toBe(0);   // un ambiente a tope no deja margen
+  });
+
+  it('la lámpara por defecto se lee cálida: el rojo sube mucho más que el azul', () => {
+    const [r, , b] = SOURCE_PRESETS.lamp.color;
+    expect(r).toBeGreaterThan(b * 2);
+  });
+});
+
 describe('capas de luz', () => {
   const solid = (c: number) => ({ cell: 2, cols: 4, rows: 4, ambient: [0, 0, 0] as const, total: new Float32Array(4 * 4 * 3).fill(c) });
   const view: Region = { x: 0, y: 0, width: 8, height: 8 };
@@ -178,6 +212,41 @@ describe('capas de luz', () => {
     expect(Math.max(...channelValues(layers.add))).toBe(0);
     const bright = buildLayers(solid(1.8), view, { glow: 1, steps: 5, dither: false });
     expect(Math.min(...channelValues(bright.add))).toBeGreaterThan(150);
+  });
+
+  it('softGlow: el brillo conserva el tono de la luz y no deja píxeles sueltos (ni bordes de color ni puntos blancos)', () => {
+    // una luz cálida muy intensa: cada canal pasa de 1 en un sitio distinto
+    const cols = 24, rows = 1;
+    const total = new Float32Array(cols * rows * 3);
+    for (let c = 0; c < cols; c++) { const k = 1 - c / cols; total[c * 3] = 0.4 + 1.6 * k; total[c * 3 + 1] = 0.4 + 1.2 * k; total[c * 3 + 2] = 0.4 + 0.6 * k; }
+    const field = { cell: 2, cols, rows, ambient: [0.4, 0.4, 0.4] as const, total };
+    const region: Region = { x: 0, y: 0, width: cols * 2, height: 4 };
+    const soft = buildLayers(field, region, { softGlow: true, glow: 0.8, steps: 5 });
+    const old = buildLayers(field, region, { softGlow: false, glow: 0.8, steps: 5 });
+    const px = (a: Uint8ClampedArray, x: number, y: number, ch: number) => a[(y * region.width + x) * 4 + ch]!;
+    let lit = 0;
+    for (let x = 0; x < region.width; x++) {
+      const [r, g, b] = [px(soft.add, x, 0, 0), px(soft.add, x, 0, 1), px(soft.add, x, 0, 2)];
+      expect(r).toBeGreaterThanOrEqual(g);                  // sigue siendo cálido: rojo >= verde >= azul, nunca un borde de otro color
+      expect(g).toBeGreaterThanOrEqual(b);
+      if (r > 0) { lit++; expect(g, 'rojo sin verde = borde de color').toBeGreaterThan(0); expect(b, 'verde sin azul = borde de color').toBeGreaterThan(0); }
+    }
+    expect(lit).toBeGreaterThan(8);
+    // no es blanco: el azul queda claramente por debajo del rojo (con blanco puro serían iguales y lavaría el color)
+    const mid = Math.floor(region.width / 4);
+    expect(px(soft.add, mid, 0, 2)).toBeLessThan(px(soft.add, mid, 0, 0) * 0.85);
+    // sin trama: a lo largo de una fila el brillo solo baja, y entre filas es idéntico (no hay píxeles aislados)
+    for (let x = 1; x < region.width; x++) expect(px(soft.add, x, 0, 0)).toBeLessThanOrEqual(px(soft.add, x - 1, 0, 0));
+    for (let y = 1; y < region.height; y++) for (let x = 0; x < region.width; x++) expect(px(soft.add, x, y, 0)).toBe(px(soft.add, x, 0, 0));
+    // el modo anterior sí deja bordes de color: hay píxeles con rojo y sin azul
+    let fringe = 0;
+    for (let x = 0; x < region.width; x++) if (px(old.add, x, 0, 0) > 0 && px(old.add, x, 0, 2) === 0) fringe++;
+    expect(fringe).toBeGreaterThan(0);
+  });
+
+  it('softGlow por defecto apagado: lo que ya se hornea no cambia', () => {
+    const f = { cell: 2, cols: 4, rows: 4, ambient: [0.3, 0.3, 0.3] as const, total: new Float32Array(48).fill(1.6) };
+    expect(buildLayers(f, view)).toEqual(buildLayers(f, view, { softGlow: false }));
   });
 
   it('applyLayers hace escena × multiply + add', () => {

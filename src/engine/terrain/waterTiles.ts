@@ -73,10 +73,15 @@ export interface WaterPalette {
   foam: string;
   body: readonly [string, string, string, string];     // de la orilla (0) al fondo (3)
   ripple: readonly [string, string, string, string];
+  // Opacidad de cada tono (0..1; por defecto 1). Un charco de gotera pide transparencia: deja ver el suelo y las
+  // juntas de debajo, y no parece un agujero. El atlas lleva el alfa; la vista lo mezcla al dibujar.
+  alpha?: { edge?: number; foam?: number; body?: number; ripple?: number };
 }
 
 export const WATER_PALETTES: Record<Exclude<MassKind, 'none'>, WaterPalette> = {
-  puddle: { edge: '#1c2a38', foam: '#8aa0b4', body: ['#3a5670', '#3a5670', '#34506a', '#34506a'], ripple: ['#b4cce0', '#b4cce0', '#a4bcd2', '#a4bcd2'] },
+  // Charco suave y transparente: azul húmedo que deja ver el suelo, borde fino de poco contraste y un brillo en el centro.
+  // (El anterior, opaco y casi negro, se leía como un agujero sobre un suelo claro.)
+  puddle: { edge: '#34506c', foam: '#c4d8e8', body: ['#5a7ea8', '#5a7ea8', '#52759c', '#52759c'], ripple: ['#dcecf8', '#dcecf8', '#cce0f0', '#cce0f0'], alpha: { edge: 0.55, foam: 0.5, body: 0.5, ripple: 0.7 } },
   lake: { edge: '#0b1a2e', foam: '#8ec0d8', body: ['#2a78ae', '#216499', '#18507e', '#103a62'], ripple: ['#4a98c8', '#3a82b4', '#2a6c9c', '#1e547e'] },
   ocean: { edge: '#08142a', foam: '#9ad0e8', body: ['#1e5c9a', '#164a84', '#0f386a', '#0a2850'], ripple: ['#3a84c0', '#2c6caa', '#205490', '#163e72'] },
 };
@@ -94,11 +99,16 @@ export function colorize(tone: Uint8Array, palette: WaterPalette, step: number):
     [TONE.body]: rgb(palette.body[s]!),
     [TONE.ripple]: rgb(palette.ripple[s]!),
   };
+  const a = palette.alpha ?? {};
+  const alphas: Record<number, number> = {
+    [TONE.edge]: a.edge ?? 1, [TONE.foam]: a.foam ?? 1, [TONE.body]: a.body ?? 1, [TONE.ripple]: a.ripple ?? 1,
+  };
   const out = new Uint8ClampedArray(TILE * TILE * 4);
   for (let i = 0; i < tone.length; i++) {
     const c = colors[tone[i]!];
     if (!c) continue;
-    out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2]; out[i * 4 + 3] = 255;
+    out[i * 4] = c[0]; out[i * 4 + 1] = c[1]; out[i * 4 + 2] = c[2];
+    out[i * 4 + 3] = Math.round(255 * Math.min(1, Math.max(0, alphas[tone[i]!] ?? 1)));
   }
   return out;
 }

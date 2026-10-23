@@ -111,6 +111,46 @@ describe('generador de mapas por semilla', () => {
     });
   }
 
+  // La arena de un nivel puede ser de cualquier tamaño (la del juego es de 512x512, o sea 32x32 tiles).
+  // Con posiciones fijas pensadas para 40 columnas, una puerta caía fuera de la pared en las arenas más estrechas.
+  for (const [cols, rows] of [[32, 32], [40, 30], [48, 36]] as const) {
+    it(`en una arena de ${cols}x${rows} todo cae dentro y cada nivel tiene sus dos puertas`, () => {
+      for (const [name, base] of Object.entries(THEMES)) {
+        const spec = { ...base, cols, rows };
+        for (let seed = 1; seed <= 30; seed++) {
+          const l = generateLayout(spec, seed);
+          const doors = l.facade.map((p, x) => (p === spec.facade.door ? x : -1)).filter((x) => x >= 0);
+          expect(doors, `${name} ${cols}x${rows} semilla ${seed}`).toHaveLength(2);
+          for (const x of doors) { expect(x).toBeGreaterThanOrEqual(2); expect(x).toBeLessThanOrEqual(cols - 3); }
+          for (const s of l.sources) { expect(s.x).toBeGreaterThan(0); expect(s.x).toBeLessThan(cols * TILE); }
+          for (const m of l.materials) { expect(m.x).toBeLessThan(cols * TILE); expect(m.y).toBeLessThan(rows * TILE); }
+          const sx = Math.floor(l.spawn.x / TILE), sy = Math.floor((l.spawn.y - 2) / TILE);
+          expect(l.water[sy]![sx], `${name} ${cols}x${rows} semilla ${seed}: sale en el agua`).toBe('.');
+          expect(l.water).toHaveLength(rows);
+          const k = kinds(l);
+          if (spec.water.ocean) expect(k.ocean, `${name} ${cols}x${rows} semilla ${seed}: sin océano`).toBeGreaterThan(0);
+          if (spec.water.puddles > 0) expect(k.puddle, `${name} ${cols}x${rows} semilla ${seed}: sin charco`).toBeGreaterThan(0);
+        }
+      }
+    });
+  }
+
+  // Una L o una raya de tres charcos se lee como una tubería: los charcos son 1 celda, 2 pegadas o un 2x2
+  it('todos los charcos tienen forma de charco (1 celda, 2 pegadas o un 2x2), nunca una L ni una raya', () => {
+    for (const [name, base] of Object.entries(THEMES)) for (const [cols, rows] of [[32, 32], [40, 30]] as const) for (let seed = 1; seed <= 40; seed++) {
+      const l = generateLayout({ ...base, cols, rows }, seed);
+      l.masses.regionSizes.forEach((size, id) => {
+        if (size > 4) return;
+        const cells: Array<[number, number]> = [];
+        for (let i = 0; i < l.masses.region.length; i++) if (l.masses.region[i] === id) cells.push([i % cols, Math.floor(i / cols)]);
+        const w = Math.max(...cells.map((c) => c[0])) - Math.min(...cells.map((c) => c[0])) + 1;
+        const h = Math.max(...cells.map((c) => c[1])) - Math.min(...cells.map((c) => c[1])) + 1;
+        const ok = size <= 2 || (size === 4 && w === 2 && h === 2);
+        expect(ok, `${name} ${cols}x${rows} semilla ${seed}: charco de ${size} celdas en ${w}x${h}`).toBe(true);
+      });
+    }
+  });
+
   it('un tema sin agua no genera agua', () => {
     const dry = { ...MEDIEVAL, water: { ocean: false, lake: false, puddles: 0 } };
     for (let seed = 1; seed <= 10; seed++) expect(generateLayout(dry, seed).water.join('')).not.toContain('~');

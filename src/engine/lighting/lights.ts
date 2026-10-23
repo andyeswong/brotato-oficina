@@ -50,19 +50,27 @@ export interface SourcePreset {
 
 export const SOURCE_PRESETS: Record<SourceKind, SourcePreset> = {
   torch: { flame: { dx: 0, dy: -5 }, radius: 110, color: [1, 0.62, 0.28], intensity: 1.3, flicker: { amount: 0.25, speed: 9 } },
-  lamp: { flame: { dx: 0, dy: -3 }, radius: 100, color: [1, 0.82, 0.5], intensity: 1.1, flicker: { amount: 0.06, speed: 5 } },
+  // Para que se lea cálida el rojo tiene que subir bastante más que el azul: con [1, 0.92, 0.75] los tres canales llegan a 1 y sale blanca
+  lamp: { flame: { dx: 0, dy: -3 }, radius: 100, color: [1, 0.72, 0.38], intensity: 0.9, flicker: { amount: 0.06, speed: 5 } },
   brazier: { flame: { dx: 0, dy: -8 }, radius: 120, color: [1, 0.55, 0.22], intensity: 1.4, flicker: { amount: 0.3, speed: 8 } },
   'neon-pink': { flame: { dx: 0, dy: -1 }, radius: 64, color: [1, 0.31, 0.85], intensity: 1, flicker: { amount: 0.08, speed: 6 } },
   'neon-cyan': { flame: { dx: 0, dy: -1 }, radius: 64, color: [0.21, 0.95, 1], intensity: 1, flicker: { amount: 0.08, speed: 6 } },
   lantern: { flame: { dx: 0, dy: -2 }, radius: 78, color: [0.62, 0.85, 1], intensity: 0.9 },
 };
 
-// Un objeto que emite luz. (x, y) es el ancla del objeto en el mundo, en píxeles.
+// Un objeto que emite luz. (x, y) es el ancla del objeto en el mundo, en píxeles. Lo que no se da sale del
+// preset del tipo; los campos opcionales ajustan UNA fuente (cada dibujo tiene su llama a su altura, y un
+// ambiente claro pide menos intensidad que uno de noche: ver maxSafeIntensity).
 export interface LightSource {
   id: string;        // único en el nivel: de él sale la semilla del parpadeo, así que no cambia entre partidas
   kind: SourceKind;
   x: number;
   y: number;
+  sprite?: string;   // animación con la que la vista dibuja el objeto, con el pie en (x, y); la luz ni la mira
+  flame?: { dx: number; dy: number };      // dónde está la llama de ESTE dibujo, respecto al ancla
+  intensity?: number;
+  radius?: number;
+  color?: readonly [number, number, number];
 }
 
 function hashId(id: string): number {
@@ -74,12 +82,13 @@ function hashId(id: string): number {
 // La luz de una fuente: en su llama, con su color, su radio y su parpadeo
 export function lightOf(source: LightSource): Light {
   const p = SOURCE_PRESETS[source.kind];
+  const flame = source.flame ?? p.flame;
   return {
-    x: source.x + p.flame.dx,
-    y: source.y + p.flame.dy,
-    radius: p.radius,
-    color: p.color,
-    intensity: p.intensity,
+    x: source.x + flame.dx,
+    y: source.y + flame.dy,
+    radius: source.radius ?? p.radius,
+    color: source.color ?? p.color,
+    intensity: source.intensity ?? p.intensity,
     ...(p.flicker ? { flicker: { amount: p.flicker.amount, speed: p.flicker.speed, seed: hashId(source.id) } } : {}),
     source: source.id,
   };
@@ -87,4 +96,22 @@ export function lightOf(source: LightSource): Light {
 
 export function lightsOf(sources: readonly LightSource[]): Light[] {
   return sources.map(lightOf);
+}
+
+// La mayor intensidad con la que una luz de ese color NO pasa de 1 en ningún canal, contando el pico del
+// parpadeo, sobre ese ambiente. Por encima de 1 la capa ADD empieza a trabajar: con el sombreado por defecto
+// deja píxeles sueltos y bordes de color (cada canal pasa de 1 en un sitio distinto); con softGlow (shade.ts)
+// no hay ese problema y esto no hace falta. Medido por FERN: [1, 0.72, 0.38] sobre un ambiente de 0.6 -> 0.4.
+export function maxSafeIntensity(
+  ambient: readonly [number, number, number],
+  color: readonly [number, number, number],
+  flickerAmount = 0,
+): number {
+  let best = Infinity;
+  for (let ch = 0; ch < 3; ch++) {
+    const c = color[ch]!;
+    if (c <= 0) continue;
+    best = Math.min(best, Math.max(0, 1 - ambient[ch]!) / (c * (1 + flickerAmount)));
+  }
+  return best === Infinity ? 0 : best;
 }

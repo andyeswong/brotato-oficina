@@ -189,6 +189,29 @@ describe('piezas de agua', () => {
     expect(Array.from(shallow.slice(c, c + 3))).not.toEqual(Array.from(deep.slice(c, c + 3)));
   });
 
+  it('el charco es transparente (deja ver el suelo) y el lago y el océano siguen opacos', () => {
+    const tone = waterTone(index(255));
+    const alphaAt = (kind: 'puddle' | 'lake' | 'ocean') => colorize(tone, WATER_PALETTES[kind], 0)[(8 * TILE + 8) * 4 + 3]!;
+    expect(alphaAt('puddle')).toBeGreaterThan(60);
+    expect(alphaAt('puddle')).toBeLessThan(200);
+    expect(alphaAt('lake')).toBe(255);
+    expect(alphaAt('ocean')).toBe(255);
+    // el borde del charco es suave: menos opaco que el cuerpo del lago, y la esquina vacía sigue siendo transparente
+    const iso = colorize(waterTone(index(0)), WATER_PALETTES.puddle, 0);
+    expect(iso[3]).toBe(0);
+    const edgeAlpha = iso[(2 * TILE + 8) * 4 + 3]!;
+    expect(edgeAlpha).toBeGreaterThan(0);
+    expect(edgeAlpha).toBeLessThan(255);
+  });
+
+  it('el atlas lleva el alfa del charco en su fila', () => {
+    const atlas = buildWaterAtlas();
+    const r = cellRect(index(255), 'puddle', 0);
+    const a = atlas.data[((r.y + 8) * atlas.width + r.x + 8) * 4 + 3]!;
+    expect(a).toBeGreaterThan(0);
+    expect(a).toBeLessThan(255);
+  });
+
   it('el atlas tiene 47 columnas y 12 filas y cada celda cae donde cellRect dice', () => {
     const atlas = buildWaterAtlas();
     expect(atlas.width).toBe(47 * TILE);

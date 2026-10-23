@@ -4,12 +4,17 @@
 import type { LightField, Region } from './lightmap';
 
 export interface ShadeOptions {
-  steps: number;     // niveles por canal (p. ej. 5): menos niveles, más bandas marcadas
-  glow: number;      // cuánto de lo que pasa de 1 se suma como brillo (0..1)
-  dither: boolean;   // tramado ordenado en el borde de cada nivel
+  steps: number;       // niveles por canal (p. ej. 5): menos niveles, más bandas marcadas
+  glow: number;        // cuánto de lo que pasa de 1 se suma como brillo (0..1)
+  dither: boolean;     // tramado ordenado en el borde de cada nivel
+  // Brillo suave (recomendado): el exceso sobre 1 se mide en LUMINANCIA (un solo número por celda), con más niveles y
+  // sin trama, y se suma con el TONO de la luz (no blanco: el blanco lava el color y levanta los negros como una
+  // niebla). Sin esto el exceso se mide por canal y se trama: cada canal pasa de 1 en un sitio distinto, y salen bordes
+  // de color (rosa/amarillo) y píxeles blancos sueltos. Por defecto apagado: no cambia lo que ya se hornea.
+  softGlow: boolean;
 }
 
-export const DEFAULT_SHADE_OPTIONS: ShadeOptions = { steps: 5, glow: 0.4, dither: true };
+export const DEFAULT_SHADE_OPTIONS: ShadeOptions = { steps: 5, glow: 0.4, dither: true, softGlow: false };
 
 export interface LightLayers {
   width: number;
@@ -29,7 +34,7 @@ function quantize(v: number, steps: number, threshold: number): number {
 
 // Capas de luz a resolución de píxel. Cada celda del mapa de luz se repite (nearest), sin suavizar.
 export function buildLayers(field: LightField, region: Region, options: Partial<ShadeOptions> = {}): LightLayers {
-  const { steps, glow, dither } = { ...DEFAULT_SHADE_OPTIONS, ...options };
+  const { steps, glow, dither, softGlow } = { ...DEFAULT_SHADE_OPTIONS, ...options };
   const { width, height } = region;
   const multiply = new Uint8ClampedArray(width * height * 4);
   const add = new Uint8ClampedArray(width * height * 4);
@@ -40,6 +45,13 @@ export function buildLayers(field: LightField, region: Region, options: Partial<
       const i = (row * field.cols + col) * 3;
       const threshold = dither ? (BAYER[(y & 3) * 4 + (x & 3)]! + 0.5) / 16 : 0.5;
       const o = (y * width + x) * 4;
+      // Brillo suave: lo que la luminancia de la luz pasa de 1, sin trama y con el doble de niveles, con el tono de la luz
+      let soft = 0, peak = 1;
+      if (softGlow) {
+        const lum = 0.3 * field.total[i]! + 0.6 * field.total[i + 1]! + 0.1 * field.total[i + 2]!;
+        soft = quantize(Math.min(1, Math.max(0, lum - 1) * glow), steps * 2, 0.5);
+        peak = Math.max(field.total[i]!, field.total[i + 1]!, field.total[i + 2]!, 1e-6);
+      }
       for (let ch = 0; ch < 3; ch++) {
         const t = field.total[i + ch]!;
         const base = Math.min(1, field.ambient[ch]!);
@@ -48,7 +60,7 @@ export function buildLayers(field: LightField, region: Region, options: Partial<
         const room = 1 - base;
         const lit = room > 0 ? quantize(Math.min(1, Math.max(0, t - base) / room), steps, threshold) * room : 0;
         multiply[o + ch] = Math.round((base + lit) * 255);
-        add[o + ch] = Math.round(quantize(Math.min(1, Math.max(0, t - 1) * glow), steps, threshold) * 255);
+        add[o + ch] = Math.round((softGlow ? soft * Math.min(1, t / peak) : quantize(Math.min(1, Math.max(0, t - 1) * glow), steps, threshold)) * 255);
       }
       multiply[o + 3] = 255;
       add[o + 3] = 255;
