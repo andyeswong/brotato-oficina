@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { computeLight, lightIntensity, lightsOf, type Light, type LightField, type LightSource, type Region } from '../lighting';
+import { computeLight, lightIntensity, lightsOf, type Light, type LightField, type LightSource, type Occluder, type Region } from '../lighting';
 import { buildLayers } from '../lighting/shade';
 import { TERRAIN_TILE, type LevelModule } from '../registry/schemas';
 import { analyzeMasses, KIND_BY_ID } from '../terrain';
 import { buildWaterAtlas, cellRect, depthStep, TILE } from '../terrain/waterTiles';
 import { WALL, type Layout } from '../worldgen';
 import { animKey, frameOf, textureKey } from './anims';
-import { shadeBand } from './lightBands';
+import { shadeBand, shadowBox } from './lightBands';
 
 // Escenario del nivel que no es el suelo de losetas: el mapa generado (src/engine/worldgen), el agua
 // (src/engine/terrain) y la luz (src/engine/lighting). Todo opcional en el nivel; sin nada de eso la arena se
@@ -18,7 +18,9 @@ const WATER_DEPTH = 0.5;   // sobre el suelo (0) y debajo de los avisos (1) y lo
 const LIGHT_DEPTH = 40;    // sobre el mundo y debajo del texto flotante (50) y el HUD (100)
 const FLICKER_HZ = 8;      // cada parche de luz que parpadea se recalcula a este ritmo, no en cada cuadro
 const BANDS = 4;           // un repintado de parche se reparte en tantos cuadros
-const FLICKER_MIN = 0.1;   // un parpadeo menor no se ve con la luz cuantizada: esa luz se hornea fija
+const FLICKER_MIN = 0.01;  // un parpadeo menor se hornea fijo. Lo que no llega a cambiar un nivel de la luz cuantizada ya lo
+                           // deja fuera el recorte del parche (patchGeometry): no cuesta
+const BASE_TILE = 64;      // lado de las baldosas de la luz horneada
 let patches = 0;           // nombres únicos para las texturas de los parches, que se rehacen en cada oleada
 
 // Las texturas que dependen del mapa llevan su semilla en el nombre: al cambiar de partida se borran las viejas
@@ -123,6 +125,19 @@ interface Patch {
   flickering: Array<{ light: Light; unit: Float32Array }>;
   multiply: Phaser.Textures.CanvasTexture;
   add: Phaser.Textures.CanvasTexture;
+  pixels: Layers;    // lo que enseña ahora (la sombra del cuerpo se escribe encima)
+  shown: number;     // tick de lo que enseña; -1, neutro
+}
+
+interface BaseTile {
+  region: Region;
+  multiply: Phaser.Textures.CanvasTexture;
+  add: Phaser.Textures.CanvasTexture;
+}
+
+interface Layers {
+  multiply: Uint8ClampedArray;
+  add: Uint8ClampedArray;
 }
 
 // La luz va en coordenadas del mundo y las fuentes no se mueven: se hornea la arena entera UNA vez por mapa en
@@ -137,6 +152,13 @@ export class LightLayer {
   private readonly lights: Light[];
   private readonly opaque: (tx: number, ty: number) => boolean;
   private job: { patch: Patch; total: Float32Array; row: number; multiply: Uint8ClampedArray; add: Uint8ClampedArray } | null = null;
+  // La sombra del cuerpo: las capas de la arena en memoria, de quién es cada píxel (-1 la base, si no el índice
+  // del parche) y el recuadro que se pintó con sombra la última vez (hay que devolverlo a su luz al irse)
+  private readonly arena: Region;
+  private readonly base: { tiles: BaseTile[]; pixels: Layers };
+  private readonly owner: Int16Array;
+  private readonly patchOf = new Map<Light, Patch>();
+  private shadow: { box: Region | null; key: string } = { box: null, key: '' };
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -155,20 +177,38 @@ export class LightLayer {
         || (layout.pillar[ty * layout.cols + tx] === 1 && layout.prop[ty * layout.cols + tx] === 0)
       : () => false;
     const arena: Region = { x: 0, y: 0, width: level.arena.width, height: level.arena.height };
+    this.arena = arena;
     const geometry = flickerGroups(this.lights.filter(isFlickering), arena)
       .map((g) => this.patchGeometry(g))
       .filter((g): g is NonNullable<typeof g> => g !== null);
 
+    // La base se hornea una vez por mapa y se guarda entre oleadas (la escena se rehace en cada una). Va en
+    // baldosas de BASE_TILE: la sombra del cuerpo se escribe en memoria y se suben solo las baldosas que toca
+    // (subir la arena entera costaba 3 ms por cuadro, 11 ms con la CPU a 6x).
     const base = `light:${level.id}:${layout?.seed ?? 'fijo'}`;
-    if (freshKey(scene, `light:${level.id}:`, `${base}:multiply`)) {
-      scene.textures.remove(`${base}:add`);
+    for (const old of scene.textures.getTextureKeys()) if (old.startsWith(`light:${level.id}:`) && !old.startsWith(`${base}:`)) scene.textures.remove(old);
+    if (baked?.key !== base) {
       const t0 = performance.now();
       const layers = buildLayers(computeLight(arena, this.lights, { color: light.ambient }, this.opaque, 0), arena, light.shade);
       for (const g of geometry) clearRect(layers, arena.width, g.region);
-      canvasTexture(scene, `${base}:multiply`, layers.multiply, arena.width, arena.height);
-      canvasTexture(scene, `${base}:add`, layers.add, arena.width, arena.height);
+      baked = { key: base, pixels: layers };
       perfSample('light-bake', performance.now() - t0);
     }
+    const pixels = baked.pixels;
+    const tiles: BaseTile[] = [];
+    for (let y = 0; y < arena.height; y += BASE_TILE) for (let x = 0; x < arena.width; x += BASE_TILE) {
+      const region = { x, y, width: Math.min(BASE_TILE, arena.width - x), height: Math.min(BASE_TILE, arena.height - y) };
+      const texture = (layer: 'multiply' | 'add') => {
+        const key = `${base}:${layer}:${x},${y}`;
+        if (scene.textures.exists(key)) return scene.textures.get(key) as Phaser.Textures.CanvasTexture;
+        const t = scene.textures.createCanvas(key, region.width, region.height)!;
+        upload(t, pixels[layer], arena.width, region, region);
+        return t;
+      };
+      tiles.push({ region, multiply: texture('multiply'), add: texture('add') });
+    }
+    this.base = { tiles, pixels };
+    this.owner = new Int16Array(arena.width * arena.height).fill(-1);
     // El objeto del que sale cada fuente fija, ordenado por su pie como los personajes (se dibuja bajo la luz).
     // Las del mapa generado ya van dibujadas en su pieza de fachada o en su mueble.
     for (const s of light.sources) {
@@ -176,17 +216,24 @@ export class LightLayer {
       this.images.push(scene.add.sprite(s.x, s.y, textureKey('level', level.id)).setOrigin(0.5, 1)
         .setDepth(2 + s.y / 10000).play(animKey('level', level.id, s.sprite)));
     }
-    this.images.push(this.image(`${base}:multiply`, 0, 0, Phaser.BlendModes.MULTIPLY));
-    this.images.push(this.image(`${base}:add`, 0, 0, Phaser.BlendModes.ADD));
+    perfSample('patch-count', geometry.length);
+    perfSample('patch-px', geometry.reduce((n, g) => n + g.region.width * g.region.height, 0));
+    // Primero todas las que multiplican y luego todas las que suman: así se agrupan en pocas llamadas a la GPU
+    for (const t of tiles) this.images.push(this.image(t.multiply.key, t.region.x, t.region.y, Phaser.BlendModes.MULTIPLY));
+    for (const t of tiles) this.images.push(this.image(t.add.key, t.region.x, t.region.y, Phaser.BlendModes.ADD));
 
     geometry.forEach(({ region, base: field, flickering }, i) => {
       // Neutro hasta el primer update en que la cámara lo vea
       const n = patches++;
-      const multiply = canvasTexture(scene, `patch-multiply:${n}`, new Uint8ClampedArray(region.width * region.height * 4).fill(255), region.width, region.height);
-      const add = canvasTexture(scene, `patch-add:${n}`, new Uint8ClampedArray(region.width * region.height * 4), region.width, region.height);
+      const pixels = { multiply: new Uint8ClampedArray(region.width * region.height * 4).fill(255), add: new Uint8ClampedArray(region.width * region.height * 4) };
+      const multiply = canvasTexture(scene, `patch-multiply:${n}`, pixels.multiply, region.width, region.height);
+      const add = canvasTexture(scene, `patch-add:${n}`, pixels.add, region.width, region.height);
       this.images.push(this.image(multiply.key, region.x, region.y, Phaser.BlendModes.MULTIPLY));
       this.images.push(this.image(add.key, region.x, region.y, Phaser.BlendModes.ADD));
-      this.patches.push({ region, multiply, add, phase: i / geometry.length, tick: -1, base: field, flickering });
+      const patch: Patch = { region, multiply, add, pixels, shown: -1, phase: i / geometry.length, tick: -1, base: field, flickering };
+      this.patches.push(patch);
+      for (const { light: l } of flickering) this.patchOf.set(l, patch);
+      for (let y = region.y; y < region.y + region.height; y++) this.owner.fill(i, y * arena.width + region.x, y * arena.width + region.x + region.width);
     });
   }
 
@@ -264,12 +311,73 @@ export class LightLayer {
     if (y1 >= region.height) {
       paint(patch.multiply, multiply, region.width, region.height);
       paint(patch.add, add, region.width, region.height);
+      patch.pixels = { multiply, add };
+      patch.shown = patch.tick;
       this.job = null;
     }
     perfSample('light', performance.now() - t0);
   }
 
+  // La sombra de un cuerpo que se mueve (el personaje). Cada cuadro se recalcula solo el recuadro donde puede
+  // caer, con el recuadro de la vez anterior para borrar la vieja, y se escribe en la capa dueña de cada píxel
+  // (la base o un parche: si se pintara aparte, multiplicaría dos veces). Las luces que parpadean van con la
+  // intensidad que enseña su parche, para que no se vea la costura del recuadro.
+  updateShadow(body: Occluder | null): void {
+    const t0 = performance.now();
+    const raw = body ? shadowBox(this.lights, body) : null;
+    const box = raw ? boxOf(raw.x, raw.y, raw.x + raw.width, raw.y + raw.height, this.arena) : null;
+    const old = this.shadow.box;
+    // Se rehace si el cuerpo se mueve o si se repinta un parche que pisa su sombra (el parche nuevo no la lleva)
+    const near = this.patches.filter((p) => (box && overlaps(p.region, box)) || (old && overlaps(p.region, old)));
+    const key = body && box ? `${body.x},${body.y},${body.rx},${body.ry}|${near.map((p) => p.shown).join(',')}` : '';
+    if (key === this.shadow.key) return;
+    const boxes = !old ? (box ? [box] : []) : !box ? [old] : overlaps(old, box) ? [union(old, box, this.arena)] : [old, box];
+    this.shadow = { box, key };
+    const touched = new Set<Patch>();
+    for (const r of boxes) {
+      const lights = this.lights
+        .filter((l) => l.x + l.radius > r.x && l.x - l.radius < r.x + r.width && l.y + l.radius > r.y && l.y - l.radius < r.y + r.height)
+        .map((l) => {
+          const p = this.patchOf.get(l);
+          return { ...l, intensity: lightIntensity(l, p && p.shown >= 0 ? p.shown / FLICKER_HZ : 0), flicker: undefined };
+        });
+      const field = computeLight(r, lights, { color: this.light.ambient }, this.opaque, 0, { occluders: body ? [body] : [] });
+      const layers = buildLayers(field, r, this.light.shade);
+      this.write(layers, r, touched);
+    }
+    for (const r of boxes) for (const t of this.base.tiles) {
+      if (!overlaps(r, t.region)) continue;
+      upload(t.multiply, this.base.pixels.multiply, this.arena.width, t.region, r);
+      upload(t.add, this.base.pixels.add, this.arena.width, t.region, r);
+    }
+    for (const p of touched) {
+      paint(p.multiply, p.pixels.multiply, p.region.width, p.region.height);
+      paint(p.add, p.pixels.add, p.region.width, p.region.height);
+    }
+    perfSample('shadow', performance.now() - t0);
+  }
+
+  // Copia un recuadro sombreado en la capa dueña de cada píxel. Un parche que aún no se ha pintado (neutro)
+  // se deja como está: lo pintará su primer tick.
+  private write(layers: Layers, r: Region, touched: Set<Patch>): void {
+    const w = this.arena.width;
+    for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+      const ax = r.x + x, ay = r.y + y;
+      const owner = this.owner[ay * w + ax]!;
+      const from = (y * r.width + x) * 4;
+      let to: Layers, o: number;
+      if (owner < 0) { to = this.base.pixels; o = (ay * w + ax) * 4; } else {
+        const p = this.patches[owner]!;
+        if (p.shown < 0) continue;
+        touched.add(p);
+        to = p.pixels; o = ((ay - p.region.y) * p.region.width + ax - p.region.x) * 4;
+      }
+      for (let k = 0; k < 4; k++) { to.multiply[o + k] = layers.multiply[from + k]!; to.add[o + k] = layers.add[from + k]!; }
+    }
+  }
+
   destroy(): void {
+    this.updateShadow(null);   // la base guardada para la próxima oleada vuelve sin sombra
     for (const image of this.images) image.destroy();
     for (const p of this.patches) {
       p.multiply.destroy();
@@ -302,6 +410,14 @@ function flickerGroups(lights: readonly Light[], arena: Region): Region[] {
   return boxes;
 }
 
+function overlaps(a: Region, b: Region): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+function union(a: Region, b: Region, arena: Region): Region {
+  return boxOf(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.max(a.x + a.width, b.x + b.width), Math.max(a.y + a.height, b.y + b.height), arena);
+}
+
 function boxOf(x0: number, y0: number, x1: number, y1: number, arena: Region): Region {
   const ax = Math.max(arena.x, Math.floor(x0 / 4) * 4);
   const ay = Math.max(arena.y, Math.floor(y0 / 4) * 4);
@@ -317,6 +433,19 @@ function clearRect(layers: { multiply: Uint8ClampedArray; add: Uint8ClampedArray
     layers.multiply.fill(255, o, o + r.width * 4);
     for (let i = o; i < o + r.width * 4; i += 4) layers.add[i] = layers.add[i + 1] = layers.add[i + 2] = 0;
   }
+}
+
+// La luz horneada del último mapa, en memoria (la que se ve, con la sombra del cuerpo puesta: destroy la quita)
+let baked: { key: string; pixels: Layers } | null = null;
+
+// Sube a la baldosa `tile` la parte `dirty` de una capa del tamaño de la arena (de ancho `width`)
+function upload(texture: Phaser.Textures.CanvasTexture, data: Uint8ClampedArray, width: number, tile: Region, dirty: Region): void {
+  const x0 = Math.max(tile.x, dirty.x), y0 = Math.max(tile.y, dirty.y);
+  const x1 = Math.min(tile.x + tile.width, dirty.x + dirty.width), y1 = Math.min(tile.y + tile.height, dirty.y + dirty.height);
+  if (x1 <= x0 || y1 <= y0) return;
+  const image = new ImageData(data as Uint8ClampedArray<ArrayBuffer>, width, data.length / 4 / width);
+  texture.context.putImageData(image, -tile.x, -tile.y, x0, y0, x1 - x0, y1 - y0);
+  texture.refresh();
 }
 
 function canvasTexture(scene: Phaser.Scene, key: string, data: Uint8ClampedArray, width: number, height: number): Phaser.Textures.CanvasTexture {

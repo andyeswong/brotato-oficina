@@ -198,6 +198,9 @@ export class ArenaScene extends Phaser.Scene {
     const scroll = cameraScroll({ x: px, y: py - this.run.body.centerY }, cam, this.run.level.arena, this.hudHeight());
     cam.setScroll(scroll.x, scroll.y);
     this.light?.update(this.time.now / 1000, { x: scroll.x, y: scroll.y, width: cam.width, height: cam.height });
+    // El personaje tapa la luz: su cuerpo es una elipse del ancho de su círculo y el alto hasta su centro
+    const { radius, centerY } = this.run.body;
+    this.light?.updateShadow({ x: px, y: py - centerY, rx: radius, ry: centerY });
     this.input_.draw();
   }
 
