@@ -17,7 +17,9 @@ if (TILE !== TERRAIN_TILE) throw new Error(`las piezas de agua miden ${TILE} px 
 const WATER_DEPTH = 0.5;   // sobre el suelo (0) y debajo de los avisos (1) y los materiales (1.5)
 const LIGHT_DEPTH = 40;    // sobre el mundo y debajo del texto flotante (50) y el HUD (100)
 const FLICKER_HZ = 8;      // cada parche de luz que parpadea se recalcula a este ritmo, no en cada cuadro
-const BANDS = 4;           // un repintado de parche se reparte en tantos cuadros
+const LIGHT_MS = 3;        // ms por cuadro para recalcular luz (sombra + bandas de parche). Si no da para todos los parches
+                           // a FLICKER_HZ, parpadean más despacio en esa máquina, no más caro: con la CPU a x6 (6000 px por
+                           // cuadro) el p95 vuelve a 16,8 ms; en una máquina rápida caben enteros a 8 Hz
 const FLICKER_MIN = 0.01;  // un parpadeo menor se hornea fijo. Lo que no llega a cambiar un nivel de la luz cuantizada ya lo
                            // deja fuera el recorte del parche (patchGeometry): no cuesta
 const BASE_TILE = 64;      // lado de las baldosas de la luz horneada
@@ -151,6 +153,7 @@ export class LightLayer {
   private readonly patches: Patch[] = [];
   private readonly lights: Light[];
   private readonly opaque: (tx: number, ty: number) => boolean;
+  private msPerPx = 0.0005;   // lo que cuesta un píxel de banda en esta máquina (media móvil); empieza por lo de x6
   private job: { patch: Patch; total: Float32Array; row: number; multiply: Uint8ClampedArray; add: Uint8ClampedArray } | null = null;
   // La sombra del cuerpo: las capas de la arena en memoria, de quién es cada píxel (-1 la base, si no el índice
   // del parche) y el recuadro que se pintó con sombra la última vez (hay que devolverlo a su luz al irse)
@@ -158,7 +161,7 @@ export class LightLayer {
   private readonly base: { tiles: BaseTile[]; pixels: Layers };
   private readonly owner: Int16Array;
   private readonly patchOf = new Map<Light, Patch>();
-  private shadow: { box: Region | null; key: string } = { box: null, key: '' };
+  private shadow: { box: Region | null; key: string; layers: Layers | null } = { box: null, key: '', layers: null };
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -275,9 +278,9 @@ export class LightLayer {
   }
 
   // time en segundos; view, lo que enseña la cámara (en el mundo). Repinta el parche visible que más tiempo lleva
-  // sin pintarse, si ya le toca. Un repintado se reparte en BANDS cuadros (una banda horizontal por cuadro), así el
-  // coste de un cuadro es una fracción de un parche; los demás parches esperan a que acabe.
-  update(time: number, view: Region): void {
+  // sin pintarse, si ya le toca. Un repintado se reparte en bandas horizontales, una por cuadro y del tamaño que
+  // deja el presupuesto (LIGHT_MS menos `spentMs`, lo que ya gastó la sombra); los demás parches esperan a que acabe.
+  update(time: number, view: Region, spentMs = 0): void {
     if (!this.job) {
       let next: Patch | null = null;
       let due = 0;
@@ -290,39 +293,55 @@ export class LightLayer {
       }
       if (!next) return;
       next.tick = Math.floor(time * FLICKER_HZ + next.phase);
-      const total = Float32Array.from(next.base.total);
-      for (const { light, unit } of next.flickering) {
-        const k = lightIntensity(light, next.tick / FLICKER_HZ);
-        for (let i = 0; i < total.length; i++) total[i] = total[i]! + unit[i]! * k;
-      }
       const { width, height } = next.region;
-      this.job = { patch: next, total, row: 0, multiply: new Uint8ClampedArray(width * height * 4), add: new Uint8ClampedArray(width * height * 4) };
+      this.job = { patch: next, total: new Float32Array(next.base.total.length), row: 0, multiply: new Uint8ClampedArray(width * height * 4), add: new Uint8ClampedArray(width * height * 4) };
     }
-    const t0 = performance.now();
+    // Las filas que caben en lo que queda del presupuesto del cuadro (múltiplo de 4, al menos 4 si la sombra
+    // no ha gastado nada: si no, el parche espera al cuadro siguiente)
     const { patch, total, multiply, add } = this.job;
     const { region, base } = patch;
-    const rows = Math.ceil(region.height / BANDS / 4) * 4;
+    let rows = Math.floor((LIGHT_MS - spentMs) / this.msPerPx / region.width / 4) * 4;
+    if (rows < 4) {
+      if (spentMs > 0) return;
+      rows = 4;
+    }
+    const t0 = performance.now();
     const y0 = this.job.row;
     const y1 = Math.min(region.height, y0 + rows);
+    // La luz de esas filas: base más cada luz que parpadea con su intensidad en este tick
+    const from = (y0 / base.cell) * base.cols * 3;
+    const to = Math.min(base.rows, Math.ceil(y1 / base.cell)) * base.cols * 3;
+    total.set(base.total.subarray(from, to), from);
+    for (const { light, unit } of patch.flickering) {
+      const k = lightIntensity(light, patch.tick / FLICKER_HZ);
+      for (let i = from; i < to; i++) total[i] = total[i]! + unit[i]! * k;
+    }
     const band = shadeBand({ ...base, total }, region, y0, y1, this.light.shade);
     multiply.set(band.multiply, y0 * region.width * 4);
     add.set(band.add, y0 * region.width * 4);
     this.job.row = y1;
     if (y1 >= region.height) {
-      paint(patch.multiply, multiply, region.width, region.height);
-      paint(patch.add, add, region.width, region.height);
+      // La sombra va encima del parche nuevo desde ya (la del cuadro anterior; el siguiente la recalcula con su tick)
       patch.pixels = { multiply, add };
       patch.shown = patch.tick;
+      const { box, layers } = this.shadow;
+      if (box && layers && overlaps(box, region)) this.write(layers, box, new Set(), patch);
+      paint(patch.multiply, multiply, region.width, region.height);
+      paint(patch.add, add, region.width, region.height);
+      perfSample('repaint', time);
       this.job = null;
     }
-    perfSample('light', performance.now() - t0);
+    const ms = performance.now() - t0;
+    this.msPerPx = 0.8 * this.msPerPx + 0.2 * Math.max(ms, 0.05) / ((y1 - y0) * region.width);
+    perfSample('light', ms);
   }
 
   // La sombra de un cuerpo que se mueve (el personaje). Cada cuadro se recalcula solo el recuadro donde puede
   // caer, con el recuadro de la vez anterior para borrar la vieja, y se escribe en la capa dueña de cada píxel
   // (la base o un parche: si se pintara aparte, multiplicaría dos veces). Las luces que parpadean van con la
   // intensidad que enseña su parche, para que no se vea la costura del recuadro.
-  updateShadow(body: Occluder | null): void {
+  // Devuelve los ms que ha gastado, que se descuentan del presupuesto de los parches en ese cuadro.
+  updateShadow(body: Occluder | null): number {
     const t0 = performance.now();
     const raw = body ? shadowBox(this.lights, body) : null;
     const box = raw ? boxOf(raw.x, raw.y, raw.x + raw.width, raw.y + raw.height, this.arena) : null;
@@ -330,9 +349,9 @@ export class LightLayer {
     // Se rehace si el cuerpo se mueve o si se repinta un parche que pisa su sombra (el parche nuevo no la lleva)
     const near = this.patches.filter((p) => (box && overlaps(p.region, box)) || (old && overlaps(p.region, old)));
     const key = body && box ? `${body.x},${body.y},${body.rx},${body.ry}|${near.map((p) => p.shown).join(',')}` : '';
-    if (key === this.shadow.key) return;
+    if (key === this.shadow.key) return 0;
     const boxes = !old ? (box ? [box] : []) : !box ? [old] : overlaps(old, box) ? [union(old, box, this.arena)] : [old, box];
-    this.shadow = { box, key };
+    this.shadow = { box, key, layers: null };
     const touched = new Set<Patch>();
     for (const r of boxes) {
       const lights = this.lights
@@ -344,6 +363,10 @@ export class LightLayer {
       const field = computeLight(r, lights, { color: this.light.ambient }, this.opaque, 0, { occluders: body ? [body] : [] });
       const layers = buildLayers(field, r, this.light.shade);
       this.write(layers, r, touched);
+      // Se guarda la sombra actual, para ponerla encima de un parche que acabe de repintarse
+      if (box && (r.x <= box.x && r.y <= box.y && r.x + r.width >= box.x + box.width && r.y + r.height >= box.y + box.height)) {
+        this.shadow.layers = crop(layers, r, box);
+      }
     }
     for (const r of boxes) for (const t of this.base.tiles) {
       if (!overlaps(r, t.region)) continue;
@@ -354,21 +377,26 @@ export class LightLayer {
       paint(p.multiply, p.pixels.multiply, p.region.width, p.region.height);
       paint(p.add, p.pixels.add, p.region.width, p.region.height);
     }
-    perfSample('shadow', performance.now() - t0);
+    const ms = performance.now() - t0;
+    perfSample('shadow', ms);
+    return ms;
   }
 
   // Copia un recuadro sombreado en la capa dueña de cada píxel. Un parche que aún no se ha pintado (neutro)
   // se deja como está: lo pintará su primer tick.
-  private write(layers: Layers, r: Region, touched: Set<Patch>): void {
+  private write(layers: Layers, r: Region, touched: Set<Patch>, only?: Patch): void {
     const w = this.arena.width;
     for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
       const ax = r.x + x, ay = r.y + y;
       const owner = this.owner[ay * w + ax]!;
       const from = (y * r.width + x) * 4;
       let to: Layers, o: number;
-      if (owner < 0) { to = this.base.pixels; o = (ay * w + ax) * 4; } else {
+      if (owner < 0) {
+        if (only) continue;
+        to = this.base.pixels; o = (ay * w + ax) * 4;
+      } else {
         const p = this.patches[owner]!;
-        if (p.shown < 0) continue;
+        if (p.shown < 0 || (only && p !== only)) continue;
         touched.add(p);
         to = p.pixels; o = ((ay - p.region.y) * p.region.width + ax - p.region.x) * 4;
       }
@@ -408,6 +436,18 @@ function flickerGroups(lights: readonly Light[], arena: Region): Region[] {
     }
   }
   return boxes;
+}
+
+// El trozo `inner` de unas capas que cubren `outer`
+function crop(layers: Layers, outer: Region, inner: Region): Layers {
+  if (outer.x === inner.x && outer.y === inner.y && outer.width === inner.width && outer.height === inner.height) return layers;
+  const out = { multiply: new Uint8ClampedArray(inner.width * inner.height * 4), add: new Uint8ClampedArray(inner.width * inner.height * 4) };
+  for (let y = 0; y < inner.height; y++) {
+    const from = ((inner.y - outer.y + y) * outer.width + inner.x - outer.x) * 4;
+    out.multiply.set(layers.multiply.subarray(from, from + inner.width * 4), y * inner.width * 4);
+    out.add.set(layers.add.subarray(from, from + inner.width * 4), y * inner.width * 4);
+  }
+  return out;
 }
 
 function overlaps(a: Region, b: Region): boolean {
