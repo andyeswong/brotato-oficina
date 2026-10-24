@@ -195,7 +195,7 @@ export class ArenaScene extends Phaser.Scene {
 
     // La cámara se pega a la posición YA redondeada: si se redondean por separado, el personaje tiembla 1 px
     const cam = this.cameras.main;
-    const scroll = cameraScroll({ x: px, y: py - this.run.body.centerY }, cam, this.run.level.arena);
+    const scroll = cameraScroll({ x: px, y: py - this.run.body.centerY }, cam, this.run.level.arena, this.hudHeight());
     cam.setScroll(scroll.x, scroll.y);
     this.light?.update(this.time.now / 1000, { x: scroll.x, y: scroll.y, width: cam.width, height: cam.height });
     this.input_.draw();
@@ -393,6 +393,15 @@ export class ArenaScene extends Phaser.Scene {
     const icon = this.hud.materialIcon.setScale(u).setPosition(4 * u, (4 + BAR_H + 3) * u);
     this.hud.materials.setPosition(icon.x + icon.displayWidth + 3 * u, icon.y + Math.round((icon.displayHeight - FONT_SIZE * u) / 2) + u);
     this.placeWave();
+  }
+
+  // Lo que mide el HUD de arriba, en píxeles lógicos: la vida y los materiales a la izquierda, la oleada y el
+  // tiempo en el centro, con un píxel de aire
+  private hudHeight(): number {
+    const u = uiScale();
+    const left = this.hud.materialIcon.y + this.hud.materialIcon.displayHeight;
+    const center = (3 + FONT_SIZE + 3 + FONT_SIZE) * u;
+    return Math.ceil(Math.max(left, center)) + 2 * u;
   }
 
   // "OLEADA" va centrada; si en una pantalla estrecha chocaría con la vida, pasa a la esquina derecha

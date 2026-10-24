@@ -62,7 +62,8 @@ export default defineLevel({
   // Las luces salen de las piezas que emiten (fachada y muebles). softGlow: lo que pasa de 1 se mide en
   // luminancia y sin trama, así las intensidades de noche no dejan bordes de color ni puntos sueltos.
   light: {
-    ambient: [0.42, 0.46, 0.66],
+    // Más claro que la noche del medieval: con 0,42 MAIA se perdía en el suelo (MAIA, 2026-10-23)
+    ambient: [0.55, 0.58, 0.8],
     shade: { steps: 8, softGlow: true },
   },
 });

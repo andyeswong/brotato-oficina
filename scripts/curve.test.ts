@@ -27,7 +27,25 @@ function kite(world: World, run: Run): Point {
     if (d2 < 120 * 120) { fx += (dx / d2) * 150; fy += (dy / d2) * 150; }
   }
   const len = Math.hypot(fx, fy);
-  return len > 0.05 ? { x: fx / len, y: fy / len } : { x: 0, y: 0 };
+  return len > 0.05 ? steer(run, p, { x: fx / len, y: fy / len }) : { x: 0, y: 0 };
+}
+
+// Rodeo local: si 14 px por delante de los pies hay una pared, una columna o un mueble, prueba a girar 30°, 60°…
+// hacia uno y otro lado y toma el primer camino libre. Sin esto el piloto se queda pegado y mide al piloto, no el mapa.
+function steer(run: Run, p: Point, dir: Point): Point {
+  const o = run.obstacles;
+  if (!o) return dir;
+  const free = (d: Point) => [8, 14].every((k) => !o.solidAt(p.x + d.x * k, p.y - run.body.radius + d.y * k));
+  if (free(dir)) return dir;
+  const a = Math.atan2(dir.y, dir.x);
+  for (let step = 1; step <= 5; step++) {
+    for (const sign of [1, -1]) {
+      const b = a + sign * step * (Math.PI / 6);
+      const d = { x: Math.cos(b), y: Math.sin(b) };
+      if (free(d)) return d;
+    }
+  }
+  return dir;
 }
 
 // Compra: primero armas que MAIA no tenga (su pasivo premia la variedad), luego cualquier arma, luego ítems.

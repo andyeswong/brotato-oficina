@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
-import { computeLight, lightsOf, type Light, type LightSource, type Region } from '../lighting';
+import { computeLight, lightIntensity, lightsOf, type Light, type LightField, type LightSource, type Region } from '../lighting';
 import { buildLayers } from '../lighting/shade';
 import { TERRAIN_TILE, type LevelModule } from '../registry/schemas';
 import { analyzeMasses, KIND_BY_ID } from '../terrain';
 import { buildWaterAtlas, cellRect, depthStep, TILE } from '../terrain/waterTiles';
 import { WALL, type Layout } from '../worldgen';
 import { animKey, frameOf, textureKey } from './anims';
+import { shadeBand } from './lightBands';
 
 // Escenario del nivel que no es el suelo de losetas: el mapa generado (src/engine/worldgen), el agua
 // (src/engine/terrain) y la luz (src/engine/lighting). Todo opcional en el nivel; sin nada de eso la arena se
@@ -15,7 +16,8 @@ if (TILE !== TERRAIN_TILE) throw new Error(`las piezas de agua miden ${TILE} px 
 
 const WATER_DEPTH = 0.5;   // sobre el suelo (0) y debajo de los avisos (1) y los materiales (1.5)
 const LIGHT_DEPTH = 40;    // sobre el mundo y debajo del texto flotante (50) y el HUD (100)
-const FLICKER_HZ = 12;     // la luz que parpadea se recalcula a este ritmo, no en cada cuadro
+const FLICKER_HZ = 8;      // cada parche de luz que parpadea se recalcula a este ritmo, no en cada cuadro
+const BANDS = 4;           // un repintado de parche se reparte en tantos cuadros
 const FLICKER_MIN = 0.1;   // un parpadeo menor no se ve con la luz cuantizada: esa luz se hornea fija
 let patches = 0;           // nombres únicos para las texturas de los parches, que se rehacen en cada oleada
 
@@ -113,13 +115,20 @@ export function drawWater(scene: Phaser.Scene, level: LevelModule, layout: Layou
 
 interface Patch {
   region: Region;
+  phase: number;     // desfase en ticks (0..1): los parches no tocan todos en el mismo cuadro
+  tick: number;      // último tick pintado
+  // La geometría de la luz (distancias y sombras) no cambia: se calcula una vez. Cada tick solo se suma la base
+  // (ambiente + luces fijas) y la luz de cada una que parpadea, escalada por su intensidad en ese instante.
+  base: LightField;
+  flickering: Array<{ light: Light; unit: Float32Array }>;
   multiply: Phaser.Textures.CanvasTexture;
   add: Phaser.Textures.CanvasTexture;
 }
 
 // La luz va en coordenadas del mundo y las fuentes no se mueven: se hornea la arena entera UNA vez por mapa en
 // dos capas (una multiplica, ambiente y sombra; la otra suma, lo que deslumbra). Las luces que parpadean de
-// verdad se recalculan a FLICKER_HZ en parches: uno por grupo de luces que se tocan, y solo si la cámara lo ve.
+// verdad se recalculan a FLICKER_HZ en parches: uno por grupo de luces que se tocan, solo si la cámara lo ve, y
+// como mucho uno por cuadro (desfasados entre sí), para que el coste de un cuadro sea el de un parche.
 // En la base, el sitio de cada parche queda neutro (blanco en la que multiplica, negro en la que suma). Así el
 // coste no depende del scroll ni del tamaño de la pantalla.
 export class LightLayer {
@@ -127,7 +136,7 @@ export class LightLayer {
   private readonly patches: Patch[] = [];
   private readonly lights: Light[];
   private readonly opaque: (tx: number, ty: number) => boolean;
-  private lastTick = -1;
+  private job: { patch: Patch; total: Float32Array; row: number; multiply: Uint8ClampedArray; add: Uint8ClampedArray } | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -146,14 +155,16 @@ export class LightLayer {
         || (layout.pillar[ty * layout.cols + tx] === 1 && layout.prop[ty * layout.cols + tx] === 0)
       : () => false;
     const arena: Region = { x: 0, y: 0, width: level.arena.width, height: level.arena.height };
-    const groups = flickerGroups(this.lights.filter((l) => (l.flicker?.amount ?? 0) >= FLICKER_MIN), arena);
+    const geometry = flickerGroups(this.lights.filter(isFlickering), arena)
+      .map((g) => this.patchGeometry(g))
+      .filter((g): g is NonNullable<typeof g> => g !== null);
 
     const base = `light:${level.id}:${layout?.seed ?? 'fijo'}`;
     if (freshKey(scene, `light:${level.id}:`, `${base}:multiply`)) {
       scene.textures.remove(`${base}:add`);
       const t0 = performance.now();
       const layers = buildLayers(computeLight(arena, this.lights, { color: light.ambient }, this.opaque, 0), arena, light.shade);
-      for (const g of groups) clearRect(layers, arena.width, g);
+      for (const g of geometry) clearRect(layers, arena.width, g.region);
       canvasTexture(scene, `${base}:multiply`, layers.multiply, arena.width, arena.height);
       canvasTexture(scene, `${base}:add`, layers.add, arena.width, arena.height);
       perfSample('light-bake', performance.now() - t0);
@@ -168,35 +179,94 @@ export class LightLayer {
     this.images.push(this.image(`${base}:multiply`, 0, 0, Phaser.BlendModes.MULTIPLY));
     this.images.push(this.image(`${base}:add`, 0, 0, Phaser.BlendModes.ADD));
 
-    for (const region of groups) {
+    geometry.forEach(({ region, base: field, flickering }, i) => {
       // Neutro hasta el primer update en que la cámara lo vea
       const n = patches++;
       const multiply = canvasTexture(scene, `patch-multiply:${n}`, new Uint8ClampedArray(region.width * region.height * 4).fill(255), region.width, region.height);
       const add = canvasTexture(scene, `patch-add:${n}`, new Uint8ClampedArray(region.width * region.height * 4), region.width, region.height);
       this.images.push(this.image(multiply.key, region.x, region.y, Phaser.BlendModes.MULTIPLY));
       this.images.push(this.image(add.key, region.x, region.y, Phaser.BlendModes.ADD));
-      this.patches.push({ region, multiply, add });
-    }
+      this.patches.push({ region, multiply, add, phase: i / geometry.length, tick: -1, base: field, flickering });
+    });
   }
 
-  // time en segundos; view, lo que enseña la cámara (en el mundo)
-  update(time: number, view: Region): void {
-    if (this.patches.length === 0) return;
-    const tick = Math.floor(time * FLICKER_HZ);
-    if (tick === this.lastTick) return;
-    this.lastTick = tick;
-    const t0 = performance.now();
-    let painted = 0;
-    for (const { region, multiply, add } of this.patches) {
-      if (region.x >= view.x + view.width || region.y >= view.y + view.height
-        || region.x + region.width <= view.x || region.y + region.height <= view.y) continue;
-      const field = computeLight(region, this.lights, { color: this.light.ambient }, this.opaque, tick / FLICKER_HZ);
-      const layers = buildLayers(field, region, this.light.shade);
-      paint(multiply, layers.multiply, region.width, region.height);
-      paint(add, layers.add, region.width, region.height);
-      painted++;
+  // La geometría de un parche: base (ambiente + luces fijas) y la luz de cada una que parpadea con intensidad 1.
+  // El recuadro se recorta a los píxeles que el parpadeo llega a cambiar: con todas al mínimo y todas al máximo
+  // de su parpadeo, donde las capas salen iguales no cambia nada nunca y lo pinta la base. Sin nada, sin parche.
+  private patchGeometry(group: Region): Pick<Patch, 'region' | 'base' | 'flickering'> | null {
+    const fields = (region: Region) => {
+      const inside = (l: Light) => l.x + l.radius > region.x && l.x - l.radius < region.x + region.width
+        && l.y + l.radius > region.y && l.y - l.radius < region.y + region.height;
+      const near = this.lights.filter(inside);
+      return {
+        region,
+        base: computeLight(region, near.filter((l) => !isFlickering(l)), { color: this.light.ambient }, this.opaque, 0),
+        flickering: near.filter(isFlickering).map((l) => ({
+          light: l,
+          unit: computeLight(region, [{ ...l, intensity: 1, flicker: undefined }], { color: [0, 0, 0] }, this.opaque, 0).total,
+        })),
+      };
+    };
+    const whole = fields(group);
+    const at = (k: (l: Light) => number) => {
+      const total = Float32Array.from(whole.base.total);
+      for (const { light, unit } of whole.flickering) for (let i = 0; i < total.length; i++) total[i] = total[i]! + unit[i]! * k(light);
+      return buildLayers({ ...whole.base, total }, group, this.light.shade);
+    };
+    const lo = at((l) => l.intensity * (1 - l.flicker!.amount));
+    const hi = at((l) => l.intensity * (1 + l.flicker!.amount));
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (let y = 0; y < group.height; y++) for (let x = 0; x < group.width; x++) {
+      const o = (y * group.width + x) * 4;
+      if (lo.multiply[o] === hi.multiply[o] && lo.multiply[o + 1] === hi.multiply[o + 1] && lo.multiply[o + 2] === hi.multiply[o + 2]
+        && lo.add[o] === hi.add[o] && lo.add[o + 1] === hi.add[o + 1] && lo.add[o + 2] === hi.add[o + 2]) continue;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
     }
-    if (painted > 0) perfSample('light', performance.now() - t0);
+    if (x1 < 0) return null;
+    const arena: Region = { x: group.x, y: group.y, width: group.width, height: group.height };
+    return fields(boxOf(group.x + x0, group.y + y0, group.x + x1 + 1, group.y + y1 + 1, arena));
+  }
+
+  // time en segundos; view, lo que enseña la cámara (en el mundo). Repinta el parche visible que más tiempo lleva
+  // sin pintarse, si ya le toca. Un repintado se reparte en BANDS cuadros (una banda horizontal por cuadro), así el
+  // coste de un cuadro es una fracción de un parche; los demás parches esperan a que acabe.
+  update(time: number, view: Region): void {
+    if (!this.job) {
+      let next: Patch | null = null;
+      let due = 0;
+      for (const p of this.patches) {
+        const { region } = p;
+        if (region.x >= view.x + view.width || region.y >= view.y + view.height
+          || region.x + region.width <= view.x || region.y + region.height <= view.y) continue;
+        const tick = Math.floor(time * FLICKER_HZ + p.phase);
+        if (tick !== p.tick && (!next || tick - p.tick > due)) { next = p; due = tick - p.tick; }
+      }
+      if (!next) return;
+      next.tick = Math.floor(time * FLICKER_HZ + next.phase);
+      const total = Float32Array.from(next.base.total);
+      for (const { light, unit } of next.flickering) {
+        const k = lightIntensity(light, next.tick / FLICKER_HZ);
+        for (let i = 0; i < total.length; i++) total[i] = total[i]! + unit[i]! * k;
+      }
+      const { width, height } = next.region;
+      this.job = { patch: next, total, row: 0, multiply: new Uint8ClampedArray(width * height * 4), add: new Uint8ClampedArray(width * height * 4) };
+    }
+    const t0 = performance.now();
+    const { patch, total, multiply, add } = this.job;
+    const { region, base } = patch;
+    const rows = Math.ceil(region.height / BANDS / 4) * 4;
+    const y0 = this.job.row;
+    const y1 = Math.min(region.height, y0 + rows);
+    const band = shadeBand({ ...base, total }, region, y0, y1, this.light.shade);
+    multiply.set(band.multiply, y0 * region.width * 4);
+    add.set(band.add, y0 * region.width * 4);
+    this.job.row = y1;
+    if (y1 >= region.height) {
+      paint(patch.multiply, multiply, region.width, region.height);
+      paint(patch.add, add, region.width, region.height);
+      this.job = null;
+    }
+    perfSample('light', performance.now() - t0);
   }
 
   destroy(): void {
@@ -211,6 +281,8 @@ export class LightLayer {
     return this.scene.add.image(x, y, key).setOrigin(0, 0).setDepth(LIGHT_DEPTH).setBlendMode(blend);
   }
 }
+
+const isFlickering = (l: Light) => (l.flicker?.amount ?? 0) >= FLICKER_MIN;
 
 // Recuadros que cubren a las luces que parpadean: uno por grupo de luces cuyos recuadros se tocan, para que
 // dos parches nunca se pisen (multiplicarían dos veces). Con esquinas múltiplos de 4: así la trama (4×4) y

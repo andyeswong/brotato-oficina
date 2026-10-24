@@ -103,6 +103,12 @@ describe('la cámara no enseña el vacío', () => {
     }
   });
 
+  it('con el HUD arriba, la cámara sube lo que mide el HUD por encima de la arena y nada más', () => {
+    expect(cameraScroll({ x: 320, y: 0 }, view, arena, 26)).toEqual({ x: 80, y: -26 });
+    expect(cameraScroll({ x: 320, y: 320 }, view, arena, 26)).toEqual({ x: 80, y: 185 });
+    expect(cameraScroll({ x: 640, y: 640 }, view, arena, 26)).toEqual({ x: 160, y: 370 });
+  });
+
   it('si la arena es más pequeña que la vista en un eje, se centra en ese eje', () => {
     expect(cameraScroll({ x: 100, y: 300 }, { width: 270, height: 480 }, { width: 200, height: 640 }))
       .toEqual({ x: -35, y: 60 });
