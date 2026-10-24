@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import type { CharacterModule, LevelModule, StatModule } from '../../registry/schemas';
+import type { CharacterModule, StatModule } from '../../registry/schemas';
 import type { Registry } from '../../registry/validate';
+import { pickLevel } from '../../sim/map';
 import { Run } from '../../sim/Run';
 import { describeModifier } from '../../stats/describe';
 import { frameOf, textureKey } from '../anims';
@@ -17,16 +18,14 @@ const PORTRAIT_H = 48;      // alto objetivo del retrato a escala x1 de la UI
 // desventajas, arma inicial) se escribe sola desde sus datos. Teclado: 1–9 elige, Intro elige el marcado.
 export class SelectScene extends Phaser.Scene {
   private registry_!: Registry;
-  private level!: LevelModule;
   private selected = 0;
 
   constructor() {
     super('Select');
   }
 
-  init(data: { registry: Registry; level: LevelModule }): void {
+  init(data: { registry: Registry }): void {
     this.registry_ = data.registry;
-    this.level = data.level;
     this.selected = 0;
   }
 
@@ -54,7 +53,9 @@ export class SelectScene extends Phaser.Scene {
   private start(i: number): void {
     const character = this.registry_.characters()[i];
     if (!character) return;
-    this.scene.start('Arena', { run: new Run(this.registry_, character, this.level) });
+    // El mapa (y con él el tema) sale de la semilla de la partida
+    const seed = Date.now() >>> 0;
+    this.scene.start('Arena', { run: new Run(this.registry_, character, pickLevel(this.registry_.levels(), seed), seed) });
   }
 
   private draw(): void {

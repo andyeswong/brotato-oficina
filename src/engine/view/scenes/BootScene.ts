@@ -3,6 +3,7 @@ import { formatErrors } from '../../registry/ContentError';
 import { discoverContent } from '../../registry/discover';
 import type { Sprites } from '../../registry/schemas';
 import { validateContent, type Registry } from '../../registry/validate';
+import { pickLevel } from '../../sim/map';
 import { Run } from '../../sim/Run';
 import { createAnims, loadSheet, textureKey } from '../anims';
 import { createPixelFont } from '../font';
@@ -34,9 +35,17 @@ export class BootScene extends Phaser.Scene {
     createPixelFont(this);
     for (const [kind, id, sprites] of this.sheets()) createAnims(this, textureKey(kind, id), sprites, kind, id);
 
-    // Un solo nivel por ahora: el primero. Con parámetros de prueba, también el primer personaje
+    // El nivel (el tema del mapa) sale de la semilla de la partida. Con parámetros de prueba, el primer personaje
+    //   ?seed=123  fija la semilla (y con ella el mapa)    ?level=medieval  fuerza ese nivel
     const character = this.registry_.characters()[0];
-    const level = this.registry_.levels()[0];
+    const query = new URLSearchParams(location.search);
+    const seed = query.has('seed') && Number.isInteger(Number(query.get('seed'))) ? Number(query.get('seed')) >>> 0 : Date.now() >>> 0;
+    const forced = query.get('level');
+    if (forced && !this.registry_.has('level', forced)) {
+      showContentErrors(`✗ ?level= pide un nivel que no existe: ${forced}.\n\n  Hay: ${this.registry_.ids('level').join(', ')}`);
+      return;
+    }
+    const level = forced ? this.registry_.level(forced) : this.registry_.levels().length ? pickLevel(this.registry_.levels(), seed) : undefined;
     if (!character || !level) {
       showContentErrors('✗ No hay ningún personaje o ningún nivel en src/content/.');
       return;
@@ -44,7 +53,6 @@ export class BootScene extends Phaser.Scene {
     // Parámetros de prueba (para verificar sin jugar hasta ahí):
     //   ?weapons=buzon,regla  armas iniciales   ?wave=4  empezar en esa oleada
     //   ?materials=50  materiales iniciales      ?shop    empezar en la tienda
-    const query = new URLSearchParams(location.search);
     const override = query.get('weapons');
     const weapons = override?.split(',').map((w) => w.trim()).filter(Boolean);
     const unknown = weapons?.filter((w) => !this.registry_.has('weapon', w)) ?? [];
@@ -53,11 +61,11 @@ export class BootScene extends Phaser.Scene {
       return;
     }
     // Sin parámetros de prueba, se empieza eligiendo agente
-    if (!['weapons', 'wave', 'materials', 'shop'].some((k) => query.has(k))) {
-      this.scene.start('Select', { registry: this.registry_, level });
+    if (!['weapons', 'wave', 'materials', 'shop', 'seed', 'level'].some((k) => query.has(k))) {
+      this.scene.start('Select', { registry: this.registry_ });
       return;
     }
-    const run = new Run(this.registry_, character, level, undefined, { weapons });
+    const run = new Run(this.registry_, character, level, seed, { weapons });
     const wave = Number(query.get('wave'));
     if (Number.isInteger(wave) && wave >= 1) run.waveIndex = Math.min(wave, run.totalWaves) - 1;
     const materials = Number(query.get('materials'));

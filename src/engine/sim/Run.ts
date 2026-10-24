@@ -3,9 +3,11 @@ import { MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
 import { resolveBody, type Body } from './body';
+import { levelLayout, Obstacles } from './map';
 import { createRng, type Rng } from './rng';
 import { Shop, type ShopResult } from './Shop';
 import { World } from './World';
+import type { Layout } from '../worldgen';
 
 interface HookSource {
   id: string; // "character:maia", "item:cafe#2"…
@@ -27,6 +29,9 @@ export class Run {
   readonly items: string[] = [];
   readonly shop: Shop;
   world: World | null = null;
+  // El mapa de la partida si el nivel es generado (sale de la semilla y dura todas las oleadas)
+  readonly layout: Layout | null;
+  readonly obstacles: Obstacles | null;
 
   // La vista se engancha aquí
   onFloatingText: (text: string, at?: Point) => void = () => {};
@@ -44,6 +49,8 @@ export class Run {
     options: { weapons?: string[] } = {},
   ) {
     this.rng = createRng(seed);
+    this.layout = levelLayout(level, seed);
+    this.obstacles = this.layout ? new Obstacles(this.layout) : null;
     this.body = resolveBody(character);
     const defs = new Map<string, StatDef>(registry.stats().map((s) => [s.id, s]));
     this.stats = new StatSheet(defs, character.baseStats, (c) => this.counter(c as CounterId));
@@ -86,6 +93,8 @@ export class Run {
       waveNumber: this.waveNumber,
       arena: this.level.arena,
       spawn: this.level.spawn,
+      obstacles: this.obstacles,
+      ...(this.layout ? { start: this.layout.spawn } : {}),
       body: this.body,
       weapons: this.weapons,
       rng: this.rng,

@@ -8,7 +8,7 @@ import { cameraScroll } from '../camera';
 import { FONT_SIZE, fontSizeFor, text, uiScale } from '../font';
 import { MoveInput } from '../input';
 import { setPaused, showContentErrors } from '../overlay';
-import { drawWater, LightLayer } from '../scenery';
+import { drawMap, drawWater, LightLayer } from '../scenery';
 
 const STEP = 1 / 60;          // la simulación corre a paso fijo
 const MAX_STEPS = 5;          // tras un tirón no se intenta recuperar más de 5 pasos
@@ -77,9 +77,12 @@ export class ArenaScene extends Phaser.Scene {
 
   create(): void {
     const { width, height } = this.run.level.arena;
-    this.drawFloor(width, height);
-    drawWater(this, this.run.level);
-    this.light = this.run.level.light ? new LightLayer(this, this.run.level.light, this.run.level) : null;
+    const { level, layout } = this.run;
+    if (layout) drawMap(this, level, layout);
+    else this.drawFloor(width, height);
+    this.cameras.main.setBackgroundColor('#12101c');
+    drawWater(this, level, layout);
+    this.light = level.light ? new LightLayer(this, level.light, level, layout) : null;
     this.telegraphs = this.add.graphics().setDepth(1);
     this.shapes = this.add.graphics().setDepth(3);
 
@@ -194,7 +197,7 @@ export class ArenaScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const scroll = cameraScroll({ x: px, y: py - this.run.body.centerY }, cam, this.run.level.arena);
     cam.setScroll(scroll.x, scroll.y);
-    this.light?.update(this.time.now / 1000);
+    this.light?.update(this.time.now / 1000, { x: scroll.x, y: scroll.y, width: cam.width, height: cam.height });
     this.input_.draw();
   }
 
@@ -446,7 +449,7 @@ export class ArenaScene extends Phaser.Scene {
     if (!this.textures.exists(floorKey)) {
       performance.mark('floor-start');
       const key = textureKey('level', level.id);
-      const frames = level.floor.map((f) => ({ frame: frameOf(level.sprites, f.anim), weight: f.weight }));
+      const frames = (level.floor ?? []).map((f) => ({ frame: frameOf(level.sprites, f.anim), weight: f.weight }));
       const total = frames.reduce((sum, f) => sum + f.weight, 0);
       const tile = this.textures.getFrame(key, frames[0]!.frame);
       const rng = createRng([...level.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7));
@@ -464,6 +467,5 @@ export class ArenaScene extends Phaser.Scene {
       performance.measure('floor', 'floor-start');
     }
     this.add.image(0, 0, floorKey).setOrigin(0, 0).setDepth(0);
-    this.cameras.main.setBackgroundColor('#12101c');
   }
 }

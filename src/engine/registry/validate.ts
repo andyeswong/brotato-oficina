@@ -188,14 +188,28 @@ export function validateContent(found: readonly DiscoveredModule[]): { registry:
     if (mod.kind === 'level') {
       mod.waves.forEach((w, i) => ref('wave', w, `waves[${i}]`));
       checkSprites(mod.sprites, LEVEL_ANIMS, err);
-      mod.floor.forEach((f, i) => {
-        if (!(f.anim in mod.sprites.anims)) err(`"${f.anim}" no está en sprites.anims.${suggest(f.anim, Object.keys(mod.sprites.anims))}`, `floor[${i}].anim`);
-      });
+      const anims = Object.keys(mod.sprites.anims);
+      const anim = (name: string | undefined, field: string) => {
+        if (name !== undefined && !anims.includes(name)) err(`"${name}" no está en sprites.anims.${suggest(name, anims)}`, field);
+      };
+      if (!mod.floor && !mod.generator) err('el nivel necesita suelo: floor (mapa fijo) o generator (mapa generado)', 'floor');
+      mod.floor?.forEach((f, i) => anim(f.anim, `floor[${i}].anim`));
       if (mod.terrain) checkTerrain(mod.terrain.water, mod.arena, err);
-      mod.light?.lights.forEach((l, i) => {
-        if (l.sprite !== undefined && !(l.sprite in mod.sprites.anims)) {
-          err(`"${l.sprite}" no está en sprites.anims.${suggest(l.sprite, Object.keys(mod.sprites.anims))}`, `light.lights[${i}].sprite`);
-        }
+      if (mod.generator) {
+        const g = mod.generator;
+        checkGrid(mod.arena, err);
+        g.floors.forEach((f, i) => anim(f.anim, `generator.floors[${i}].anim`));
+        g.caps.forEach((c, i) => anim(c, `generator.caps[${i}]`));
+        g.facade.fill.forEach((f, i) => anim(f.anim, `generator.facade.fill[${i}].anim`));
+        for (const key of ['neutral', 'door', 'flank', 'banner', 'crest'] as const) anim(g.facade[key], `generator.facade.${key}`);
+        Object.keys(g.facade.emits).forEach((name) => anim(name, `generator.facade.emits.${name}`));
+        g.props.forEach((pr, i) => anim(pr.anim, `generator.props[${i}].anim`));
+      }
+      const ids = new Set<string>();
+      mod.light?.sources.forEach((src, i) => {
+        if (ids.has(src.id)) err(`hay dos fuentes de luz con el id "${src.id}": el id da la semilla del parpadeo`, `light.sources[${i}].id`);
+        ids.add(src.id);
+        anim(src.sprite, `light.sources[${i}].sprite`);
       });
     }
   }
@@ -224,12 +238,16 @@ function checkBehavior(registry: Registry, mod: { behavior: string; params: Reco
   else mod.params = parsed.data as Record<string, unknown>;
 }
 
+// Con terreno o generador la arena se parte en celdas de TERRAIN_TILE px
+function checkGrid(arena: { width: number; height: number }, err: Report): boolean {
+  if (arena.width % TERRAIN_TILE === 0 && arena.height % TERRAIN_TILE === 0) return true;
+  err(`con terreno o generador, la arena tiene que medir múltiplos de ${TERRAIN_TILE} px (mide ${arena.width}×${arena.height})`, 'arena');
+  return false;
+}
+
 // El mapa de agua cubre la arena entera, a una fila de caracteres por cada TERRAIN_TILE px
 function checkTerrain(rows: readonly string[], arena: { width: number; height: number }, err: Report): void {
-  if (arena.width % TERRAIN_TILE || arena.height % TERRAIN_TILE) {
-    err(`con terreno, la arena tiene que medir múltiplos de ${TERRAIN_TILE} px (mide ${arena.width}×${arena.height})`, 'arena');
-    return;
-  }
+  if (!checkGrid(arena, err)) return;
   const cols = arena.width / TERRAIN_TILE;
   const want = arena.height / TERRAIN_TILE;
   if (rows.length !== want) err(`el mapa tiene ${rows.length} filas y la arena pide ${want} (una por cada ${TERRAIN_TILE} px)`, 'terrain.water');

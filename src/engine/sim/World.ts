@@ -3,6 +3,7 @@ import type { BehaviorModule, EnemyModule, HookEvent, WaveModule, WeaponModule, 
 import type { Registry } from '../registry/validate';
 import type { Rng } from './rng';
 import { cellOf, keepInside, type Body } from './body';
+import type { Obstacles } from './map';
 import { SpatialHash } from './SpatialHash';
 
 const TELEGRAPH_TIME = 1;              // aviso antes de que aparezca un enemigo
@@ -110,6 +111,9 @@ export interface WorldDeps {
   waveNumber: number;
   arena: { width: number; height: number };
   spawn: { minDistance: number; edgeMargin: number; ringRadius: number; clusterSpread: number };
+  // Mapa generado: paredes, columnas y muebles que no se atraviesan, y dónde sale el jugador. Sin él, la arena es libre.
+  obstacles?: Obstacles | null;
+  start?: Point;
   body: Body;
   weapons: ReadonlyArray<{ id: string; tier: number }>;
   rng: Rng;
@@ -159,8 +163,8 @@ export class World {
   constructor(private readonly deps: WorldDeps) {
     const maxHp = Math.round(deps.stat('max-hp'));
     this.player = {
-      x: Math.floor(deps.arena.width / 2),
-      y: Math.floor(deps.arena.height / 2),
+      x: deps.start?.x ?? Math.floor(deps.arena.width / 2),
+      y: deps.start?.y ?? Math.floor(deps.arena.height / 2),
       hp: maxHp,
       maxHp,
       iframes: 0,
@@ -248,6 +252,7 @@ export class World {
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     keepInside(p, { w: body.cellW, h: body.cellH }, arena);
+    this.deps.obstacles?.push(p, body.radius);
     if (p.iframes > 0) p.iframes -= dt;
     if (this.stealT > 0) this.stealT -= dt;
 
@@ -295,7 +300,7 @@ export class World {
         const enemy = registry.enemy(g.enemy);
         const center = this.spawnPoint(g.pattern);
         for (let n = 0; n < g.count; n++) {
-          const pos = this.patternPoint(g.pattern, center, n, g.count);
+          const pos = this.free(this.patternPoint(g.pattern, center, n, g.count));
           this.telegraphs.push({ x: pos.x, y: pos.y, t: TELEGRAPH_TIME, enemy });
         }
         this.nextSpawn[i]! += g.every;
@@ -331,6 +336,7 @@ export class World {
       alive: true,
     };
     keepInside(e, e.cell, this.deps.arena);
+    this.deps.obstacles?.push(e, def.radius);
     this.enemies.push(e);
     this.maxEnemyRadius = Math.max(this.maxEnemyRadius, def.radius);
     this.fx.push({ type: 'spawn', uid: e.uid });
@@ -368,6 +374,7 @@ export class World {
       e.x += e.vx * dt;
       e.y += e.vy * dt;
       keepInside(e, e.cell, this.deps.arena);
+      this.deps.obstacles?.push(e, e.def.radius);
     }
   }
 
@@ -502,7 +509,8 @@ export class World {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.travel -= Math.hypot(p.vx, p.vy) * dt;
-      let gone = p.travel <= 0 || p.x < 0 || p.y < 0 || p.x > arena.width || p.y > arena.height;
+      let gone = p.travel <= 0 || p.x < 0 || p.y < 0 || p.x > arena.width || p.y > arena.height
+        || this.deps.obstacles?.solidAt(p.x, p.y) === true; // paredes, columnas y muebles paran los disparos
 
       if (!gone && p.owner === 'player') {
         for (const e of [...this.hash.query(p.x, p.y, p.radius + this.maxEnemyRadius * 2, this.near)]) {
@@ -558,30 +566,42 @@ export class World {
 
   // ---------- spawns ----------
 
+  // Nadie aparece dentro de una pared, una columna o el agua
+  private free(p: Point): Point {
+    return this.deps.obstacles?.nearestFree(p) ?? p;
+  }
+
+  // Donde se puede aparecer: la arena entera, o el interior de las paredes si el mapa es generado
+  private get bounds(): { x0: number; y0: number; width: number; height: number } {
+    const inner = this.deps.obstacles?.inner;
+    if (!inner) return { x0: 0, y0: 0, width: this.deps.arena.width, height: this.deps.arena.height };
+    return { x0: inner.x0, y0: inner.y0, width: inner.x1 - inner.x0, height: inner.y1 - inner.y0 };
+  }
+
   private spawnPoint(pattern: string): Point {
-    const { width, height } = this.deps.arena;
+    const { x0, y0, width, height } = this.bounds;
     const { edgeMargin: EDGE_MARGIN, minDistance } = this.deps.spawn;
     const rng = this.deps.rng;
     if (pattern === 'edge') {
       const side = Math.floor(rng() * 4);
       const along = (n: number) => EDGE_MARGIN + rng() * (n - EDGE_MARGIN * 2);
-      if (side === 0) return { x: along(width), y: EDGE_MARGIN * 2 };
-      if (side === 1) return { x: along(width), y: height - EDGE_MARGIN };
-      if (side === 2) return { x: EDGE_MARGIN, y: along(height) };
-      return { x: width - EDGE_MARGIN, y: along(height) };
+      if (side === 0) return { x: x0 + along(width), y: y0 + EDGE_MARGIN * 2 };
+      if (side === 1) return { x: x0 + along(width), y: y0 + height - EDGE_MARGIN };
+      if (side === 2) return { x: x0 + EDGE_MARGIN, y: y0 + along(height) };
+      return { x: x0 + width - EDGE_MARGIN, y: y0 + along(height) };
     }
     if (pattern === 'ring') return { x: this.player.x, y: this.player.y };
     // random y cluster: un punto lejos del jugador
     let best = { x: 0, y: 0 };
     for (let i = 0; i < 10; i++) {
-      best = { x: EDGE_MARGIN + rng() * (width - EDGE_MARGIN * 2), y: EDGE_MARGIN * 2 + rng() * (height - EDGE_MARGIN * 3) };
+      best = { x: x0 + EDGE_MARGIN + rng() * (width - EDGE_MARGIN * 2), y: y0 + EDGE_MARGIN * 2 + rng() * (height - EDGE_MARGIN * 3) };
       if (Math.hypot(best.x - this.player.x, best.y - this.player.y) >= minDistance) break;
     }
     return best;
   }
 
   private patternPoint(pattern: string, center: Point, n: number, count: number): Point {
-    const { width, height } = this.deps.arena;
+    const { x0, y0, width, height } = this.bounds;
     const { edgeMargin: EDGE_MARGIN, ringRadius, clusterSpread } = this.deps.spawn;
     const rng = this.deps.rng;
     let x = center.x;
@@ -598,7 +618,7 @@ export class World {
     } else if (pattern === 'edge' && n > 0) {
       return this.spawnPoint('edge');
     }
-    return { x: clamp(x, EDGE_MARGIN, width - EDGE_MARGIN), y: clamp(y, EDGE_MARGIN * 2, height - EDGE_MARGIN) };
+    return { x: clamp(x, x0 + EDGE_MARGIN, x0 + width - EDGE_MARGIN), y: clamp(y, y0 + EDGE_MARGIN * 2, y0 + height - EDGE_MARGIN) };
   }
 }
 

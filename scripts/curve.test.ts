@@ -1,4 +1,4 @@
-// Informe de balance, no un test: `npm run curva` (o SEEDS=1,2 npm run curva). Juega partidas completas con un piloto automático
+// Informe de balance, no un test: `npm run curva` (o SEEDS=1,2 LEVEL=medieval npm run curva; sin LEVEL, la oficina). Juega partidas completas con un piloto automático
 // (huye de enemigos y proyectiles) y una política de compra simple, e imprime la curva por oleada.
 import { it } from 'vitest';
 import type { Point } from '../src/engine/api';
@@ -9,6 +9,7 @@ import type { World } from '../src/engine/sim/World';
 
 const { registry } = validateContent(discoverContent());
 const SEEDS = (process.env.SEEDS ?? '1,2,3,4,5,6,7,8').split(',').map(Number);
+const LEVEL = process.env.LEVEL ?? 'oficina';
 
 function kite(world: World, run: Run): Point {
   const p = world.player;
@@ -59,7 +60,7 @@ it.skipIf(!process.env.CURVA)('curva de balance', () => {
   const rows: string[] = [];
   const reached: number[] = [];
   for (const seed of SEEDS) {
-    const run = new Run(registry, registry.character('maia'), registry.level('oficina'), seed);
+    const run = new Run(registry, registry.character('maia'), registry.level(LEVEL), seed);
     for (;;) {
       const world = run.startWave();
       while (world.status === 'playing') world.step(1 / 60, kite(world, run));
@@ -72,5 +73,5 @@ it.skipIf(!process.env.CURVA)('curva de balance', () => {
       rows.push(`${line} · compra: ${bought.join(', ') || '—'} · quedan ${run.materials} · armas ${run.weapons.map((w) => w.id + (w.tier ? `+${w.tier}` : '')).join(',')}`);
     }
   }
-  console.log(['', ...rows, '', `oleada alcanzada por semilla: ${reached.join(', ')} (11 = victoria)`].join('\n'));
+  console.log(['', ...rows, '', `${LEVEL}: oleada alcanzada por semilla: ${reached.join(', ')} (11 = victoria)`].join('\n'));
 });

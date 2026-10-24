@@ -63,6 +63,48 @@
    },
    "duration": 200
   },
+  "piso-mancha_idle_0": {
+   "frame": {
+    "x": 51,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 16
+   },
+   "duration": 200
+  },
+  "piso-papel_idle_0": {
+   "frame": {
+    "x": 68,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 16
+   },
+   "duration": 200
+  },
   "clip-suelto_idle_0": {
    "frame": {
     "x": 0,
@@ -105,35 +147,308 @@
    },
    "duration": 250
   },
-  "lampara_idle_0": {
+  "escritorio-pc_idle_0": {
    "frame": {
-    "x": 22,
-    "y": 17,
-    "w": 12,
-    "h": 28
+    "x": 0,
+    "y": 28,
+    "w": 32,
+    "h": 32
    },
    "rotated": false,
    "trimmed": false,
    "spriteSourceSize": {
     "x": 0,
     "y": 0,
-    "w": 12,
-    "h": 28
+    "w": 32,
+    "h": 32
    },
    "sourceSize": {
-    "w": 12,
-    "h": 28
+    "w": 32,
+    "h": 32
    },
-   "duration": 1000
+   "duration": 200
+  },
+  "escritorio-laptop_idle_0": {
+   "frame": {
+    "x": 33,
+    "y": 28,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-tapa_idle_0": {
+   "frame": {
+    "x": 0,
+    "y": 60,
+    "w": 16,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 16
+   },
+   "duration": 200
+  },
+  "muro-tapa-rejilla_idle_0": {
+   "frame": {
+    "x": 17,
+    "y": 60,
+    "w": 16,
+    "h": 16
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 16
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 16
+   },
+   "duration": 200
+  },
+  "muro-liso_idle_0": {
+   "frame": {
+    "x": 0,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-ventana_idle_0": {
+   "frame": {
+    "x": 17,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-ventana-noche_idle_0": {
+   "frame": {
+    "x": 34,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-ventana-persiana_idle_0": {
+   "frame": {
+    "x": 51,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-cartelera_idle_0": {
+   "frame": {
+    "x": 68,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-grafica_idle_0": {
+   "frame": {
+    "x": 85,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-reloj_idle_0": {
+   "frame": {
+    "x": 102,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-extintor_idle_0": {
+   "frame": {
+    "x": 119,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-puerta_idle_0": {
+   "frame": {
+    "x": 136,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "muro-aplique_idle_0": {
+   "frame": {
+    "x": 153,
+    "y": 77,
+    "w": 16,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 16,
+    "h": 32
+   },
+   "duration": 200
   }
  },
  "meta": {
-  "app": "pxl",
+  "app": "NARUTO/oficina_nivel.lua",
   "image": "oficina.png",
   "format": "RGBA8888",
   "size": {
-   "w": 50,
-   "h": 45
+   "w": 169,
+   "h": 109
   },
   "scale": "1",
   "frameTags": [
@@ -156,15 +471,105 @@
     "direction": "forward"
    },
    {
-    "name": "clip-suelto_idle",
+    "name": "piso-mancha_idle",
     "from": 3,
+    "to": 3,
+    "direction": "forward"
+   },
+   {
+    "name": "piso-papel_idle",
+    "from": 4,
     "to": 4,
     "direction": "forward"
    },
    {
-    "name": "lampara_idle",
+    "name": "clip-suelto_idle",
     "from": 5,
-    "to": 5,
+    "to": 6,
+    "direction": "forward"
+   },
+   {
+    "name": "escritorio-pc_idle",
+    "from": 7,
+    "to": 7,
+    "direction": "forward"
+   },
+   {
+    "name": "escritorio-laptop_idle",
+    "from": 8,
+    "to": 8,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-tapa_idle",
+    "from": 9,
+    "to": 9,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-tapa-rejilla_idle",
+    "from": 10,
+    "to": 10,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-liso_idle",
+    "from": 11,
+    "to": 11,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-ventana_idle",
+    "from": 12,
+    "to": 12,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-ventana-noche_idle",
+    "from": 13,
+    "to": 13,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-ventana-persiana_idle",
+    "from": 14,
+    "to": 14,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-cartelera_idle",
+    "from": 15,
+    "to": 15,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-grafica_idle",
+    "from": 16,
+    "to": 16,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-reloj_idle",
+    "from": 17,
+    "to": 17,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-extintor_idle",
+    "from": 18,
+    "to": 18,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-puerta_idle",
+    "from": 19,
+    "to": 19,
+    "direction": "forward"
+   },
+   {
+    "name": "muro-aplique_idle",
+    "from": 20,
+    "to": 20,
     "direction": "forward"
    }
   ]

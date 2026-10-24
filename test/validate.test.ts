@@ -88,7 +88,7 @@ describe('escenario del nivel (terreno y luz)', () => {
   });
   // Solo los errores del escenario: la oleada 'w' no existe y aquí no importa
   const scenery = (mod: DiscoveredModule) =>
-    validateContent([...base, mod]).errors.filter((e) => /^(terrain|light|arena)/.test(e.field ?? '')).map((e) => e.field);
+    validateContent([...base, mod]).errors.filter((e) => /^(terrain|light|arena|generator)/.test(e.field ?? '')).map((e) => e.field);
 
   it('sin terreno ni luz el nivel es el de siempre', () => {
     expect(scenery(level({}))).toEqual([]);
@@ -102,13 +102,25 @@ describe('escenario del nivel (terreno y luz)', () => {
     expect(scenery(level({ arena: { width: 60, height: 48 }, terrain: { water: ['....', '....', '....'] } }))).toEqual(['arena']);
   });
 
-  it('los colores de la luz van de 0 a 1 y su sprite existe', () => {
-    const lamp = { x: 10, y: 10, radius: 40, color: [1, 0.9, 0.7], intensity: 1 };
-    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [lamp] } }))).toEqual([]);
-    expect(scenery(level({ light: { ambient: [0.8, 0.8, 1.2], lights: [] } }))).toEqual(['light.ambient[2]']);
-    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, radius: 0 }] } }))).toEqual(['light.lights[0].radius']);
-    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, sprite: 'farola' }] } }))).toEqual(['light.lights[0].sprite']);
-    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], lights: [{ ...lamp, sprite: 'floor' }] } }))).toEqual([]);
+  it('la luz sale de fuentes con id único, de un tipo que existe y con su sprite', () => {
+    const lamp = { id: 'l1', kind: 'lamp', x: 10, y: 10 };
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], sources: [lamp, { ...lamp, id: 'l2', sprite: 'floor' }] } }))).toEqual([]);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 1.2] } }))).toEqual(['light.ambient[2]']);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], sources: [{ ...lamp, kind: 'farola' }] } }))).toEqual(['light.sources[0].kind']);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], sources: [lamp, lamp] } }))).toEqual(['light.sources[1].id']);
+    expect(scenery(level({ light: { ambient: [0.8, 0.8, 0.9], sources: [{ ...lamp, sprite: 'farola' }] } }))).toEqual(['light.sources[0].sprite']);
+  });
+
+  it('un nivel con generador no necesita suelo fijo, pero sus piezas tienen que existir', () => {
+    const generator = {
+      floors: [{ anim: 'floor' }], caps: ['floor', 'floor'],
+      facade: { fill: [{ anim: 'floor' }], neutral: 'floor', door: 'floor', emits: { floor: 'torch' } },
+      pillar: { top: '#000000', topDim: '#000000', lit: '#000000', mid: '#000000', dark: '#000000', joint: '#000000' },
+    };
+    expect(scenery(level({ floor: undefined, generator }))).toEqual([]);
+    expect(validateContent([...base, level({ floor: undefined })]).errors.some((e) => e.field === 'floor')).toBe(true);
+    const fields = validateContent([...base, level({ generator: { ...generator, caps: ['floor', 'almena'] } })]).errors.map((e) => e.field);
+    expect(fields).toContain('generator.caps[1]');
   });
 });
 

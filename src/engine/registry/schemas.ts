@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SOURCE_PRESETS, type SourceKind } from '../lighting/lights';
 
 // Los mensajes de zod salen en español: los lee quien escribe contenido, no solo quien programa
 z.config(z.locales.es());
@@ -136,6 +137,9 @@ export const characterSchema = z.strictObject({
   hooks,
 });
 
+const pickSchema = z.strictObject({ anim: z.string(), weight: z.number().positive().default(1) });
+const hexSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'un color #rrggbb');
+const sourceKindSchema = z.enum(Object.keys(SOURCE_PRESETS) as [SourceKind, ...SourceKind[]]);
 const rgbSchema = z.tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)]);
 
 export const levelSchema = z.strictObject({
@@ -167,33 +171,67 @@ export const levelSchema = z.strictObject({
     .default({ slots: 4, reroll: { base: 1, perWave: 0.5, step: 1 }, priceScale: { perWave: 0.1 } }),
   // Hoja del nivel: losetas del suelo y el material que sueltan los enemigos
   sprites: spritesSchema,
-  floor: z
-    .array(z.strictObject({ anim: z.string(), weight: z.number().positive().default(1) }))
-    .min(1, 'el suelo necesita al menos una loseta'),
-  // Agua sobre el suelo: una fila por cada TERRAIN_TILE px de arena, '~' agua y '.' tierra. Las masas que se tocan
+  // Suelo de mapa fijo: cada loseta sale al azar con su peso. Un nivel con generador no lo necesita.
+  floor: z.array(pickSchema).min(1, 'el suelo necesita al menos una loseta').optional(),
+  // Agua de mapa fijo: una fila por cada TERRAIN_TILE px de arena, '~' agua y '.' tierra. Las masas que se tocan
   // se funden y su tamaño decide si es charco, lago u océano (src/engine/terrain). Sin él, no hay agua.
   terrain: z
     .strictObject({ water: z.array(z.string().regex(/^[~.]+$/, "solo '~' (agua) y '.' (tierra)")).min(1) })
     .optional(),
-  // Luz: el ambiente multiplica todo lo que no alumbra ninguna luz (1, 1, 1 = como sin luz). Colores de 0 a 1.
+  // Mapa generado (src/engine/worldgen): uno distinto en cada partida, sacado de la semilla de la partida.
+  // Todos los nombres son animaciones de sprites.anims. El tamaño sale de la arena (una celda cada 16 px).
+  generator: z
+    .strictObject({
+      floors: z.array(pickSchema).min(1),
+      caps: z.tuple([z.string(), z.string()]),                 // tapa de las paredes, alternadas
+      facade: z.strictObject({                                  // la pared norte, de 16x32 por columna
+        fill: z.array(pickSchema).min(1),
+        neutral: z.string(),
+        door: z.string(),
+        flank: z.string().optional(),
+        banner: z.string().optional(),
+        crest: z.string().optional(),
+        emits: z.record(z.string(), sourceKindSchema).default({}),   // qué piezas son fuente de luz
+      }),
+      water: z
+        .strictObject({ ocean: z.boolean().default(false), lake: z.boolean().default(false), puddles: z.number().int().min(0).default(0) })
+        .default({ ocean: false, lake: false, puddles: 0 }),
+      pillars: z.number().int().min(0).default(0),
+      // Colores de las columnas, que se dibujan con código (de claro a oscuro, y la junta)
+      pillar: z.strictObject({ top: hexSchema, topDim: hexSchema, lit: hexSchema, mid: hexSchema, dark: hexSchema, joint: hexSchema }),
+      props: z.array(z.strictObject({
+        anim: z.string(),                 // con el pie en la fila de abajo de su huella
+        w: z.number().int().positive(),   // huella, en celdas
+        h: z.number().int().positive(),
+        count: z.number().int().min(0),
+        emits: sourceKindSchema.optional(),
+        edge: z.boolean().optional(),     // pegado a una pared
+      })).default([]),
+    })
+    .optional(),
+  // Luz: el ambiente multiplica todo lo que no alumbra ninguna fuente (1, 1, 1 = como sin luz). Colores de 0 a 1.
+  // Una luz siempre nace de una fuente que se ve (src/engine/lighting/lights.ts): las del generador salen solas
+  // (piezas de fachada y muebles que emiten) y aquí se añaden las fijas.
   light: z
     .strictObject({
       ambient: rgbSchema,
-      lights: z.array(z.strictObject({
-        x: z.number(),
+      sources: z.array(z.strictObject({
+        id: z.string().min(1),           // único en el nivel: de él sale la semilla del parpadeo
+        kind: sourceKindSchema,
+        x: z.number(),                   // ancla: el pie del dibujo
         y: z.number(),
-        radius: z.number().positive(),
-        color: rgbSchema,
-        intensity: z.number().min(0),   // por encima de 1 deslumbra
-        sprite: z.string().optional(),  // animación de sprites.anims que se dibuja con el pie en (x, y): la lámpara
-        flicker: z.strictObject({
-          amount: z.number().min(0).max(1),
-          speed: z.number().positive(),  // cambios por segundo
-          seed: z.number().int(),
-        }).optional(),
+        sprite: z.string().optional(),   // animación de sprites.anims que se dibuja en el ancla
+        flame: z.strictObject({ dx: z.number(), dy: z.number() }).optional(),   // la llama de ESTE dibujo
+        intensity: z.number().min(0).optional(),
+        radius: z.number().positive().optional(),
+        color: rgbSchema.optional(),
       })).default([]),
-      // Cuántos niveles de luz y si se traman sus bordes (por defecto 5 y con trama)
-      shade: z.strictObject({ steps: z.number().int().min(2).max(16).optional(), dither: z.boolean().optional() }).optional(),
+      // Niveles de luz, trama en los bordes y brillo suave (lo que pasa de 1 se mide en luminancia, sin bordes de color)
+      shade: z.strictObject({
+        steps: z.number().int().min(2).max(16).optional(),
+        dither: z.boolean().optional(),
+        softGlow: z.boolean().optional(),
+      }).optional(),
     })
     .optional(),
 });
