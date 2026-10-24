@@ -58,12 +58,13 @@ export default defineLevel({
     water: { puddles: 4 },
     pillars: 3,
     pillar: { top: '#aab2c2', topDim: '#969eae', lit: '#8a94a6', mid: '#6e7a8d', dark: '#4a5263', joint: '#343a48' },
-    // Escritorios de huella 2x1 (el monitor sobresale por arriba), casi todos contra la pared: sueltos no dejan sitio
-    // para que salgan enemigos (lo comprueba test/worldgen.test.ts). Su pantalla es una fuente de luz.
+    // Escritorios de huella 2x1 (el monitor sobresale por arriba), todos contra la pared. Son el único tema con
+    // muebles y cuestan oleadas: paran los disparos y quitan sitio para huir. Medido con 64 semillas (curva F1,
+    // 2026-10-23): con 6 (uno suelto) la oficina llegaba a 6,61 y el medieval a 7,61; sin escritorios, 7,66;
+    // con 4 o 5 contra la pared, ~6,8; con estos 3, 7,44. MAIA: el tema no debe pesar más de media oleada.
     props: [
-      { anim: 'escritorio-pc', w: 2, h: 1, count: 3, emits: 'screen', edge: true },
-      { anim: 'escritorio-laptop', w: 2, h: 1, count: 2, emits: 'screen', edge: true },
-      { anim: 'escritorio-pc', w: 2, h: 1, count: 1, emits: 'screen' },
+      { anim: 'escritorio-pc', w: 2, h: 1, count: 2, emits: 'screen', edge: true },
+      { anim: 'escritorio-laptop', w: 2, h: 1, count: 1, emits: 'screen', edge: true },
     ],
   },
   // Las luces salen de las piezas que emiten (fachada y muebles). softGlow: lo que pasa de 1 se mide en
