@@ -25,7 +25,7 @@ describe('armas', () => {
     for (let t = 0; t < 25 && world.status === 'playing'; t += 1 / 60) world.step(1 / 60, STILL);
     expect(world.status).toBe('cleared');
     expect(run.kills).toBeGreaterThan(0);
-    expect(run.materials).toBeGreaterThanOrEqual(run.kills); // cada bicho-grapa suelta 1
+    expect(run.materials).toBeGreaterThanOrEqual(run.kills); // cada perseguidor suelta 1
   });
 
   it('caminar hacia un material lo atrae y lo recoge', () => {
@@ -49,26 +49,26 @@ describe('armas', () => {
   });
 
   it('pasivo de MAIA: +5 % de daño por cada arma distinta', () => {
-    const two = new Run(registry, maia, oficina, 1, { weapons: ['buzon', 'grapadora'] });
-    const same = new Run(registry, maia, oficina, 1, { weapons: ['buzon', 'buzon'] });
+    const two = new Run(registry, maia, oficina, 1, { weapons: ['tiro', 'rafaga'] });
+    const same = new Run(registry, maia, oficina, 1, { weapons: ['tiro', 'tiro'] });
     expect(two.stats.get('damage-pct')).toBe(10);
     expect(same.stats.get('damage-pct')).toBe(5);
   });
 
-  it('desventaja de MAIA: la Regla (cuerpo a cuerpo) hace la mitad, el Buzón no', () => {
-    const run = new Run(registry, maia, oficina, 1, { weapons: ['regla'] });
+  it('desventaja de MAIA: la estocada (cuerpo a cuerpo) hace la mitad, el tiro no', () => {
+    const run = new Run(registry, maia, oficina, 1, { weapons: ['estocada'] });
     const read = (id: string, tags?: readonly string[]) => run.stats.get(id, tags);
-    const regla = weaponStats(registry.weapon('regla'), 0, read);
-    const buzon = weaponStats(registry.weapon('buzon'), 0, read);
-    // regla: 8 × (1 + (5 − 50)/100) = 4,4 → 4 ; buzón: 6 × 1,05 = 6,3 → 6
-    expect(regla.damage).toBe(4);
-    expect(buzon.damage).toBe(6);
+    const estocada = weaponStats(registry.weapon('estocada'), 0, read);
+    const tiro = weaponStats(registry.weapon('tiro'), 0, read);
+    // estocada: 8 × (1 + (5 − 50)/100) = 4,4 → 4 ; tiro: 6 × 1,05 = 6,3 → 6
+    expect(estocada.damage).toBe(4);
+    expect(tiro.damage).toBe(6);
     // y el alcance de MAIA (+19) se suma a las dos
-    expect(buzon.range).toBe(128 + 19);
+    expect(tiro.range).toBe(128 + 19);
   });
 });
 
-describe('bicho-taza', () => {
+describe('escupidor', () => {
   it('dispara proyectiles que pueden herir a MAIA', () => {
     const run = new Run(registry, maia, oficina, 2, { weapons: [] });
     run.waveIndex = 3; // la oleada 4 ya trae bichos taza

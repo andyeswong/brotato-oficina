@@ -2,7 +2,7 @@ import { defineEnemy } from '../../../../game/brotato/api';
 
 export default defineEnemy({
   format: 1,
-  id: 'bicho-grapa',
+  id: 'perseguidor',
   name: 'Bicho grapa',
   description: 'Va directo a por ti. Siempre hay otro.',
   hp: 3,

@@ -2,7 +2,7 @@ import { defineEnemy } from '../../../../game/brotato/api';
 
 export default defineEnemy({
   format: 1,
-  id: 'bicho-clip',
+  id: 'embestidor',
   name: 'Bicho clip',
   description: 'Se para, tiembla y embiste en línea recta. Apártate de su línea.',
   hp: 4,

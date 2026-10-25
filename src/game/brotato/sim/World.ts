@@ -85,7 +85,7 @@ export interface Projectile {
   travel: number;                      // distancia que le queda por recorrer
   pierce: number;
   readonly hit: Set<number>;
-  readonly source: string;             // "weapon:buzon" o "enemy:bicho-taza"
+  readonly source: string;             // "weapon:tiro" o "enemy:escupidor"
   readonly anim?: string;              // nombre semántico en sprites.anims del módulo source
 }
 

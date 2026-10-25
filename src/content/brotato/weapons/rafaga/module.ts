@@ -2,7 +2,7 @@ import { defineWeapon } from '../../../../game/brotato/api';
 
 export default defineWeapon({
   format: 1,
-  id: 'grapadora',
+  id: 'rafaga',
   name: 'Grapadora',
   description: 'Grapas rápidas y flojas. Ideal para muchos enemigos pequeños.',
   tags: ['distancia', 'oficina'],

@@ -47,7 +47,7 @@ const manifest = {
   name: z.string().min(1),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  requires: z.array(z.string().regex(/^[a-z]+:[a-z0-9-]+$/, 'se escribe "tipo:id", por ejemplo "weapon:buzon"')).optional(),
+  requires: z.array(z.string().regex(/^[a-z]+:[a-z0-9-]+$/, 'se escribe "tipo:id", por ejemplo "weapon:tiro"')).optional(),
 };
 
 const hookFn = z.custom<(...args: never[]) => unknown>((v) => typeof v === 'function', 'un hook tiene que ser una función');

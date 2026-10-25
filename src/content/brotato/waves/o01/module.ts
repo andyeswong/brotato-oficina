@@ -8,6 +8,6 @@ export default defineWave({
   name: 'Oleada 1',
   duration: 20,
   groups: [
-    { enemy: 'bicho-grapa', from: 0, to: 18, every: 1.92, count: 2, pattern: 'random' },
+    { enemy: 'perseguidor', from: 0, to: 18, every: 1.92, count: 2, pattern: 'random' },
   ],
 });

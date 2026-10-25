@@ -19,7 +19,7 @@ describe('el cuerpo de la jugadora', () => {
   });
 
   it('las armas flotan en un círculo de radio orbit alrededor de los pies', () => {
-    const run = new Run(registry, registry.character('maia'), registry.level('oficina'), 1, { weapons: ['buzon', 'regla', 'grapadora'] });
+    const run = new Run(registry, registry.character('maia'), registry.level('oficina'), 1, { weapons: ['tiro', 'estocada', 'rafaga'] });
     const world = run.startWave();
     world.step(1 / 60, { x: 0, y: 0 });
     for (const w of world.weapons) expect(Math.hypot(w.x - world.player.x, w.y - world.player.y)).toBeCloseTo(14, 6);

@@ -28,7 +28,7 @@ export default defineCharacter({
     { stat: 'damage-pct', add: -50, weaponTag: 'cuerpo-a-cuerpo' },
   ],
 
-  startingWeapons: ['buzon'],
+  startingWeapons: ['tiro'],
 
 
   hooks: {

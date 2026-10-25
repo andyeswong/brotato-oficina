@@ -108,9 +108,9 @@ describe('params de comportamiento', () => {
   it('llegan al juego con los valores por defecto del esquema aplicados', async () => {
     const { discoverContent } = await import('../../src/game/brotato/registry/discover');
     const { registry } = validateContent(discoverContent());
-    // bicho-clip no escribe "recover"; el esquema de dash lo pone a 0.8
-    expect(registry.enemy('bicho-clip').params.recover).toBe(0.8);
-    // buzon no escribe "count"; el esquema de projectile lo pone a 1
-    expect(registry.weapon('buzon').params.count).toBe(1);
+    // embestidor no escribe "recover"; el esquema de dash lo pone a 0.8
+    expect(registry.enemy('embestidor').params.recover).toBe(0.8);
+    // tiro no escribe "count"; el esquema de projectile lo pone a 1
+    expect(registry.weapon('tiro').params.count).toBe(1);
   });
 });

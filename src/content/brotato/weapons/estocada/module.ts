@@ -2,7 +2,7 @@ import { defineWeapon } from '../../../../game/brotato/api';
 
 export default defineWeapon({
   format: 1,
-  id: 'regla',
+  id: 'estocada',
   name: 'Regla',
   description: 'Estocada corta y fuerte. Con MAIA hace la mitad de daño: no se ensucia las manos.',
   tags: ['cuerpo-a-cuerpo', 'oficina'],

@@ -2,7 +2,7 @@ import { defineEnemy } from '../../../../game/brotato/api';
 
 export default defineEnemy({
   format: 1,
-  id: 'bicho-taza',
+  id: 'escupidor',
   name: 'Bicho taza',
   description: 'Se queda lejos y te escupe café. Para un momento antes de cada disparo.',
   hp: 6,

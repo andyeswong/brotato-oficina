@@ -8,9 +8,9 @@ export default defineWave({
   name: 'Oleada 4',
   duration: 35,
   groups: [
-    { enemy: 'bicho-grapa', from: 0, to: 33, every: 1.32, count: 2, pattern: 'random' },
-    { enemy: 'bicho-grapa', from: 17, to: 33, every: 5, count: 5, pattern: 'cluster' },
-    { enemy: 'bicho-clip', from: 3, to: 33, every: 4.62, count: 1, pattern: 'edge' },
-    { enemy: 'bicho-taza', from: 5, to: 33, every: 8.25, count: 1, pattern: 'edge' },
+    { enemy: 'perseguidor', from: 0, to: 33, every: 1.32, count: 2, pattern: 'random' },
+    { enemy: 'perseguidor', from: 17, to: 33, every: 5, count: 5, pattern: 'cluster' },
+    { enemy: 'embestidor', from: 3, to: 33, every: 4.62, count: 1, pattern: 'edge' },
+    { enemy: 'escupidor', from: 5, to: 33, every: 8.25, count: 1, pattern: 'edge' },
   ],
 });

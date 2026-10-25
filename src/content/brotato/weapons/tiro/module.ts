@@ -2,7 +2,7 @@ import { defineWeapon } from '../../../../game/brotato/api';
 
 export default defineWeapon({
   format: 1,
-  id: 'buzon',
+  id: 'tiro',
   name: 'Buzón',
   description: 'Manda un sobre al enemigo más cercano. Lo que llega sin destinatario, va al líder.',
   tags: ['distancia', 'oficina'],

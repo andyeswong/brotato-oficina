@@ -64,18 +64,18 @@ describe('tienda', () => {
 
   it('comprar un arma la equipa y cuenta para el pasivo de MAIA', () => {
     const run = afterWave(1, 1000);
-    run.shop.offers = [{ kind: 'weapon', id: 'grapadora', tier: 0, price: 18, locked: false }];
+    run.shop.offers = [{ kind: 'weapon', id: 'rafaga', tier: 0, price: 18, locked: false }];
     expect(run.stats.get('damage-pct')).toBe(5);
     run.shop.buy(0);
-    expect(run.weapons.map((w) => w.id)).toEqual(['buzon', 'grapadora']);
+    expect(run.weapons.map((w) => w.id)).toEqual(['tiro', 'rafaga']);
     expect(run.stats.get('damage-pct')).toBe(10);
   });
 
   it('con 6 armas, una igual se fusiona y sube de nivel; una distinta no cabe', () => {
-    const run = new Run(registry, maia, oficina, 1, { weapons: ['buzon', 'buzon', 'buzon', 'buzon', 'buzon', 'regla'] });
-    expect(run.addWeapon('buzon')).toEqual({ ok: true });
+    const run = new Run(registry, maia, oficina, 1, { weapons: ['tiro', 'tiro', 'tiro', 'tiro', 'tiro', 'estocada'] });
+    expect(run.addWeapon('tiro')).toEqual({ ok: true });
     expect(run.weapons.filter((w) => w.tier === 1)).toHaveLength(1);
-    expect(run.addWeapon('grapadora').ok).toBe(false);
+    expect(run.addWeapon('rafaga').ok).toBe(false);
   });
 
   it('el candado guarda la oferta al volver a tirar, y volver a tirar cuesta cada vez más', () => {
