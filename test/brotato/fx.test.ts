@@ -3,7 +3,7 @@ import { Model, material } from '@voxpix/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
-import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, FLOAT_PLAYER_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
+import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, TELEGRAPH_ARM, FLOAT_PLAYER_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
 import { COLORS, type Painter } from '../../src/game/brotato/ui/paint';
 import { bakeWorld } from '@voxpix/world/bake';
 import type { WorldFx } from '../../src/game/brotato/sim/World';
@@ -137,6 +137,10 @@ describe('los efectos de la oleada', () => {
     const { p, dots } = recorder();
     fx.paint(p, half, vx, vy, scene(half), [{ x: mid.x, y: mid.y, t: 0.85 }]);
     expect(dots.every((d) => d.color === COLORS.bad)).toBe(true);
+    // Del alto de la X del Brotato a 1x (7 px), con el doble de ancho por la proyección a 0,5
+    const xs = dots.map((d) => d.x), ys = dots.map((d) => d.y);
+    expect(TELEGRAPH_ARM).toBe(7);
+    expect([Math.max(...xs) - Math.min(...xs) + 1, Math.max(...ys) - Math.min(...ys) + 1]).toEqual([15, 8]);
   });
 });
 

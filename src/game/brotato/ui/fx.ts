@@ -35,6 +35,9 @@ export const PUFF_S = 0.25;
 const RISE_PX_S = 10;                // lo que sube un texto por segundo
 const FADE_S = 0.3;                  // el último tramo de un texto se pinta atenuado
 const PUFF_R0 = 3, PUFF_GROW = 40;   // el anillo nace de 3 vóxeles y crece 40 por segundo
+// El brazo de la X de aviso, en vóxeles del suelo: a 0,5 sale de 14x7 px, el alto de la X del Brotato a 1x (7 px).
+// Con 3 salía de 7x4 y no se leía (MAIA: la legibilidad pesa más que la fidelidad)
+export const TELEGRAPH_ARM = 7;
 const SCRAPS = 6;                    // trocitos que suelta un enemigo al morir
 const SCRAP_GRAVITY = 260;           // vóxeles/s², la de las gotas del mundo
 // Los trocitos NO son rojos: el material de la oficina es una chincheta roja y se confundirían con él al caer
@@ -190,7 +193,7 @@ export class Effects {
     // Avisos: la X parpadea, y más deprisa en su último 0,4 s (como el Brotato)
     for (const t of telegraphs) {
       if (Math.floor(t.t * (t.t < 0.4 ? 16 : 8)) % 2 === 1) continue;
-      for (const [x, y] of groundX(cam, t.x, t.y, scene.groundZ(t.x, t.y), 3)) dot(x, y, COLORS.bad);
+      for (const [x, y] of groundX(cam, t.x, t.y, scene.groundZ(t.x, t.y), TELEGRAPH_ARM)) dot(x, y, COLORS.bad);
     }
     for (const f of this.puffs) {
       const r = PUFF_R0 + (PUFF_S - f.t) * PUFF_GROW;
