@@ -1,6 +1,6 @@
 // Piezas pequeñas del Brotato en vóxeles, una por mundo (FERN, 2026-10-25): el material que sueltan los enemigos y
 // el disparo de los escupidores. Borrador para la fase 3 (vista del juego); pasan por NARUTO como el resto.
-//   material   oficina: un clip suelto (acero)   medieval: una moneda (oro)   cyberpunk: un chip (verde con pistas)
+//   material   oficina: una chincheta roja (NARUTO: el clip, desde arriba, se leía como un aro gris)   medieval: una moneda (oro)   cyberpunk: un chip (verde con pistas)
 //   escupitajo oficina: gota de café            medieval: gota de cerveza    cyberpunk: gota de ácido de neón
 // Importar: voxpix import-pxl efectos_capas.px.js --stack material-oficina material-oficina.json (y los demás)
 
@@ -10,14 +10,15 @@ pal({
   g: "#0e3a22", G: "#1e8a4a", n: "#7affb0",                                // chip y ácido (el ácido brilla)
   c: "#3a1c0c", C: "#6a3a18", k: "#a8662a",                                // café
   b: "#8a5010", B: "#e09a28", W: "#fff2d0",                                // cerveza y espuma
+  r: "#7a1426", R: "#d8314a", e: "#ffb0b8",                                // chincheta
 })
-ramps("dmlh", "oOY", "gGn", "cCk", "bBW")
+ramps("dmlh", "oOY", "gGn", "cCk", "bBW", "rRe")
 // voxpix: outline #12101c
 // voxpix: emissive gGn
 
 const STACKS = {
-  // Clip suelto: un lazo de 4x2 tumbado
-  "material-oficina": [["hlll", "l..l", "llll"]],
+  // Chincheta: cabeza redonda roja con el brillo en el centro, y debajo su base
+  "material-oficina": [[".RR.", "RReR", "RRRR", ".RR."], ["....", ".rr.", ".rr.", "...."]],
   // Moneda: un disco de 3x3 con el canto oscuro
   "material-medieval": [[".O.", "OYO", ".O."], [".o.", "ooo", ".o."]],
   // Chip: placa verde de 3x3 con una pista que brilla
