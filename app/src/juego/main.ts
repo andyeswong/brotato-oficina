@@ -20,7 +20,7 @@ import { discoverContent } from '../../../src/game/brotato/registry/discover';
 import { validateContent } from '../../../src/game/brotato/registry/validate';
 import type { LevelModule, ThemeId } from '../../../src/game/brotato/registry/schemas';
 import { pickLevel } from '../../../src/game/brotato/sim/arena';
-import { BrotatoGame, HEADINGS, type Models } from '../../../src/game/brotato/play';
+import { BrotatoGame, type Models } from '../../../src/game/brotato/play';
 import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
 import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from '../../../src/game/brotato/ui/shop';
@@ -191,12 +191,6 @@ function newRun(after?: () => void): void {
     compositor.prewarm(baked, viewOptions(0, 0, performance.now() / 1000), game.preloadModels());
     ticks = new FixedLoop(game, input, 10);
     budget = new FrameBudget(3);
-    // Con el letrero de carga a la vista: los sprites de todo lo que la partida puede enseñar, en los 8 rumbos, y un
-    // primer cuadro tapado (sube el horneado y compila los shaders). Sin esto, el primer cuadro y la primera vez que
-    // sale cada enemigo daban tirones (NARUTO, multitud.html?precalentar: 86 ms -> 1,8 ms el primer cuadro)
-    compositor.prewarm(baked, { vx: 0, vy: 0, vw: VW, vh: VH, time: 0, lights: true, ambient: THEMES[game.theme].ambient, outline: outline.id, outlineColor: outline.color },
-      game.preloadModels().map((model) => ({ model, yaws: HEADINGS, casts: true })));
-    frame(performance.now() / 1000);
     shopMessage = null;
     screen = 'game';
     after?.();
