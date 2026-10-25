@@ -27,11 +27,14 @@ import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from 
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { drawHud, hudText } from '../../../src/game/brotato/ui/hud';
+import { computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
 import type { EntityId } from '@voxpix/world/state';
 import maiaFile from 'voxpix/models/maia/maia.json';
 
-const VW = 384, VH = 216, TOPZ = 40, INCLINE = 0.5;
+const TOPZ = 40, INCLINE = 0.5;
+// Lo que se ve, en píxeles del juego: lo decide la regla 216/384 (ui/layout.ts) según la pantalla, en fit()
+let VW = 384, VH = 216;
 const INK = '#0d0c12';
 const DEAD_PAUSE_S = 0.7;   // lo que se ve la caída antes de la pantalla de fin
 const q = new URLSearchParams(location.search);
@@ -87,18 +90,27 @@ canvas.width = VW; canvas.height = VH;
 ui.width = VW; ui.height = VH;
 fxCanvas.width = VW; fxCanvas.height = VH;
 const compositor = createCompositor(canvas, { prefer: q.get('ruta') === 'cpu' ? 'cpu' : 'gpu' });
+// La regla de píxel del Brotato (216/384): un píxel del juego son s×s píxeles FÍSICOS, s entero, y se ve lo que quepa
+// hasta 384 por eje. Los tres lienzos miden lo mismo y van encima uno de otro; el tamaño CSS (con decimales si hace
+// falta) cae en píxeles físicos exactos. El compositor ajusta su lienzo al tamaño de cada cuadro
 function fit(): void {
-  const s = Math.max(1, Math.floor(Math.min(innerWidth / VW, innerHeight / VH)));
-  const top = Math.max(0, (innerHeight - VH * s) / 2);
-  const c = compositor.canvas;
-  c.style.width = `${VW * s}px`; c.style.height = `${VH * s}px`;
-  c.style.marginTop = `${top}px`;
-  ui.style.width = c.style.width; ui.style.height = c.style.height;
-  ui.style.left = `${Math.floor((innerWidth - VW * s) / 2)}px`; ui.style.top = `${top}px`;
-  fxCanvas.style.width = ui.style.width; fxCanvas.style.height = ui.style.height;
-  fxCanvas.style.left = ui.style.left; fxCanvas.style.top = ui.style.top;
+  // innerWidth es entero y el ancho de verdad puede no serlo: en el Flip abierto, 411 x 2,625 = 1078,9 en vez de
+  // 1080, y la escala bajaba de 5 a 4. visualViewport da el ancho con decimales
+  const dpr = devicePixelRatio || 1;
+  const vv = visualViewport;
+  const l = computeLayout(Math.round((vv?.width ?? innerWidth) * dpr), Math.round((vv?.height ?? innerHeight) * dpr));
+  VW = l.width; VH = l.height;
+  for (const c of [ui, fxCanvas]) if (c.width !== VW || c.height !== VH) { c.width = VW; c.height = VH; }
+  for (const c of [compositor.canvas, fxCanvas, ui]) {
+    c.style.position = 'fixed'; c.style.margin = '0';
+    c.style.width = `${(VW * l.scale) / dpr}px`; c.style.height = `${(VH * l.scale) / dpr}px`;
+    c.style.left = `${l.left / dpr}px`; c.style.top = `${l.top / dpr}px`;
+  }
 }
-addEventListener('resize', fit); fit();
+addEventListener('resize', fit);
+visualViewport?.addEventListener('resize', fit);
+matchMedia?.(`(resolution: ${devicePixelRatio}dppx)`).addEventListener?.('change', fit);
+fit();
 // Letrero de bajo detalle, como en la escena: si se compone en la CPU, que se vea
 const lowDetail = document.getElementById('lowdetail')!;
 lowDetail.textContent = q.get('ruta') === 'cpu' ? 'Modo de bajo detalle (forzado con ?ruta=cpu)' : 'Sin aceleración gráfica: modo de bajo detalle';
@@ -152,8 +164,8 @@ function iconImage(ref: IconRef): HTMLCanvasElement | null {
   return out;
 }
 const painter: Painter = {
-  width: VW,
-  height: VH,
+  get width() { return VW; },
+  get height() { return VH; },
   fill(x, y, w, h, color) { g2.fillStyle = color; g2.fillRect(x, y, w, h); },
   icon(ref, x, y, w, h) {
     const img = iconImage(ref);
@@ -183,7 +195,7 @@ const effects = new Effects();
 // El destello de un golpe: el tinte plano de la entidad (NARUTO), solo aspecto, con el reloj de la vista
 const flashes = new Flashes<EntityId>((id, c) => game?.state.entities.setTint(id, c), (id) => !!game?.state.entities.get(id));
 const gfx = fxCanvas.getContext('2d')!;
-const fxPainter: Painter = { width: VW, height: VH, fill(x, y, w, h, color) { gfx.fillStyle = color; gfx.fillRect(x, y, w, h); }, icon: () => false };
+const fxPainter: Painter = { get width() { return VW; }, get height() { return VH; }, fill(x, y, w, h, color) { gfx.fillStyle = color; gfx.fillRect(x, y, w, h); }, icon: () => false };
 let drawn = '';                 // la firma de lo último pintado en la interfaz: solo se repinta si cambia
 const keys = new Set<string>();
 
@@ -250,9 +262,9 @@ function frame(time: number): void {
   const s = game.state, b = baked;
   const me = s.entities.get(game.playerId)!;
   const feet = b.cam.project(me.x + 0.5, me.y, me.z);
-  const vx = Math.max(0, Math.min(b.width - VW, Math.floor(feet[0]) - VW / 2));
+  const vx = scrollAxis(Math.floor(feet[0]), VW, 0, b.width);
   const top = Math.floor(b.cam.project(0, s.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
-  const vy = Math.max(top, Math.min(b.height - VH, Math.floor(feet[1]) - VH / 2 - 12));
+  const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
   compositor.frame(s, b, viewOptions(vx, vy, time));
   paintFx(vx, vy);
 }
@@ -293,8 +305,10 @@ function current(): { name: string; sign: string } {
 function drawUi(): void {
   const c = current();
   document.body.dataset.pantalla = c.name;
-  if (c.sign === drawn) return;
-  drawn = c.sign;
+  // Con el tamaño en la firma: si la ventana cambia, se repinta a la nueva medida
+  const sign = `${VW}x${VH}|${c.sign}`;
+  if (sign === drawn) return;
+  drawn = sign;
   g2.clearRect(0, 0, VW, VH);
   zones = [];
   if (screen === 'select') zones = drawSelect(painter, registry, selected, theme);
