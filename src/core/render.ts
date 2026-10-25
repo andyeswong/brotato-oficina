@@ -158,7 +158,7 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
   const filled = (x: number, y: number, z: number) => model.get(x, y, z) !== 0;
 
   const pal = model.palette;
-  const toneCache = new Map<string, number>();
+  const toneCache = new Map<number, number>();
 
   for (const [x, y, z, v] of model.entries()) {
     for (let f = 0; f < 6; f++) {
@@ -176,7 +176,7 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
 
   function toneFor(x: number, y: number, z: number, f: number, v: number): number {
     if (o.flat) { const { ramp, tone } = decode(v); return ramp * 16 + tone; }
-    const k = `${x},${y},${z},${f}`;
+    const k = key(x, y, z) * 8 + f;
     const hit = toneCache.get(k);
     if (hit !== undefined) return hit;
     const d = DIRS[f]!;

@@ -46,9 +46,11 @@ export class StaticVoxels implements VoxelSource {
     return [this.chunks[c]!, c, ((z - this.zMin) * CHUNK + (y % CHUNK)) * CHUNK + (x % CHUNK)];
   }
 
+  // (sin crear nada: el render la llama para cada vecino de cada vóxel)
   get(x: number, y: number, z: number): number {
-    const [data, , i] = this.where(x, y, z);
-    return data ? data[i]! : 0;
+    if (x < 0 || y < 0 || x >= this.width || y >= this.depth || z < this.zMin || z > this.zMax) return 0;
+    const data = this.chunks[((y / CHUNK) | 0) * this.cols + ((x / CHUNK) | 0)];
+    return data ? data[((z - this.zMin) * CHUNK + (y % CHUNK)) * CHUNK + (x % CHUNK)]! : 0;
   }
 
   set(x: number, y: number, z: number, value: number): void {
@@ -96,20 +98,23 @@ export class StaticVoxels implements VoxelSource {
     return x >= 0 && y >= 0 && x < this.width && y < this.depth && this.height[y * this.width + x]! > this.zMin;
   }
 
-  // Vóxeles llenos de una región (en orden fijo: trozo, z, y, x)
+  // Vóxeles llenos de una región (en orden fijo: trozo, z, y, x). Recorre solo la parte de cada trozo que cae en la
+  // región, no el trozo entero: una franja estrecha y alta (el rehorneado por columnas) toca muchos trozos.
   *entries(region?: { x0: number; y0: number; x1: number; y1: number }): Generator<[number, number, number, number]> {
     const r = region ?? { x0: 0, y0: 0, x1: this.width - 1, y1: this.depth - 1 };
+    const CC = CHUNK * CHUNK;
     for (let cy = Math.max(0, Math.floor(r.y0 / CHUNK)); cy <= Math.min(this.rows - 1, Math.floor(r.y1 / CHUNK)); cy++)
       for (let cx = Math.max(0, Math.floor(r.x0 / CHUNK)); cx <= Math.min(this.cols - 1, Math.floor(r.x1 / CHUNK)); cx++) {
         const data = this.chunks[cy * this.cols + cx];
         if (!data) continue;
-        for (let i = 0; i < data.length; i++) {
-          const v = data[i]!;
-          if (!v) continue;
-          const lx = i % CHUNK, ly = Math.floor(i / CHUNK) % CHUNK, lz = Math.floor(i / (CHUNK * CHUNK));
-          const x = cx * CHUNK + lx, y = cy * CHUNK + ly;
-          if (x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1) continue;
-          yield [x, y, lz + this.zMin, v];
+        const lx0 = Math.max(0, r.x0 - cx * CHUNK), lx1 = Math.min(CHUNK - 1, r.x1 - cx * CHUNK);
+        const ly0 = Math.max(0, r.y0 - cy * CHUNK), ly1 = Math.min(CHUNK - 1, r.y1 - cy * CHUNK);
+        for (let lz = 0; lz < this.zh; lz++) for (let ly = ly0; ly <= ly1; ly++) {
+          const row = lz * CC + ly * CHUNK;
+          for (let lx = lx0; lx <= lx1; lx++) {
+            const v = data[row + lx]!;
+            if (v) yield [cx * CHUNK + lx, cy * CHUNK + ly, lz + this.zMin, v];
+          }
         }
       }
   }

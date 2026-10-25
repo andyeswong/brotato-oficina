@@ -73,7 +73,19 @@ export function bakeWorld(world: Bakeable, opts: { topZ?: number; incline?: numb
     if (bl) b.lights.push(bl);
   }
   b.ms.light = Math.round(performance.now() - t1);
+  warmUp(b);
   return b;
+}
+
+// Calienta el camino del rehorneado (el JIT compila renderColumns al usarlo): si no, la primera vez que algo se
+// rompe en la partida, sus primeras franjas cuestan 4-7 ms en vez de ~1. Se renderizan unas franjas de prueba en
+// búferes de usar y tirar; no se publica nada.
+function warmUp(b: Baked): void {
+  const s = b.source;
+  const c = Math.floor(s.rows / 2) * s.cols + Math.floor(s.cols / 2);
+  const { rect } = chunkRect(b, [c]);
+  const buf = rectBuffers(rect);
+  for (let k = 0, col = rect.x0; k < 6 && col <= rect.x1; k++, col += RECT_BAND) renderColumns(b, rect, buf, col, Math.min(rect.x1, col + RECT_BAND - 1));
 }
 
 // ---- rejilla densa de ocupación para los rayos de sombra (columnas x0..x1, y0..y1, toda la altura)
