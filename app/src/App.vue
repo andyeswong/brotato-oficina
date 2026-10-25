@@ -209,7 +209,7 @@ void version;
   <div class="float bottom">
     <div class="pill options">
       <strong>{{ TOOLS.find((x) => x[0] === editor.tool)?.[2] }}</strong>
-      <span class="hint">{{ TOOL_HINT[editor.tool] }}</span>
+      <span class="hint">{{ editor.mode === 'voxel3d' ? TOOL_HINT[editor.tool].replace(' · clic derecho borra', '') : TOOL_HINT[editor.tool] }}</span>
       <template v-if="editor.tool === 'light'">
         <select v-model="editor.light.kind"><option v-for="[k, name] in LIGHT_KINDS" :key="k" :value="k">{{ name }}</option></select>
       </template>
@@ -218,6 +218,7 @@ void version;
         <span v-if="fluidState.faucets.length" class="hint">{{ fluidState.faucets.length }} grifo(s)</span>
         <button v-if="fluidState.running" @click="settleNow">Fijar ({{ fluidState.cells }})</button>
       </template>
+      <span v-if="editor.mode === 'voxel3d'" class="hint">· botón derecho gira · botón del medio mueve · rueda acerca</span>
       <label v-if="editor.mirrorX" class="mirror">espejo x = <input type="number" v-model.number="editor.mirrorAxis" /></label>
     </div>
     <div class="row">

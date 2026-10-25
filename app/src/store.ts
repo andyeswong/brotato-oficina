@@ -22,7 +22,7 @@ export const editor = reactive({
   grid: { minX: -20, maxX: 19, minY: -10, maxY: 9 },
   view: { yaw: 0, elevation: 30, outline: 'outer' as 'none' | 'outer' | 'both', scale: 8, turn: 8 },
   mode: 'layers' as 'layers' | 'voxel3d',                    // cómo se edita: por capas o sobre el modelo en 3D
-  view3d: { yaw: -30, elevation: 35, zoom: 12 },
+  view3d: { yaw: -30, elevation: 35, zoom: 12, panX: 0, panY: 0 },   // pan: desplazamiento de la vista en píxeles
   // Fuentes de luz de la escena, en el ESPACIO DEL MODELO (celda x, y, z): el render las interpreta en 2.5D.
   // Solo afectan a la vista previa iluminada; no cambian los vóxeles ni la paleta. Se guardan con el modelo.
   light: {
