@@ -1,6 +1,6 @@
 // Coste por cuadro del agua de la demo: simulación (2 pasos de 1/120 s) + dibujo en una vista de 384x216
-import { generateLayout } from '../../escenario-motor/src/engine/worldgen';
-import { THEMES } from '../../escenario-motor/demo/src/themes';
+import { generateLayout } from '../src/worldgen';
+import { THEMES } from '../src/content/themes';
 import { buildWorld } from '../src/world/build';
 import { bakeWorld } from '../src/world/bake';
 import { WaterLayer } from '../src/world/water';

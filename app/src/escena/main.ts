@@ -1,8 +1,8 @@
 // Demo: el escenario generado del juego, en UN SOLO MUNDO de vóxeles (src/world/state.ts). Este fichero solo hace
 // entrada, bucle e interfaz: el mundo guarda lo estático, el agua, las entidades (MAIA), las luces y las gotas; el
 // modo 2D (frame2D) y el modo vóxel (frame3D) leen ese mismo estado, y la lógica (colisión, agua) le pregunta a él.
-import { generateLayout, TILE, type Layout } from '../../../../escenario-motor/src/engine/worldgen';
-import { THEMES } from '../../../../escenario-motor/demo/src/themes';
+import { generateLayout, TILE, type Layout } from '../../../src/worldgen';
+import { THEMES } from '../../../src/content/themes';
 import { Model, type ModelFile } from '@core/index';
 import { buildWorldState, type WorldTheme, type World } from '../../../src/world/build';
 import { bakeWorld, type Baked } from '../../../src/world/bake';

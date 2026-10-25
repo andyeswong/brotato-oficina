@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { material } from '../src/core';
 import { StaticVoxels, WorldState } from '../src/world/state';
-import { generateLayout } from '../../escenario-motor/src/engine/worldgen';
-import { THEMES } from '../../escenario-motor/demo/src/themes';
+import { generateLayout } from '../src/worldgen';
+import { THEMES } from '../src/content/themes';
 import { buildWorldState } from '../src/world/build';
 
 const PAL = { ramps: [{ name: 'piedra', colors: ['#202020', '#404040', '#606060'] }] };

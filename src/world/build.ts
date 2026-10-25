@@ -2,8 +2,8 @@
 // Ejes del modelo: x hacia el este, y hacia el norte, z hacia arriba. La fila 0 del mapa es el norte.
 import { material, type Palette } from '../core';
 import { StaticVoxels } from './state';
-import { WALL, TILE, NORTH, type Layout } from '../../../escenario-motor/src/engine/worldgen';
-import type { SourceKind } from '../../../escenario-motor/src/engine/lighting/lights';
+import { WALL, TILE, NORTH, type Layout } from '../worldgen';
+import type { SourceKind } from '../lighting/lights';
 
 export type WorldTheme = 'medieval' | 'cyberpunk' | 'oficina';
 

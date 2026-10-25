@@ -1,6 +1,6 @@
 // Coste por cuadro de la demo del escenario: luces (con parpadeo) + capas del juego sobre una vista de 384x216
-import { generateLayout } from '../../escenario-motor/src/engine/worldgen';
-import { THEMES } from '../../escenario-motor/demo/src/themes';
+import { generateLayout } from '../src/worldgen';
+import { THEMES } from '../src/content/themes';
 import { buildWorld } from '../src/world/build';
 import { bakeWorld, lightView } from '../src/world/bake';
 import { buildLayers, applyLayers } from '../src/lighting/shade';

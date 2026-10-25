@@ -1,7 +1,7 @@
 // Desglose del cuadro 2D (medieval, vista con lago y MAIA dentro)
 import { readFileSync } from 'node:fs';
-import { generateLayout } from '../../escenario-motor/src/engine/worldgen';
-import { THEMES } from '../../escenario-motor/demo/src/themes';
+import { generateLayout } from '../src/worldgen';
+import { THEMES } from '../src/content/themes';
 import { Model, render, camera, lightField3D } from '../src/core';
 import { buildWorldState } from '../src/world/build';
 import { bakeWorld, lightView } from '../src/world/bake';

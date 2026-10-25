@@ -1,7 +1,7 @@
 // Coste por cuadro de los dos modos leyendo el MISMO estado del mundo (con MAIA, agua y gotas)
 import { readFileSync } from 'node:fs';
-import { generateLayout } from '../../escenario-motor/src/engine/worldgen';
-import { THEMES } from '../../escenario-motor/demo/src/themes';
+import { generateLayout } from '../src/worldgen';
+import { THEMES } from '../src/content/themes';
 import { Model } from '../src/core';
 import { buildWorldState } from '../src/world/build';
 import { bakeWorld } from '../src/world/bake';
