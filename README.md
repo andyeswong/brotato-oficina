@@ -23,6 +23,8 @@ Parámetros de `juego.html`:
 - `?ruta=cpu` compone en la CPU.
 - `?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no` elige el contorno.
 - `?ir=tienda|fin` simula sin entrada hasta la primera tienda o hasta el final.
+- Para medir (fase 4): `?ola=N` empieza en la oleada N, e `?inmortal` hace que MAIA no caiga. El número de enemigos
+  vivos sale en `data-enemigos` del `body`.
 
 ## El motor
 

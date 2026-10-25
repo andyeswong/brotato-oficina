@@ -5,6 +5,7 @@
 // ?seed=N fija la partida y salta la selección (el mundo sale de la semilla); ?nivel=oficina|medieval|cyberpunk fuerza
 // el tema; ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
 // ?ir=tienda|fin simula sin entrada hasta la primera tienda o hasta el final (para verify y las capturas).
+// Para medir (fase 4): ?ola=N empieza en la oleada N e ?inmortal hace que MAIA no caiga; body[data-enemigos] los cuenta.
 import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
 import { TILE } from '@voxpix/worldgen';
 import { THEMES } from '@voxpix/content/themes';
@@ -209,7 +210,8 @@ function newRun(after?: () => void): void {
   setTimeout(() => {
     level = levelFor(seed);
     theme = level.theme;
-    game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level);
+    game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level,
+      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
     baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: INCLINE, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color });
     // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
     // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
@@ -266,6 +268,7 @@ function frame(time: number): void {
   const top = Math.floor(b.cam.project(0, s.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
   compositor.frame(s, b, viewOptions(vx, vy, time));
+  document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
   paintFx(vx, vy);
 }
 

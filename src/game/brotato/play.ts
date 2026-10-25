@@ -49,6 +49,13 @@ export function heading(deg: number): number {
 // Los 8 rumbos (los de HEADINGS en el núcleo, que el precalentado usa por defecto)
 export { HEADINGS } from '@voxpix/world/frame2d';
 
+// Para medir (fase 4), nunca en una partida normal: empezar en una oleada más avanzada y que MAIA no caiga, para
+// tener cientos de enemigos en pantalla el tiempo que dure la medida. Apagadas, la partida y su huella no cambian
+export interface TestOptions {
+  startWave?: number;   // 1 = la primera
+  immortal?: boolean;   // tras cada paso, MAIA recupera toda la vida
+}
+
 export class BrotatoGame {
   readonly run: Run;
   readonly theme: ThemeId;
@@ -67,10 +74,12 @@ export class BrotatoGame {
   private readonly materialIds = new Map<number, EntityId>();
   private fx: WorldFx[] = [];
 
-  constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule) {
+  constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule,
+    private readonly test: TestOptions = {}) {
     const lv = level ?? pickLevel(registry.levels(), seed);
     this.run = new Run(registry, registry.character('maia'), lv, seed);
     this.theme = lv.theme;
+    if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
     const p = this.wave.player;
     const state = this.state;
@@ -134,6 +143,7 @@ export class BrotatoGame {
         this.facing = ((Math.round(Math.atan2(input.dx, -input.dy) / (Math.PI / 4)) % 8) + 8) % 8;
       }
       this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 });
+      if (this.test.immortal) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead') this.wave.status = 'playing'; }
       this.collectFx();
       this.phaseTick++;
       if (this.wave.status === 'dead') {
