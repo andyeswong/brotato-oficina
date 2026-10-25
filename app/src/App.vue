@@ -5,6 +5,7 @@ import Voxel3DEditor from './components/Voxel3DEditor.vue';
 import Viewport from './components/Viewport.vue';
 import PalettePanel from './components/PalettePanel.vue';
 import LayersPanel from './components/LayersPanel.vue';
+import { vDraggable } from './drag';
 import PxIcon from './components/PxIcon.vue';
 import { model, history, editor, touch, loadFile, newModel, replaceModel, version, paint, ui } from './store';
 import type { LightKind, Tool } from './store';
@@ -200,10 +201,10 @@ void version;
   </div>
 
   <!-- Izquierda: capas -->
-  <aside class="float left card" :class="{ folded: !ui.layersOpen }"><LayersPanel /></aside>
+  <aside v-draggable="'capas'" class="float left card" :class="{ folded: !ui.layersOpen }"><LayersPanel /></aside>
 
   <!-- Derecha: la vista previa -->
-  <aside class="float right card" :class="{ folded: !ui.previewOpen }"><Viewport /></aside>
+  <aside v-draggable="'vista-previa'" class="float right card" :class="{ folded: !ui.previewOpen }"><Viewport /></aside>
 
   <!-- Abajo: herramientas y colores, y encima las opciones de la herramienta -->
   <div class="float bottom">
@@ -240,7 +241,7 @@ void version;
       </div>
     </div>
   </div>
-  <aside v-if="ui.paletteOpen" class="float palette card" @click.stop><PalettePanel /></aside>
+  <aside v-if="ui.paletteOpen" v-draggable="'paleta'" class="float palette card" @click.stop><PalettePanel /></aside>
 
   <!-- Abajo a la izquierda: dónde estás -->
   <div class="float status">
@@ -298,6 +299,10 @@ void version;
 .left { top: 76px; left: 16px; width: 224px; padding: 14px; max-height: calc(100vh - 210px); display: flex; }
 .right { top: 76px; right: 16px; width: 360px; padding: 16px; max-height: calc(100vh - 210px); overflow-y: auto; }
 .folded { max-height: none; }
+/* Las ventanas se arrastran por la cabecera; mientras se mueven, por encima de todo */
+aside :deep(header) { cursor: grab; user-select: none; }
+aside.dragging { z-index: 6; box-shadow: 0 18px 50px rgba(0, 0, 0, .6); }
+aside.dragging :deep(header) { cursor: grabbing; }
 .bottom { bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .bottom .row { display: flex; gap: 8px; align-items: stretch; }
 .options { padding: 4px 6px 4px 16px; gap: 10px; box-shadow: none; background: color-mix(in srgb, var(--panel) 88%, transparent); }
