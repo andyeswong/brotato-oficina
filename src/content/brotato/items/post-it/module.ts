@@ -14,8 +14,8 @@ export default defineItem({
     },
   },
   looks: {
-    oficina: { name: 'Post-it', description: 'Cada 10 bajas, el enemigo suelta un material extra. Lo apuntas todo.' },
-    medieval: { name: 'Pergamino', description: 'Cada 10 bajas, el enemigo suelta un material extra. Lo anotas todo.' },
-    cyberpunk: { name: 'Chip de registro', description: 'Cada 10 bajas, el enemigo suelta un material extra. Lo registra todo.' },
+    oficina: { icon: 'items/oficina-post-it', name: 'Post-it', description: 'Cada 10 bajas, el enemigo suelta un material extra. Lo apuntas todo.' },
+    medieval: { icon: 'items/medieval-post-it', name: 'Pergamino', description: 'Cada 10 bajas, el enemigo suelta un material extra. Lo anotas todo.' },
+    cyberpunk: { icon: 'items/cyberpunk-post-it', name: 'Chip de registro', description: 'Cada 10 bajas, el enemigo suelta un material extra. Lo registra todo.' },
   },
 });

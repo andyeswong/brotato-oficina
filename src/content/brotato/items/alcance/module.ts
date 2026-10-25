@@ -13,8 +13,8 @@ export default defineItem({
   ],
   shop: { price: 16, weight: 0.3, order: 12 },
   looks: {
-    oficina: { name: 'Puntero láser', description: '+12 de alcance de las armas.' },
-    medieval: { name: 'Catalejo', description: '+12 de alcance de las armas.' },
-    cyberpunk: { name: 'Mira holográfica', description: '+12 de alcance de las armas.' },
+    oficina: { icon: 'items/oficina-alcance', name: 'Puntero láser', description: '+12 de alcance de las armas.' },
+    medieval: { icon: 'items/medieval-alcance', name: 'Catalejo', description: '+12 de alcance de las armas.' },
+    cyberpunk: { icon: 'items/cyberpunk-alcance', name: 'Mira holográfica', description: '+12 de alcance de las armas.' },
   },
 });

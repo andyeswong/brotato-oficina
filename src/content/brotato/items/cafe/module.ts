@@ -12,8 +12,8 @@ export default defineItem({
   maxStack: 5,
   shop: { price: 12, order: 4 },
   looks: {
-    oficina: { name: 'Café', description: '+10 % de cadencia, −1 % de crítico. A la tercera taza tiembla el pulso.' },
-    medieval: { name: 'Hidromiel', description: '+10 % de cadencia, −1 % de crítico. A la tercera jarra tiembla el pulso.' },
-    cyberpunk: { name: 'Café sintético', description: '+10 % de cadencia, −1 % de crítico. Al tercer vaso tiembla el pulso.' },
+    oficina: { icon: 'items/oficina-cafe', name: 'Café', description: '+10 % de cadencia, −1 % de crítico. A la tercera taza tiembla el pulso.' },
+    medieval: { icon: 'items/medieval-cafe', name: 'Hidromiel', description: '+10 % de cadencia, −1 % de crítico. A la tercera jarra tiembla el pulso.' },
+    cyberpunk: { icon: 'items/cyberpunk-cafe', name: 'Café sintético', description: '+10 % de cadencia, −1 % de crítico. Al tercer vaso tiembla el pulso.' },
   },
 });

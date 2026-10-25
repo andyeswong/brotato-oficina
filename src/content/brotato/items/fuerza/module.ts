@@ -13,8 +13,8 @@ export default defineItem({
   ],
   shop: { price: 14, weight: 0.3, order: 10 },
   looks: {
-    oficina: { name: 'Guantes de carga', description: '+2 de daño cuerpo a cuerpo.' },
-    medieval: { name: 'Guanteletes', description: '+2 de daño cuerpo a cuerpo.' },
-    cyberpunk: { name: 'Puños hidráulicos', description: '+2 de daño cuerpo a cuerpo.' },
+    oficina: { icon: 'items/oficina-fuerza', name: 'Guantes de carga', description: '+2 de daño cuerpo a cuerpo.' },
+    medieval: { icon: 'items/medieval-fuerza', name: 'Guanteletes', description: '+2 de daño cuerpo a cuerpo.' },
+    cyberpunk: { icon: 'items/cyberpunk-fuerza', name: 'Puños hidráulicos', description: '+2 de daño cuerpo a cuerpo.' },
   },
 });

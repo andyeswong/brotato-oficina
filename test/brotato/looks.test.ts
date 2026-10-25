@@ -54,14 +54,16 @@ describe('aspecto por mundo', () => {
     }
   });
 
-  it('todo objeto tiene el aspecto de la oficina, y si trae icono, el modelo existe', () => {
+  // Desde la revisión de la tienda (NARUTO): todo ítem lleva icono en vóxeles en cada mundo, no su inicial
+  it('todo objeto tiene el aspecto de la oficina e icono en cada mundo, y el modelo del icono existe', () => {
     const items = registry.items();
     expect(items.length).toBeGreaterThanOrEqual(8);
     for (const item of items) {
       expect(item.looks.oficina, item.id).toBeDefined();
       for (const theme of THEME_IDS) {
         const icon = item.looks[theme]?.icon;
-        if (icon) expect(existsSync(join(MODELS, `${icon}.json`)), `${item.id} (${theme}): models/brotato/${icon}.json`).toBe(true);
+        expect(icon, `${item.id} (${theme}): sin icono`).toBeDefined();
+        expect(existsSync(join(MODELS, `${icon}.json`)), `${item.id} (${theme}): models/brotato/${icon}.json`).toBe(true);
       }
     }
   });

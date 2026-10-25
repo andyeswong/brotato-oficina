@@ -13,8 +13,8 @@ export default defineItem({
   ],
   shop: { price: 12, weight: 0.3, order: 11 },
   looks: {
-    oficina: { name: 'Imán de bolsillo', description: '+20 de alcance para recoger materiales.' },
-    medieval: { name: 'Bolsa de cuero', description: '+20 de alcance para recoger materiales.' },
-    cyberpunk: { name: 'Imán de neodimio', description: '+20 de alcance para recoger materiales.' },
+    oficina: { icon: 'items/oficina-iman', name: 'Imán de bolsillo', description: '+20 de alcance para recoger materiales.' },
+    medieval: { icon: 'items/medieval-iman', name: 'Bolsa de cuero', description: '+20 de alcance para recoger materiales.' },
+    cyberpunk: { icon: 'items/cyberpunk-iman', name: 'Imán de neodimio', description: '+20 de alcance para recoger materiales.' },
   },
 });

@@ -14,8 +14,8 @@ export default defineItem({
   ],
   shop: { price: 20, weight: 0.5, minWave: 2, order: 14 },
   looks: {
-    oficina: { name: 'Bebida energética', description: '+12 % de daño, −3 de vida máxima.' },
-    medieval: { name: 'Poción de furia', description: '+12 % de daño, −3 de vida máxima.' },
-    cyberpunk: { name: 'Estimulante', description: '+12 % de daño, −3 de vida máxima.' },
+    oficina: { icon: 'items/oficina-furia', name: 'Bebida energética', description: '+12 % de daño, −3 de vida máxima.' },
+    medieval: { icon: 'items/medieval-furia', name: 'Poción de furia', description: '+12 % de daño, −3 de vida máxima.' },
+    cyberpunk: { icon: 'items/cyberpunk-furia', name: 'Estimulante', description: '+12 % de daño, −3 de vida máxima.' },
   },
 });

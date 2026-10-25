@@ -14,8 +14,8 @@ export default defineItem({
   ],
   shop: { price: 15, weight: 0.3, order: 13 },
   looks: {
-    oficina: { name: 'Zapatillas', description: '+8 % de velocidad, −5 % de daño.' },
-    medieval: { name: 'Botas de viaje', description: '+8 % de velocidad, −5 % de daño.' },
-    cyberpunk: { name: 'Patines de neón', description: '+8 % de velocidad, −5 % de daño.' },
+    oficina: { icon: 'items/oficina-prisa', name: 'Zapatillas', description: '+8 % de velocidad, −5 % de daño.' },
+    medieval: { icon: 'items/medieval-prisa', name: 'Botas de viaje', description: '+8 % de velocidad, −5 % de daño.' },
+    cyberpunk: { icon: 'items/cyberpunk-prisa', name: 'Patines de neón', description: '+8 % de velocidad, −5 % de daño.' },
   },
 });

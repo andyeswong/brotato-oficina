@@ -14,8 +14,8 @@ export default defineItem({
   maxStack: 5,
   shop: { price: 18, weight: 0.3, order: 9 },
   looks: {
-    oficina: { name: 'Lentes de precisión', description: '+5 % de crítico.' },
-    medieval: { name: 'Ojo de halcón', description: '+5 % de crítico.' },
-    cyberpunk: { name: 'Implante ocular', description: '+5 % de crítico.' },
+    oficina: { icon: 'items/oficina-precision', name: 'Lentes de precisión', description: '+5 % de crítico.' },
+    medieval: { icon: 'items/medieval-precision', name: 'Ojo de halcón', description: '+5 % de crítico.' },
+    cyberpunk: { icon: 'items/cyberpunk-precision', name: 'Implante ocular', description: '+5 % de crítico.' },
   },
 });
