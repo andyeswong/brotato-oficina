@@ -10,6 +10,8 @@ import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/in
 import { TILE } from '@voxpix/worldgen';
 import { THEMES } from '@voxpix/content/themes';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '@voxpix/world/bake';
+import { WorldView, type Quarter } from '@voxpix/world/view';
+import { QUARTERS, bakeInBackground, dressWalls, inputToWorld, turnQuarter, viewProjector } from '../../../src/game/brotato/ui/turn';
 import { FrameBudget } from '@voxpix/view/budget';
 import { createCompositor } from '@voxpix/view/compositor';
 import { walkFrames, WALK_FRAME_MS } from '@voxpix/anim/walk';
@@ -202,6 +204,14 @@ let seed = Number(q.get('seed') ?? Math.floor(Math.random() * 1e6));
 let level = levelFor(seed);
 let game: BrotatoGame | null = null;
 let baked: Baked | null = null;
+// El giro de la cámara (ui/turn.ts): Q / E en la partida. Cada giro es una vista girada del mundo con su horneado; se
+// guardan los 4 (unos 19 MB cada uno). El actual se hornea al empezar y los demás en los momentos sin juego
+interface TurnView { view: WorldView; baked: Baked; dropped: Set<string | number> }
+let quarter: Quarter = 0;
+const views = new Map<Quarter, TurnView>();
+let cur: TurnView | null = null;
+const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number }> = [];
+(window as unknown as { __giros: typeof bakeLog }).__giros = bakeLog;
 let ticks: FixedLoop | null = null;
 let budget = new FrameBudget(3);
 let selected = 0;
@@ -228,7 +238,10 @@ function newRun(after?: () => void): void {
     theme = level.theme;
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
-    baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: camera.incline, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color });
+    views.clear();
+    quarter = 0;
+    cur = bakeView(0);
+    baked = cur.baked;
     // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
     // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
     // cuadro tardaba 86-88 ms
@@ -242,6 +255,42 @@ function newRun(after?: () => void): void {
     after?.();
     frame(performance.now() / 1000);
     loading.style.display = 'none';
+  }, 30);
+}
+
+// Hornea la vista de un giro: la vista girada, sus paredes según el lado (contenido del juego) y su horneado
+function bakeView(q: Quarter): TurnView {
+  const g = game!;
+  const view = new WorldView(g.state, q);
+  const dropped = dressWalls(view, g.run.arena.layout);
+  const src = view.bakeable();
+  const bk = dropped.size ? { ...src, lights: src.lights.filter((l) => !dropped.has(l.id)) } : src;
+  const t0 = performance.now();
+  const out: TurnView = { view, dropped, baked: bakeWorld(bk, { topZ: TOPZ, incline: camera.incline, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color }) };
+  views.set(q, out);
+  // Para medir (fase 4 y el giro): cada horneado con su giro, lo que tardó y en qué fase de la partida cayó
+  bakeLog.push({ q, ms: Math.round(performance.now() - t0), phase: g.phase, wave: g.run.waveNumber });
+  document.body.dataset.giros = String(views.size);
+  return out;
+}
+
+// Girar: si el giro ya está horneado, al momento; si no, con el letrero «Girando…» mientras se hornea
+let turning = false;
+function turn(step: 1 | -1): void {
+  if (!game || !cur || turning) return;
+  const next = turnQuarter(quarter, step);
+  const go = (t: TurnView) => { quarter = next; cur = t; baked = t.baked; };
+  const have = views.get(next);
+  if (have) { go(have); return; }
+  turning = true;
+  const text = loading.textContent;
+  loading.textContent = 'Girando…';
+  loading.style.display = 'flex';
+  setTimeout(() => {
+    go(bakeView(next));
+    loading.style.display = 'none';
+    loading.textContent = text;
+    turning = false;
   }, 30);
 }
 
@@ -260,7 +309,7 @@ function toSelect(): void {
   seed = (seed * 7919 + 13) % 1000003;
   level = levelFor(seed);
   theme = level.theme;
-  game = null; baked = null; ticks = null;
+  game = null; baked = null; ticks = null; cur = null; views.clear();
   flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
@@ -272,18 +321,24 @@ function input(): TickInput {
   if (keys.has('d') || keys.has('arrowright')) dx++;
   if (keys.has('w') || keys.has('arrowup')) dy++;                 // arriba = norte = +y
   if (keys.has('s') || keys.has('arrowdown')) dy--;
+  // La entrada es de la pantalla ("arriba" = lejos de la cámara); la partida la quiere en ejes del mundo
+  if (cur) [dx, dy] = inputToWorld(cur.view.camera, dx, dy);
   return { dx, dy, stomp: false };
 }
 
 function frame(time: number): void {
-  if (!game || !baked) return;
-  const s = game.state, b = baked;
+  if (!game || !cur) return;
+  const s = game.state, b = cur.baked, cam = cur.view.camera;
+  // La vista girada al día (con el giro 0 es el mundo tal cual), sin las luces de lo que se rebajó
+  const rs = cur.view.frame();
+  if (cur.dropped.size) cur.view.lights = cur.view.lights.filter((l) => !cur!.dropped.has(l.id));
   const me = s.entities.get(game.playerId)!;
-  const feet = b.cam.project(me.x + 0.5, me.y, me.z);
+  const [mx, my] = cam.pointToView(me.x + 0.5, me.y);
+  const feet = b.cam.project(mx, my, me.z);
   const vx = scrollAxis(Math.floor(feet[0]), VW, 0, b.width);
-  const top = Math.floor(b.cam.project(0, s.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
+  const top = Math.floor(b.cam.project(0, cam.viewDepth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared del fondo
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
-  compositor.frame(s, b, viewOptions(vx, vy, time));
+  compositor.frame(rs, b, viewOptions(vx, vy, time));
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
   paintFx(vx, vy);
 }
@@ -301,7 +356,7 @@ function paintFx(vx: number, vy: number): void {
     else if (f.type === 'player-hit') flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s);
   }
   effects.add(fx, scene);
-  effects.paint(fxPainter, b.cam, vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
+  effects.paint(fxPainter, viewProjector(cur!.view.camera, b.cam), vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
 }
 
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
@@ -350,7 +405,13 @@ function loop(now: number): void {
   effects.update(Math.min(dt, 0.1));
   flashes.update(dt);
   if (screen !== 'select') frame(now / 1000);
-  if (game && baked) for (const job of rebakeChangedJobs(baked, game.state.lights)) budget.push(job);
+  if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
+  // Los giros que faltan, uno por cuadro y solo sin juego (el respiro y la tienda): nunca en mitad de una oleada
+  if (game && cur && !turning && views.size < 4 && bakeInBackground(game.phase, game.phaseTick)) {
+    const order = [turnQuarter(quarter, 1), turnQuarter(quarter, -1), turnQuarter(turnQuarter(quarter, 1), 1)];
+    const q = order.find((k) => !views.has(k)) ?? QUARTERS.find((k) => !views.has(k));
+    if (q !== undefined) bakeView(q);
+  }
   budget.run();
   drawUi();
   next(loop);
@@ -381,6 +442,7 @@ addEventListener('keydown', (e) => {
   if (screen === 'select') { const a = selectKey(e, registry.characters().length, selected); if (a) act(a); }
   else if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); }
   else if (game?.phase === 'shop') { const a = shopKey(e, game.run); if (a) { e.preventDefault(); act(a); } }
+  else if (game && (k === 'q' || k === 'e')) turn(k === 'e' ? 1 : -1);
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 ui.addEventListener('pointerdown', (e) => {

@@ -25,6 +25,9 @@ Parámetros de `juego.html`:
   la inclinación del suelo (0,5, 1 o 0,35) y el zoom (Cerca, una escala más). La interfaz no cambia de tamaño.
 - `?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no` elige el contorno.
 - `?ir=tienda|fin` simula sin entrada hasta la primera tienda o hasta el final.
+- En la partida, Q / E giran la cámara en cuartos de vuelta (VoxPix `WorldView`). Arriba es siempre lejos de la cámara.
+  El giro actual se hornea al empezar y los otros tres en el respiro y la tienda; hasta entonces, girar hornea con
+  «Girando…». `window.__giros` registra cada horneado.
 - Para medir (fase 4): `?ola=N` empieza en la oleada N, e `?inmortal` hace que MAIA no caiga. El número de enemigos
   vivos sale en `data-enemigos` del `body`.
 
