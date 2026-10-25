@@ -9,6 +9,8 @@
     canvas { image-rendering: pixelated; display: block; margin: 0 auto; }
     /* La interfaz se pinta en #ui con la fuente de píxel; #hud repite su texto para lectores de pantalla */
     #ui { position: fixed; margin: 0; touch-action: none; }
+    /* Los efectos de la oleada (números, avisos, muertes), entre el mundo y la interfaz */
+    #fx { position: fixed; margin: 0; pointer-events: none; }
     #hud { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     #lowdetail { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 6px 12px; display: none;
       background: #1a1420e6; color: #ffd08a; border: 1px solid #6a4a2a; border-radius: 4px; font-size: 13px; pointer-events: none; }
@@ -17,6 +19,7 @@
 </head>
 <body>
   <canvas id="view"></canvas>
+  <canvas id="fx"></canvas>
   <canvas id="ui"></canvas>
   <div id="hud" role="status"></div>
   <div id="lowdetail"></div>

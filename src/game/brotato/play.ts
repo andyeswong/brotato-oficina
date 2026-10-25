@@ -9,7 +9,7 @@ import { TICK } from '../../world/state';
 import type { Registry } from './registry/validate';
 import type { LevelModule, ThemeId } from './registry/schemas';
 import { Run } from './sim/Run';
-import type { World as Wave } from './sim/World';
+import type { World as Wave, WorldFx } from './sim/World';
 import { pickLevel } from './sim/arena';
 import { lookOf } from './looks';
 import { turn, type CarryConfig, type TickInput } from '../runtime';
@@ -36,6 +36,8 @@ export const CLEARED_TICKS = 72;
 
 const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
+// Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
+const FX_KEEP = 256;
 
 // Todo giro de una entidad va a uno de los 8 rumbos (múltiplos de 45°), como MAIA y los rigs. El compositor guarda
 // un sprite por modelo y giro: con giros continuos (armas apuntando, enemigos y disparos según su velocidad) cada
@@ -63,6 +65,7 @@ export class BrotatoGame {
   private readonly enemyIds = new Map<number, EntityId>();
   private readonly shotIds = new Map<number, EntityId>();
   private readonly materialIds = new Map<number, EntityId>();
+  private fx: WorldFx[] = [];
 
   constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule) {
     const lv = level ?? pickLevel(registry.levels(), seed);
@@ -131,6 +134,7 @@ export class BrotatoGame {
         this.facing = ((Math.round(Math.atan2(input.dx, -input.dy) / (Math.PI / 4)) % 8) + 8) % 8;
       }
       this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 });
+      this.collectFx();
       this.phaseTick++;
       if (this.wave.status === 'dead') {
         this.setPhase('dead');
@@ -151,6 +155,22 @@ export class BrotatoGame {
     // El mundo sigue (agua, gotas, parpadeo) aunque la oleada esté parada
     this.state.step();
     this.tick++;
+  }
+
+  // Los efectos anunciados desde la última llamada (golpes, muertes...), para que la vista los pinte. Se vacían al leerlos
+  takeFx(): WorldFx[] {
+    const out = this.fx;
+    this.fx = [];
+    return out;
+  }
+
+  // La simulación los anuncia en World.fx y no los vacía: se pasan aquí cada tick
+  private collectFx(): void {
+    const list = this.wave.fx;
+    if (!list.length) return;
+    this.fx.push(...list);
+    list.length = 0;
+    if (this.fx.length > FX_KEEP) this.fx.splice(0, this.fx.length - FX_KEEP);
   }
 
   // Salir de la tienda: la siguiente oleada, con las armas que haya ahora

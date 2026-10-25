@@ -109,8 +109,8 @@ export type WorldFx =
   | { type: 'player-hit'; amount: number }
   | { type: 'dodge' }
   | { type: 'spawn'; uid: number }
-  | { type: 'enemy-hit'; uid: number; x: number; y: number; amount: number; crit: boolean }
-  | { type: 'enemy-die'; x: number; y: number }
+  | { type: 'enemy-hit'; uid: number; x: number; y: number; z: number; amount: number; crit: boolean }
+  | { type: 'enemy-die'; x: number; y: number; z: number }
   | { type: 'pickup'; value: number }
   | { type: 'heal'; amount: number };
 
@@ -411,7 +411,7 @@ export class World {
     const crit = this.deps.rng() < critChance;
     const amount = Math.max(1, Math.round(base * (crit ? critMult : 1)));
     e.hp -= amount;
-    this.fx.push({ type: 'enemy-hit', uid: e.uid, x: e.x, y: e.y, amount, crit });
+    this.fx.push({ type: 'enemy-hit', uid: e.uid, x: e.x, y: e.y, z: e.z, amount, crit });
     this.deps.emit('onHit', { damage: amount, crit, enemy: e.def.id, source });
     // Robo de vida: cada golpe de un arma del jugador tiene esa probabilidad de curar 1
     if (source.startsWith('weapon:') && this.stealT <= 0 && this.player.hp < this.player.maxHp
@@ -422,7 +422,7 @@ export class World {
     }
     if (e.hp > 0) return;
     e.alive = false;
-    this.fx.push({ type: 'enemy-die', x: e.x, y: e.y });
+    this.fx.push({ type: 'enemy-die', x: e.x, y: e.y, z: e.z });
     this.dropMaterials({ x: e.x, y: e.y }, e.def.loot.materials);
     this.deps.onKill(e.def);
     this.deps.emit('onKill', { enemy: e.def.id, source, at: { x: e.x, y: e.y } });

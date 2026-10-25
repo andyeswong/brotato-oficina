@@ -27,6 +27,7 @@ import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from 
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { drawHud, hudText } from '../../../src/game/brotato/ui/hud';
+import { Effects, type FxScene } from '../../../src/game/brotato/ui/fx';
 import maiaFile from '../../../models/maia/maia.json';
 
 const VW = 384, VH = 216, TOPZ = 40, INCLINE = 0.5;
@@ -65,6 +66,9 @@ const models: Models = {
 };
 const maiaModel = Model.fromJSON(maiaFile as unknown as ModelFile);
 const maiaWalk = walkFrames(maiaModel);
+// Lo que miden MAIA y un bicho (los textos de los efectos salen justo encima de la cabeza)
+const MAIA_H = (maiaModel.bounds()?.maxZ ?? 30) + 1;
+const ENEMY_H = 12;
 
 function carryFor(theme: LevelModule['theme']): CarryConfig | undefined {
   const c = registry.character('maia').carryLight;
@@ -72,13 +76,15 @@ function carryFor(theme: LevelModule['theme']): CarryConfig | undefined {
   return l ? { model: model(l.model), kind: l.kind, cone: l.cone, intensity: l.intensity, radius: l.radius, color: l.color, hand: l.hand, emit: l.emit } : undefined;
 }
 
-// ---- lienzos: el del mundo y, encima, el de la interfaz, a la misma resolución y escala
+// ---- lienzos: el del mundo, el de los efectos y, encima, el de la interfaz, a la misma resolución y escala
 const canvas = document.getElementById('view') as HTMLCanvasElement;
+const fxCanvas = document.getElementById('fx') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 const loading = document.getElementById('loading')!;
 canvas.width = VW; canvas.height = VH;
 ui.width = VW; ui.height = VH;
+fxCanvas.width = VW; fxCanvas.height = VH;
 const compositor = createCompositor(canvas, { prefer: q.get('ruta') === 'cpu' ? 'cpu' : 'gpu' });
 function fit(): void {
   const s = Math.max(1, Math.floor(Math.min(innerWidth / VW, innerHeight / VH)));
@@ -88,6 +94,8 @@ function fit(): void {
   c.style.marginTop = `${top}px`;
   ui.style.width = c.style.width; ui.style.height = c.style.height;
   ui.style.left = `${Math.floor((innerWidth - VW * s) / 2)}px`; ui.style.top = `${top}px`;
+  fxCanvas.style.width = ui.style.width; fxCanvas.style.height = ui.style.height;
+  fxCanvas.style.left = ui.style.left; fxCanvas.style.top = ui.style.top;
 }
 addEventListener('resize', fit); fit();
 // Letrero de bajo detalle, como en la escena: si se compone en la CPU, que se vea
@@ -170,6 +178,9 @@ let selected = 0;
 let shopMessage: ShopMessage | null = null;
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
 let zones: Zone<ShopAction | SelectAction>[] = [];
+const effects = new Effects();
+const gfx = fxCanvas.getContext('2d')!;
+const fxPainter: Painter = { width: VW, height: VH, fill(x, y, w, h, color) { gfx.fillStyle = color; gfx.fillRect(x, y, w, h); }, icon: () => false };
 let drawn = '';                 // la firma de lo último pintado en la interfaz: solo se repinta si cambia
 const keys = new Set<string>();
 
@@ -192,6 +203,7 @@ function newRun(after?: () => void): void {
     ticks = new FixedLoop(game, input, 10);
     budget = new FrameBudget(3);
     shopMessage = null;
+    effects.clear();
     screen = 'game';
     after?.();
     frame(performance.now() / 1000);
@@ -215,6 +227,7 @@ function toSelect(): void {
   level = levelFor(seed);
   theme = level.theme;
   game = null; baked = null; ticks = null;
+  effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
 }
@@ -237,6 +250,18 @@ function frame(time: number): void {
   const top = Math.floor(b.cam.project(0, s.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
   const vy = Math.max(top, Math.min(b.height - VH, Math.floor(feet[1]) - VH / 2 - 12));
   compositor.frame(s, b, viewOptions(vx, vy, time));
+  paintFx(vx, vy);
+}
+
+// Los efectos de la oleada, en su lienzo: se repinta cada cuadro (se mueven), y no se ven en la tienda
+function paintFx(vx: number, vy: number): void {
+  const g = game!, b = baked!;
+  gfx.clearRect(0, 0, VW, VH);
+  if (g.phase === 'shop') return;
+  const p = g.current.player;
+  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1) };
+  effects.add(g.takeFx(), scene);
+  effects.paint(fxPainter, b.cam, vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
 }
 
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
@@ -280,6 +305,7 @@ function loop(now: number): void {
     const over = game.phase === 'victory' || (game.phase === 'dead' && game.phaseTick * TICK >= DEAD_PAUSE_S);
     if (over) { screen = 'end'; endAt = now; }
   }
+  effects.update(Math.min(dt, 0.1));
   if (screen !== 'select') frame(now / 1000);
   if (game && baked) for (const job of rebakeChangedJobs(baked, game.state.lights)) budget.push(job);
   budget.run();
