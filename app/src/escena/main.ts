@@ -86,7 +86,9 @@ function rebuild(): void {
     runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel, walk: WALK ? walkFrames(maiaModel) : undefined });
     maia = state.entities.get(runtime.entityId!) ?? null;
     if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
-    ticks = new FixedLoop(runtime, input);
+    // Hasta 10 ticks por cuadro (un tick cuesta ~0,7 ms): el modo vóxel pinta a 8-10 fps y con el tope de 5 MAIA andaba
+    // a cámara lenta. Por debajo de 6 fps la partida se frena en vez de encadenar cuadros más lentos
+    ticks = new FixedLoop(runtime, input, 10);
     budget = new FrameBudget(3);       // los trabajos del mapa anterior no sirven para este
     bakeMs = Math.round(performance.now() - t0);
     vox.dirty = true;
