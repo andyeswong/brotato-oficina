@@ -16,3 +16,11 @@ En la Alienware (Edge de Windows, desde WSL):
 
 Primera medida (NARUTO, 2026-10-24, commit c96186a, Edge sin ventana en la Alienware): a 1x p95 16,8 y 0 % perdidos;
 a 6x, cuadro de 43-77 ms y p95 de 67-133 ms en los tres temas (100 % perdidos). No cumple el criterio.
+
+Validación del arnés (condición de MAIA, 2026-10-24): el Brotato congelado (`efb1a39`, compilado aparte y servido en
+:5191 con `?nodebug&level=<tema>&seed=5`, oleada 1 en marcha, comprobado con `-Shot`) da a 6x p95 16,7-16,8 ms y
+0-0,2 % perdidos en medieval, oficina y cyberpunk, como medía FERN. El arnés distingue: lo que no cumple es la escena.
+
+Opciones: `-Shot C:\...\x.png` guarda una captura al final de la muestra (para comprobar qué se midió); `-Gpu` arranca
+Edge con la GPU en vez de `--disable-gpu` (para la ruta WebGL2). Ojo: el freno de CDP frena la CPU, no la GPU, así
+que con `-Gpu` la medida sale optimista; la aceptación final es en el Flip.
