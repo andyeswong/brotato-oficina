@@ -66,20 +66,40 @@ export function buyAll(run: Run): string[] {
   return bought;
 }
 
+type Hooks = { onTick?: (world: World) => void; onWave?: (world: World) => void };
+
 // Una partida entera: oleadas con el piloto y tienda entre ellas. onWave recibe cada oleada al acabar y onTick cada
 // paso; devuelve la oleada alcanzada (11 = victoria) y una línea por oleada.
-export function playRun(run: Run, hooks: { onTick?: (world: World) => void; onWave?: (world: World) => void } = {}): { reached: number; rows: string[] } {
+export function playRun(run: Run, hooks: Hooks = {}): { reached: number; rows: string[] } {
   const rows: string[] = [];
   for (;;) {
+    if (wave(run, hooks, rows)) return { reached: run.world!.status === 'dead' ? run.waveNumber : 11, rows };
+  }
+}
+
+// Lo mismo, soltando el hilo entre oleadas: una prueba que juega partidas enteras sin soltarlo deja al trabajador de
+// vitest sin responder (en oficina, "Timeout calling onTaskUpdate", y npm test falla aunque todo pase)
+export async function playRunAsync(run: Run, hooks: Hooks = {}): Promise<{ reached: number; rows: string[] }> {
+  const rows: string[] = [];
+  for (;;) {
+    if (wave(run, hooks, rows)) return { reached: run.world!.status === 'dead' ? run.waveNumber : 11, rows };
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+// Una oleada y su tienda; true si la partida acabó
+function wave(run: Run, hooks: Hooks, rows: string[]): boolean {
+  {
     const world = run.startWave();
     while (world.status === 'playing') { world.step(1 / 60, kite(world, run)); hooks.onTick?.(world); }
     hooks.onWave?.(world);
     const line = `s${run.seed} oleada ${String(run.waveNumber).padStart(2)} · ${world.status === 'dead' ? 'MUERE' : 'pasa '} a los ${world.time.toFixed(0).padStart(2)} s · vida ${world.player.hp}/${world.player.maxHp} · bajas ${run.kills} · materiales ${run.materials}`;
-    if (world.status === 'dead') { rows.push(line); return { reached: run.waveNumber, rows }; }
+    if (world.status === 'dead') { rows.push(line); return true; }
     const result = run.finishWave();
-    if (result === 'victory') { rows.push(`${line} · VICTORIA`); return { reached: 11, rows }; }
+    if (result === 'victory') { rows.push(`${line} · VICTORIA`); return true; }
     run.shop.open();
     const bought = shop(run);
     rows.push(`${line} · compra: ${bought.join(', ') || '—'} · quedan ${run.materials} · armas ${run.weapons.map((w) => w.id + (w.tier ? `+${w.tier}` : '')).join(',')}`);
+    return false;
   }
 }

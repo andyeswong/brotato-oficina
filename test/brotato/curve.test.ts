@@ -10,15 +10,15 @@ const { registry } = validateContent(discoverContent());
 const SEEDS = (process.env.SEEDS ?? '1,2,3,4,5,6,7,8').split(',').map(Number);
 const LEVEL = process.env.LEVEL ?? 'oficina';
 
-import { playRun } from './pilot';
+import { playRunAsync } from './pilot';
 
 // Se salta en los tests normales; solo corre con CURVA=1. Una prueba por semilla (una sola de minutos bloqueaba al
 // trabajador de vitest) y el resumen al final.
 describe.skipIf(!process.env.CURVA)('curva de balance', () => {
   const rows: string[] = [];
   const reached: number[] = [];
-  it.each(SEEDS)('semilla %i', { timeout: 600_000 }, (seed) => {
-    const r = playRun(new Run(registry, registry.character('maia'), registry.level(LEVEL), seed));
+  it.each(SEEDS)('semilla %i', { timeout: 600_000 }, async (seed) => {
+    const r = await playRunAsync(new Run(registry, registry.character('maia'), registry.level(LEVEL), seed));
     rows.push(...r.rows);
     reached.push(r.reached);
   });
