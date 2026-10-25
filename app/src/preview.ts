@@ -1,7 +1,7 @@
 // El render del editor (y su luz): el de la GPU (src/view/gpu/voxrender.ts) si hay WebGL2, el de la CPU si no (o
 // con ?ruta=cpu, o si se elige en la barra de estado). Los dos dan los mismos píxeles (app/oraculo-render.html).
 // Y lo que comparten la vista previa y la exportación a PNG: el encuadre y la imagen iluminada.
-import { render, camera, lightField3D, type RenderOptions, type Rendered, type PointLight3D, type VoxelSource } from '@core/index';
+import { render, camera, lightField3D, fitFrame, type RenderOptions, type Rendered, type PointLight3D, type VoxelSource, type Bounds, type Frame } from '@core/index';
 import { GpuVoxelRenderer } from '../../src/view/gpu/voxrender';
 import { lightIntensity, lightOf, SOURCE_PRESETS } from '../../src/lighting';
 import { buildLayers, applyLayers } from '../../src/lighting/shade';
@@ -40,24 +40,11 @@ export function renderModel(o: RenderOptions, m: VoxelSource = model.value, rev:
 // Para la barra de estado: si la GPU está disponible (se prueba al arrancar)
 export function probeGpu(): void { gpuRenderer(); }
 
-// ---- encuadre
-// El de los sprites del juego (64x48 con el pivote en 32,42) si el modelo cabe en él en cualquier giro; si no, uno
-// que lo contiene girando: el radio de su caja alrededor del pivote y su altura. No depende del giro, así que al
-// girar la vista no salta.
-export interface Frame { W: number; H: number; originX: number; originY: number }
-export const SPRITE_FRAME: Frame = { W: 64, H: 48, originX: 32, originY: 42 };
-export function frameFor(m: VoxelSource & { bounds?: () => { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } | null }, elevation: number): Frame {
-  const b = m.bounds?.();
-  if (!b) return SPRITE_FRAME;
-  let R = 0;
-  for (const x of [b.minX, b.maxX + 1]) for (const y of [b.minY, b.maxY + 1]) R = Math.max(R, Math.hypot(x - 0.5, y - 0.5));
-  const se = Math.sin((elevation * Math.PI) / 180);
-  const top = R * se + Math.max(0, b.maxZ + 1), bottom = R * se - Math.min(0, b.minZ);
-  const M = 2;                                        // el contorno y un poco de aire
-  if (R + M <= 31 && top + M <= 42 && bottom + M <= 6) return SPRITE_FRAME;
-  const half = Math.ceil(R) + M;
-  const originY = Math.ceil(top) + M;
-  return { W: half * 2, H: originY + Math.ceil(bottom) + M, originX: half, originY };
+// fitFrame (src/core/render.ts): 64x48 si el modelo cabe; si no, uno que lo contiene en cualquier giro
+export type { Frame } from '@core/index';
+export { SPRITE_FRAME } from '@core/index';
+export function frameFor(m: VoxelSource & { bounds?: () => Bounds | null }, elevation: number): Frame {
+  return fitFrame(m.bounds?.() ?? null, elevation);
 }
 
 export function viewOptions(f: Frame, yaw: number, pick: boolean): RenderOptions {

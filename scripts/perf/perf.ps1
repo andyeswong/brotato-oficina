@@ -2,7 +2,7 @@ param([string]$Url, [int]$Throttle = 6, [int]$WarmMs = 9000, [int]$SampleMs = 80
 $ErrorActionPreference = "Stop"
 $port = 9444
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-$prof = "C:\Users\andre\AppData\Local\Temp\ss-naruto-perf"
+$prof = Join-Path $env:TEMP "voxpix-perf"   # un perfil de Edge aparte, en el temporal del usuario
 $gpuArgs = if ($Gpu) { @("--enable-gpu","--ignore-gpu-blocklist") } else { @("--disable-gpu") }
 $extraArgs = if ($Extra) { $Extra -split " " } else { @() }
 $p = Start-Process -FilePath $edge -ArgumentList (@("--headless=new") + $gpuArgs + $extraArgs + @("--remote-debugging-port=$port","--user-data-dir=$prof","--window-size=$Size","about:blank")) -PassThru

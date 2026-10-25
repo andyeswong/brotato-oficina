@@ -8,6 +8,7 @@
 import { Model, render, box, material, camera, lightField3D, type ModelFile, type RenderOptions, type Rendered, type PointLight3D } from '@core/index';
 import { GpuVoxelRenderer } from '../../../src/view/gpu/voxrender';
 import { sampleScene } from '../../../src/samples/basic';
+import { medievalScene } from '../../../src/samples/medieval';
 import { loadPxl, paletteFromPxl, stackFromPxl, pxlDirectives, applyDirectives } from '../../../src/pxl/bridge';
 import maiaFile from '../../../models/maia/maia.json';
 import perseguidor from '../../../models/brotato/cyberpunk/perseguidor.json';
@@ -34,7 +35,8 @@ function raro(): Model {
 }
 
 const models: Array<[string, Model]> = [
-  ['muestra', sampleScene()],
+  ['basica', sampleScene()],
+  ['medieval', medievalScene().model],
   ['maia', Model.fromJSON(maiaFile as unknown as ModelFile)],
   ['perseguidor', Model.fromJSON(perseguidor as unknown as ModelFile)],
   ['raro', raro()],

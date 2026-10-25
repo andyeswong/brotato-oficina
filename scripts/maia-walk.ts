@@ -3,7 +3,8 @@
 //     aprobado; columnas: quieto + los 8 cuadros;
 //   - maia_walk_x6.gif: los mismos 6 en una fila, animados a 100 ms por cuadro.
 // Guarda también cada cuadro como modelo (models/maia/walk/maia_walk_N.json) para el juego.
-//   [MODEL=otro.json] npx tsx --tsconfig tsconfig.runtime.json scripts/maia-walk.ts [carpeta de salida]
+// Con APPROVED=<hoja PNG del walk 2D aprobado> añade sus dos filas para comparar.
+//   [MODEL=otro.json] [APPROVED=walk.png] npx tsx --tsconfig tsconfig.runtime.json scripts/maia-walk.ts [carpeta de salida]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { Model, render, type ModelFile } from '../src/core';
@@ -12,7 +13,8 @@ import { walkFrames, WALK_FRAME_MS } from '../src/anim/walk';
 import { encodeGIF } from './lib/gif';
 
 const outDir = process.argv[2] ?? 'out';
-const APPROVED = '/mnt/c/Users/andre/Sync/brotato-oficina/arte/aseprite-maia/v2_moonlighter/maia.png';
+// El sprite aprobado con el que se compara (PNG); sin APPROVED no se compara
+const APPROVED = process.env.APPROVED ?? '';
 const BG: [number, number, number] = [58, 62, 74];
 const MODEL = process.env.MODEL ?? 'models/maia/maia.json';
 const maia = Model.fromJSON(JSON.parse(readFileSync(MODEL, 'utf8')) as ModelFile);
@@ -38,10 +40,11 @@ function voxelCell(m: Model, yaw: number): Uint8ClampedArray {
 
 // El walk 2D aprobado: hoja de 24x34 por cuadro (maia_walk = 4..11, maia_espalda_walk = 16..23, quietos 0 y 12),
 // con sus pies (fila 33) en la fila de los pies de la celda del juego
-const approved = decodePNG(readFileSync(APPROVED));
+const approved = APPROVED ? decodePNG(readFileSync(APPROVED)) : null;
 const AW = 24, AH = 34;
 function approvedCell(index: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(CW * CH * 4);
+  if (!approved) return out;
   const dx = (CW - AW) / 2, dy = OY - CY - AH + 1;
   for (let y = 0; y < AH; y++) for (let x = 0; x < AW; x++) {
     const s = (y * approved.width + index * AW + x) * 4, ty = dy + y, tx = dx + x;
@@ -54,8 +57,10 @@ function approvedCell(index: number): Uint8ClampedArray {
 // cells[fila][columna]: columna 0 = quieto, 1..8 = cuadros
 const cells: Uint8ClampedArray[][] = [
   ...VIEWS.map((yaw) => [voxelCell(maia, yaw), ...frames.map((f) => voxelCell(f, yaw))]),
-  [approvedCell(0), ...Array.from({ length: 8 }, (_, i) => approvedCell(4 + i))],
-  [approvedCell(12), ...Array.from({ length: 8 }, (_, i) => approvedCell(16 + i))],
+  ...(approved ? [
+    [approvedCell(0), ...Array.from({ length: 8 }, (_, i) => approvedCell(4 + i))],
+    [approvedCell(12), ...Array.from({ length: 8 }, (_, i) => approvedCell(16 + i))],
+  ] : []),
 ];
 
 function grid(rows: Uint8ClampedArray[][]): { w: number; h: number; rgba: Uint8ClampedArray } {

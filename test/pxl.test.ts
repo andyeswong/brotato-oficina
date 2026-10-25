@@ -64,11 +64,11 @@ sprite("cara", \`
     expect(decode(m.get(0, 0, 3))).toEqual({ ramp: 0, tone: 1 });
   });
 
-  it('lee arte real del equipo (maia24-ropa.px.js)', () => {
-    const path = '/mnt/c/Users/andre/Sync/brotato-oficina/arte/maia24-ropa.px.js';
-    let src: string;
-    try { src = readFileSync(path, 'utf8'); } catch { return; }   // solo en la máquina con Sync
-    const p = loadPxl(src, 'maia24-ropa.px.js');
+  // Con VOXPIX_REAL_PXL=<ruta a un .px.js con sprites> se prueba también con arte real (p. ej. maia24-ropa.px.js)
+  it.skipIf(!process.env.VOXPIX_REAL_PXL)('lee arte real (VOXPIX_REAL_PXL)', () => {
+    const path = process.env.VOXPIX_REAL_PXL!;
+    const src = readFileSync(path, 'utf8');
+    const p = loadPxl(src, path);
     const names = pxlAssets(p);
     expect(names.length).toBeGreaterThan(0);
     const pal = paletteFromPxl(p, names[0]);

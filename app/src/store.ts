@@ -1,6 +1,6 @@
 import { reactive, shallowRef, ref } from 'vue';
 import { Model, History, material, type ModelFile } from '@core/index';
-import { sampleScene } from '../../src/samples/basic';
+import { medievalScene } from '../../src/samples/medieval';
 
 // Estado del editor. El modelo es mutable y no reactivo (es un Map grande); cada cambio sube `version` y
 // los componentes que dibujan escuchan ese número.
@@ -8,7 +8,9 @@ import { sampleScene } from '../../src/samples/basic';
 export type Tool = 'pen' | 'erase' | 'paint' | 'pick' | 'box' | 'fill' | 'light' | 'fluid';
 export type LightKind = 'torch' | 'lamp' | 'brazier' | 'neon-pink' | 'neon-cyan' | 'screen';
 
-export const model = shallowRef<Model>(sampleScene());
+// La escena de muestra: un rincón medieval de 32 x 32 con sus luces (src/samples/medieval.ts)
+const start = medievalScene();
+export const model = shallowRef<Model>(start.model);
 export const history = shallowRef(new History(model.value));
 export const version = ref(0);
 
@@ -20,8 +22,8 @@ export const editor = reactive({
   mirrorX: false,
   mirrorAxis: 0,               // espejo respecto al centro del vóxel x = mirrorAxis
   // La rejilla donde se edita (el lienzo): x e y con el pivote (0, 0) en medio, y z de 0 a maxZ (las capas)
-  grid: { minX: -20, maxX: 19, minY: -10, maxY: 9, maxZ: 23 },
-  view: { yaw: 0, elevation: 30, outline: 'outer' as 'none' | 'outer' | 'both', scale: 8, turn: 8 },
+  grid: { minX: -16, maxX: 15, minY: -16, maxY: 15, maxZ: 23 },
+  view: { yaw: -30, elevation: 35, outline: 'outer' as 'none' | 'outer' | 'both', scale: 8, turn: 8 },
   mode: 'layers' as 'layers' | 'voxel3d',                    // cómo se edita: por capas o sobre el modelo en 3D
   view3d: { yaw: -30, elevation: 35, zoom: 12, panX: 0, panY: 0 },   // pan: desplazamiento de la vista en píxeles
   // Fuentes de luz de la escena, en el ESPACIO DEL MODELO (celda x, y, z): el render las interpreta en 2.5D.
@@ -30,7 +32,7 @@ export const editor = reactive({
     enabled: false,
     ambient: 0.45,
     kind: 'torch' as LightKind,
-    sources: [] as LightSource3D[],
+    sources: start.lights.map((l) => ({ ...l })) as LightSource3D[],
   },
 });
 
@@ -138,6 +140,15 @@ export function loadFile(f: ModelFile & { lights?: LightSource3D[] }): void {
   editor.light.sources.splice(0, editor.light.sources.length, ...(f.lights ?? []));
   // Si trae luces, se ve con ellas (como al ponerlas con la herramienta)
   if (f.lights?.length) editor.light.enabled = true;
+}
+
+// La escena de muestra, de nuevo (Archivo > Escena de muestra), con su lienzo de 32 x 32 y sus luces
+export function loadSample(): void {
+  const { model: m, lights } = medievalScene();
+  replaceModel(m);
+  editor.grid = { minX: -16, maxX: 15, minY: -16, maxY: 15, maxZ: 23 };
+  editor.light.sources.splice(0, editor.light.sources.length, ...lights.map((l) => ({ ...l })));
+  touch();
 }
 
 export function newModel(): void {

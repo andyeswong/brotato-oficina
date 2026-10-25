@@ -7,7 +7,7 @@ p95 ≤ 16,8 ms a 6x. Un cuadro "perdido" es el que pasa de 18 ms (a 60 Hz el in
 En la Alienware (Edge de Windows, desde WSL):
 
     PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
-    $PS -NoProfile -ExecutionPolicy Bypass -File 'C:\...\perf.ps1' -Url 'http://100.99.75.92:5190/escena.html?tema=medieval&seed=7' \
+    $PS -NoProfile -ExecutionPolicy Bypass -File 'C:\...\perf.ps1' -Url 'http://<host>:5190/escena.html?tema=medieval&seed=7' \
         -Throttle 6 -WarmMs 22000 -SampleMs 8000 -Out 'C:\...\perf.json' < /dev/null
     python3 scripts/perf/perf-stats.py /mnt/c/.../perf.json
 

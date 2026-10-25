@@ -4,7 +4,7 @@ param([string]$Url, [string]$Out, [int]$TimeoutS = 300, [switch]$Gpu)
 $ErrorActionPreference = "Stop"
 $port = 9445
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-$prof = "C:\Users\andre\AppData\Local\Temp\ss-naruto-oracle"
+$prof = Join-Path $env:TEMP "voxpix-oracle"   # un perfil de Edge aparte, en el temporal del usuario
 $gpuArgs = if ($Gpu) { @("--enable-gpu","--ignore-gpu-blocklist") } else { @("--use-angle=swiftshader","--enable-unsafe-swiftshader") }
 $p = Start-Process -FilePath $edge -ArgumentList (@("--headless=new") + $gpuArgs + @("--remote-debugging-port=$port","--user-data-dir=$prof","--window-size=800,600","about:blank")) -PassThru
 Start-Sleep -Seconds 3

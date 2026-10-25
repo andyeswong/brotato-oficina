@@ -8,9 +8,8 @@ import LayersPanel from './components/LayersPanel.vue';
 import CanvasSizeDialog from './components/CanvasSizeDialog.vue';
 import { vDraggable } from './drag';
 import PxIcon from './components/PxIcon.vue';
-import { model, history, editor, touch, loadFile, replaceModel, version, paint, ui, gridSize } from './store';
+import { model, history, editor, touch, loadFile, replaceModel, version, paint, ui, gridSize, loadSample } from './store';
 import type { LightKind, Tool } from './store';
-import { sampleScene } from '../../src/samples/basic';
 import { Model, assertClosedPalette } from '@core/index';
 import { frameFor, renderModel, probeGpu, viewOptions, pngBlob } from './preview';
 import { fluidState, settleNow, startPour, stopPour } from './fluidTool';
@@ -197,7 +196,7 @@ void version;
     </div>
     <div v-if="ui.menu === 'archivo'" class="menu card" data-repel>
       <button class="ghost" @click="ui.dialog = 'nuevo'; closeMenus()"><PxIcon name="new" />Nuevo…</button>
-      <button class="ghost" @click="replaceModel(sampleScene()); closeMenus()"><PxIcon name="sample" />Escena de muestra</button>
+      <button class="ghost" @click="loadSample(); closeMenus()"><PxIcon name="sample" />Escena de muestra</button>
       <label class="btn ghost"><input type="file" accept=".json" @change="open($event); closeMenus()" /><PxIcon name="open" />Abrir…</label>
       <button class="ghost" @click="save(); closeMenus()"><PxIcon name="save" />Guardar</button>
       <hr />

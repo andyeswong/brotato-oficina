@@ -1,11 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { Model, render, assertClosedPalette, type RenderOptions } from '../core';
+import { Model, render, assertClosedPalette, fitFrame, type RenderOptions } from '../core';
 import { encodePNG, onBackground } from '../core/png';
-import { sampleScene } from '../samples/basic';
+import { medievalScene } from '../samples/medieval';
 import { loadPxl, paletteFromPxl, spriteToVoxels, toPxlSource, pxlAssets, stackFromPxl, toPxlStack, pxlDirectives, applyDirectives } from '../pxl/bridge';
 
 // CLI de VoxPix.
-//   voxpix render <modelo.json|sample> <salida.png> [--yaw 0] [--elev 30] [--scale 8] [--size 64x48] [--origin 32,40]
+//   voxpix render <modelo.json|sample> <salida.png> [--yaw 0] [--elev 30] [--scale 8] [--size WxH] [--origin x,y]   (sin --size: el encuadre que lo contiene)
 //                [--outline outer|both|none] [--bg #8a92a6] [--turn 8]   (--turn N: una tira con N ángulos)
 //   voxpix export-pxl <modelo.json|sample> <salida.px.js> [--turn 8] [--size ..] [--origin ..] [--name n]
 //                (luego: node vendor/pxl/bin/pxl.js build <salida.px.js> -> PNG, hoja + JSON, vistas previas)
@@ -21,7 +21,7 @@ function arg(name: string, def: string): string {
 }
 
 function load(src: string): Model {
-  if (src === 'sample') return sampleScene();
+  if (src === 'sample') return medievalScene().model;
   return Model.fromJSON(JSON.parse(readFileSync(src, 'utf8')));
 }
 
@@ -60,8 +60,10 @@ function exportPxl(): void {
     console.log(`${out}: ${model.bounds() ? model.bounds()!.maxZ + 1 : 0} capas "${stack}_zNN"`);
     return;
   }
-  const [w, h] = arg('size', '64x40').split('x').map(Number) as [number, number];
-  const [ox, oy] = arg('origin', `${Math.floor(w / 2)},${h - 4}`).split(',').map(Number) as [number, number];
+  // Sin --size, el encuadre que contiene el modelo en cualquier giro (fitFrame: 64x48 si cabe)
+  const fit = fitFrame(model.bounds(), Number(arg('elev', '30')));
+  const [w, h] = arg('size', `${fit.W}x${fit.H}`).split('x').map(Number) as [number, number];
+  const [ox, oy] = arg('origin', process.argv.includes('--size') ? `${Math.floor(w / 2)},${h - 4}` : `${fit.originX},${fit.originY}`).split(',').map(Number) as [number, number];
   const turn = Number(arg('turn', '8'));
   const name = arg('name', model.name.replace(/[^a-zA-Z0-9_-]/g, '_') || 'modelo');
   const frames = Array.from({ length: turn }, (_, i) => {
@@ -83,8 +85,10 @@ function main(): void {
     process.exit(1);
   }
   const model = load(src);
-  const [w, h] = arg('size', '64x40').split('x').map(Number) as [number, number];
-  const [ox, oy] = arg('origin', `${Math.floor(w / 2)},${h - 4}`).split(',').map(Number) as [number, number];
+  // Sin --size, el encuadre que contiene el modelo en cualquier giro (fitFrame: 64x48 si cabe)
+  const fit = fitFrame(model.bounds(), Number(arg('elev', '30')));
+  const [w, h] = arg('size', `${fit.W}x${fit.H}`).split('x').map(Number) as [number, number];
+  const [ox, oy] = arg('origin', process.argv.includes('--size') ? `${Math.floor(w / 2)},${h - 4}` : `${fit.originX},${fit.originY}`).split(',').map(Number) as [number, number];
   const base: RenderOptions = {
     width: w, height: h, originX: ox, originY: oy,
     elevation: Number(arg('elev', '30')),
