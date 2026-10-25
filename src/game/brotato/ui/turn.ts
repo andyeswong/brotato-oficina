@@ -97,7 +97,10 @@ export function dressWalls(view: WorldView, layout: Layout): Set<string | number
     const cx = i % layout.cols, cy = Math.floor(i / layout.cols);
     for (let ty = 0; ty < TILE; ty++) for (let tx = 0; tx < TILE; tx++) {
       const [vx, vy] = cam.cellToView(cx * TILE + tx, depth - 1 - (cy * TILE + ty));
-      for (let z = Math.max(cap, s.zMin); z <= s.zMax; z++) if (s.get(vx, vy, z)) s.set(vx, vy, z, 0);
+      // Solo de la altura tope a la cima de la columna (la rejilla de alturas): las paredes que ya miden eso, como las de
+      // los lados, no se recorren. De abajo arriba, así set() solo reajusta la altura al vaciar la de arriba del todo
+      const top = s.height[vy * s.width + vx]!;
+      for (let z = Math.max(cap, s.zMin); z < top; z++) if (s.get(vx, vy, z)) s.set(vx, vy, z, 0);
     }
   }
   // Las luces de la fachada (worldgen las llama facade-<n>) cuelgan delante de la pared, en la primera fila de suelo:
