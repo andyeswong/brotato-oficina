@@ -123,7 +123,7 @@ export class WaterLayer {
   // (mundo + personajes); `total` (opcional) es la luz por píxel de la vista, que aquí se completa.
   // `worldLights`: todas las luces del mundo (fijas y dinámicas)
   draw(b: Baked, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, vx: number, vy: number, vw: number, vh: number,
-    ambient: readonly [number, number, number], time: number, worldLights: readonly WorldLight[]): void {
+    ambient: readonly [number, number, number], time: number, worldLights: readonly WorldLight[], reflect = true): void {
     const { sim, gw, gh, world } = this;
     const a = b.options.oblique?.y ?? 1;
     const originY = b.options.originY;
@@ -210,7 +210,7 @@ export class WaterLayer {
           // Superficie: su color, el reflejo de lo que tiene encima y el brillo de las fuentes
           let cr = r, cg = g, cb = bl, ltr = lr + sr, ltg = lg + sg, ltb = lb + sb;
           const col = Math.max(0, Math.min(vw - 1, tx + shift));
-          for (let k = 2; k <= MARCH; k += 2) {
+          if (reflect) for (let k = 2; k <= MARCH; k += 2) {
             if (ty - k < 0) break;
             const sdk = srcDepth[(ty - k) * vw + col]!;
             if (!(sdk !== Infinity && sdk < depthHere + k * tPerPx * dPerT - 0.5)) continue;

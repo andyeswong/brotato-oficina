@@ -17,6 +17,10 @@ export interface Frame2DOptions {
   background?: readonly [number, number, number];
   outline?: 'none' | 'outer' | 'both';                 // contorno de las entidades (por defecto, ninguno)
   outlineColor?: string;                                // su color fijo (si no, el tono 0 de la rampa vecina)
+  // 'bajo': para la CPU de reserva con muchas entidades. Sin sombras de verdad de las entidades (solo las de
+  // contacto), sin reflejo en el agua, y cada entidad con la luz del suelo bajo sus pies en vez de su luz por cara.
+  // Por defecto, 'completo' (y la GPU siempre es completo)
+  detail?: 'completo' | 'bajo';
 }
 
 // Lienzo del render de una entidad y dónde caen sus pies
@@ -52,12 +56,19 @@ export function frame2DParts(state: WorldState, b: Baked, o: Frame2DOptions): { 
     // Luces dinámicas (las añadidas en partida): por cuadro, en su radio
     for (const l of state.lights) if (l.baked === false) addDynamicLight(b, l, total, o);
     // Sombras de las entidades: lo que su cuerpo tapa de cada luz (solo las MAX_CASTERS más cercanas al centro)
-    for (const e of shadowCasters(state, b, o)) castShadow(state, b, e, total, o);
+    if (o.detail !== 'bajo') for (const e of shadowCasters(state, b, o)) castShadow(state, b, e, total, o);
   }
 
   // Las entidades: primero todas las sombras de contacto (en el suelo), después, en cada píxel, la entidad más
   // cercana a la cámara, y esa tapa el escenario si está delante. Es lo mismo que hace la GPU con su z-buffer.
   const sprites = state.entities.map((e) => entitySprite(b, e, o)).filter((d) => onView(d, o));
+  // Con detalle bajo, cada entidad toma de una vez la luz del suelo bajo sus pies (antes de las sombras de contacto),
+  // en vez de su luz por cara: con una multitud, esa es la que no cabe en la CPU
+  const low = o.detail === 'bajo';
+  const feetLight = low && total ? sprites.map((d) => {
+    const x = Math.min(vw - 1, Math.max(0, d.fx - vx)), y = Math.min(vh - 1, Math.max(0, d.fy - vy)), q = (y * vw + x) * 3;
+    return [total[q]!, total[q + 1]!, total[q + 2]!] as const;
+  }) : [];
   if (total) for (const d of sprites) contactShadow(d, total, o);
   // La profundidad de cada píxel de entidad se calcula en float32 y se compara por la misma clave que el z-buffer de
   // la GPU (entityDepthKey): así, en un casi empate, las dos rutas eligen la misma entidad
@@ -75,19 +86,20 @@ export function frame2DParts(state: WorldState, b: Baked, o: Frame2DOptions): { 
       if (key < entKey[t]!) { entKey[t] = key; entDepth[t] = dd; entOf[t] = k; entPx[t] = s; }
     }
   });
-  const etotals = total ? sprites.map((d) => entityLight(state, d, o)) : [];
+  const etotals = total && !low ? sprites.map((d) => entityLight(state, d, o)) : [];
   for (let t = 0; t < vw * vh; t++) {
     const k = entOf[t]!;
     if (k < 0 || entDepth[t]! >= depthBuf[t]! - 0.5) continue;      // lo que hay delante la tapa
     const d = sprites[k]!, s = entPx[t]!;
     depthBuf[t] = entDepth[t]!;
     view[t * 4] = d.img.rgba[s * 4]!; view[t * 4 + 1] = d.img.rgba[s * 4 + 1]!; view[t * 4 + 2] = d.img.rgba[s * 4 + 2]!;
-    const et = etotals[k];
+    const et = etotals[k], fl = feetLight[k];
     if (total && et) { total[t * 3] = et[s * 3]!; total[t * 3 + 1] = et[s * 3 + 1]!; total[t * 3 + 2] = et[s * 3 + 2]!; }
+    else if (total && fl) { total[t * 3] = fl[0]; total[t * 3 + 1] = fl[1]; total[t * 3 + 2] = fl[2]; }
   }
 
   // El agua (tapa lo sumergido) y las gotas
-  state.water?.draw(b, view, depthBuf, total, vx, vy, vw, vh, ambient, o.time, state.lights);
+  state.water?.draw(b, view, depthBuf, total, vx, vy, vw, vh, ambient, o.time, state.lights, o.detail !== 'bajo');
   const drop = dropLook(state, ambient);
   if (drop) state.drops.draw(b, view, depthBuf, total, vx, vy, vw, vh, drop.color, drop.light);
   return { view, total };
