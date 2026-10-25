@@ -16,6 +16,7 @@ pal({
 })
 ramps("KDMLHW", "abcgf", "yYUF", "Rre")
 // voxpix: outline #12101c
+// voxpix: emissive Rre   (ojos encendidos: la seña de enemigo se lee en lo oscuro, NARUTO)
 
 const STACKS = {}
 

@@ -15,6 +15,7 @@ pal({
 })
 ramps("kdmlhw", "Rre")
 // voxpix: outline #12101c
+// voxpix: emissive Rre   (ojos encendidos: la seña de enemigo se lee en lo oscuro, NARUTO)
 
 const W = 15, H = 9, MID_X = 7, MID_Y = 4, LAYERS = 12
 

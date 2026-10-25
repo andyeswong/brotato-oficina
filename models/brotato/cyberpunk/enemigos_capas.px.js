@@ -16,7 +16,7 @@ pal({
 })
 ramps("KDMLHW", "pPQ", "cCI", "tTuv", "Rre")
 // voxpix: outline #12101c
-// voxpix: emissive pPQ cCI
+// voxpix: emissive pPQ cCI Rre
 
 const STACKS = {}
 
