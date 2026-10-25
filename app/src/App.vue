@@ -11,20 +11,25 @@ import PxIcon from './components/PxIcon.vue';
 import { model, history, editor, touch, loadFile, replaceModel, version, paint, ui, gridSize } from './store';
 import type { LightKind, Tool } from './store';
 import { sampleScene } from '../../src/samples/basic';
-import { Model, render, assertClosedPalette } from '@core/index';
+import { Model, assertClosedPalette } from '@core/index';
+import { frameFor, renderModel, probeGpu, viewOptions, pngBlob } from './preview';
 import { fluidState, settleNow, startPour, stopPour } from './fluidTool';
 import { loadPxl, pxlAssets, paletteFromPxl, spriteToVoxels, toPxlSource, stackPrefixes, stackFromPxl, toPxlStack, pxlDirectives, applyDirectives } from '../../src/pxl/bridge';
 
 const LIGHT_KINDS: Array<[LightKind, string]> = [['torch', 'antorcha'], ['lamp', 'lámpara'], ['brazier', 'brasero'], ['neon-pink', 'neón rosa'], ['neon-cyan', 'neón cian'], ['screen', 'pantalla']];
 const TOOLS: Array<[Tool, string, string, string, string]> = [
   ['pen', 'pen', 'Lápiz', 'B', 'Lápiz'], ['erase', 'erase', 'Borrar', 'E', 'Borrar'], ['paint', 'paint', 'Repintar', 'P', 'Repintar'],
-  ['pick', 'pick', 'Cuentagotas', 'I', 'Gotero'], ['light', 'light', 'Fuente de luz', 'L', 'Luz'], ['fluid', 'fluid', 'Fluido', 'F', 'Fluido'],
+  ['pick', 'pick', 'Cuentagotas', 'I', 'Gotero'], ['box', 'box', 'Caja', 'R', 'Caja'], ['fill', 'fill', 'Cubo de pintura', 'G', 'Cubo'],
+  ['light', 'light', 'Fuente de luz', 'L', 'Luz'], ['fluid', 'fluid', 'Fluido', 'F', 'Fluido'],
 ];
 // Lo que hace cada herramienta, para la píldora de opciones
 const TOOL_HINT: Record<Tool, string> = {
   pen: 'clic pinta · clic derecho borra', erase: 'clic borra', paint: 'cambia el material de lo que ya hay',
   pick: 'copia el material de un vóxel', light: 'clic pone una fuente; sobre una fuente, la quita', fluid: 'mantén pulsado para verter',
+  box: 'arrastra de una esquina a otra · clic derecho borra', fill: 'rellena la mancha de la capa · clic derecho la borra',
 };
+// En 3D el botón derecho gira: la caja va de hueco a hueco (con las alturas entre los dos) y el cubo no borra
+const TOOL_HINT_3D: Partial<Record<Tool, string>> = { pen: 'clic pinta', box: 'arrastra de un hueco a otro: rellena la caja entre los dos', fill: 'rellena la mancha de su capa' };
 // Escala de la exportación a PNG
 const pngScale = ref(4);
 // Los menús se cierran al hacer clic fuera
@@ -114,42 +119,24 @@ function exportPxl(): void {
   const m = model.value;
   const n = editor.view.turn;
   const base = (m.name || 'modelo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const f = frameFor(m, editor.view.elevation);
   const frames = Array.from({ length: n }, (_, i) => {
     const yaw = Math.round(editor.view.yaw + (360 * i) / n);
-    const img = render(m, { width: 64, height: 48, originX: 32, originY: 42, yaw, elevation: editor.view.elevation, outline: editor.view.outline });
+    const img = renderModel(viewOptions(f, yaw, false));
     assertClosedPalette(img, m);
     return { name: `${base}_a${String(((yaw % 360) + 360) % 360).padStart(3, '0')}`, ...img };
   });
-  download(`${base}.px.js`, toPxlSource(m, frames, { sheet: base, comment: `VoxPix: ${m.name}, ${n} ángulos de 64x48, pivote en 32,42` }), 'text/javascript');
+  download(`${base}.px.js`, toPxlSource(m, frames, { sheet: base, comment: `VoxPix: ${m.name}, ${n} ángulos de ${f.W}x${f.H}, pivote en ${f.originX},${f.originY}` }), 'text/javascript');
 }
 
-// PNG con fondo transparente, del mismo render que la exportación a pxl (64x48 por ángulo, pivote en 32,42):
-// el ángulo de la vista previa, o la hoja con los N ángulos en fila; a escala entera, sin suavizar
 function exportPng(what: 'vista' | 'hoja', scale: number): void {
-  const m = model.value;
-  const base = (m.name || 'modelo').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const W = 64, H = 48;
-  const yaws = what === 'vista' ? [editor.view.yaw] : Array.from({ length: editor.view.turn }, (_, i) => Math.round(editor.view.yaw + (360 * i) / editor.view.turn));
-  const c = document.createElement('canvas');
-  c.width = W * yaws.length * scale; c.height = H * scale;
-  const g = c.getContext('2d')!;
-  g.imageSmoothingEnabled = false;
-  yaws.forEach((yaw, i) => {
-    const img = render(m, { width: W, height: H, originX: 32, originY: 42, yaw, elevation: editor.view.elevation, outline: editor.view.outline });
-    const off = document.createElement('canvas');
-    off.width = W; off.height = H;
-    off.getContext('2d')!.putImageData(new ImageData(img.rgba, W, H), 0, 0);
-    g.drawImage(off, i * W * scale, 0, W * scale, H * scale);
-  });
-  const name = what === 'vista' ? `${base}_a${String(((editor.view.yaw % 360) + 360) % 360).padStart(3, '0')}` : `${base}_${yaws.length}angulos`;
-  c.toBlob((blob) => {
-    if (!blob) return;
+  pngBlob(what, scale).then(({ blob, name }) => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${name}${scale > 1 ? `_x${scale}` : ''}.png`;
+    a.download = name;
     a.click();
     URL.revokeObjectURL(a.href);
-  }, 'image/png');
+  });
 }
 
 function key(e: KeyboardEvent): void {
@@ -163,6 +150,8 @@ function key(e: KeyboardEvent): void {
   else if (e.key === 'p') editor.tool = 'paint';
   else if (e.key === 'l') editor.tool = 'light';
   else if (e.key === 'f') editor.tool = 'fluid';
+  else if (e.key === 'r') editor.tool = 'box';
+  else if (e.key === 'g') editor.tool = 'fill';
   else if (e.key === 'Tab') { e.preventDefault(); editor.mode = editor.mode === 'layers' ? 'voxel3d' : 'layers'; }
   else if (e.key === 'm') editor.mirrorX = !editor.mirrorX;
   else if (e.key === 'PageUp' || e.key === 'w') editor.z = Math.min(editor.grid.maxZ, editor.z + 1);
@@ -170,6 +159,7 @@ function key(e: KeyboardEvent): void {
 }
 
 onMounted(() => {
+  probeGpu();
   window.addEventListener('keydown', key);
   window.addEventListener('click', closeMenus);
   // ?verter=x,y,z: vierte un segundo de agua en esa celda (para probar la herramienta sin ratón)
@@ -258,12 +248,17 @@ void version;
   <div class="float bottom" data-repel>
     <div class="pill options">
       <strong>{{ TOOLS.find((x) => x[0] === editor.tool)?.[2] }}</strong>
-      <span class="hint">{{ editor.mode === 'voxel3d' ? TOOL_HINT[editor.tool].replace(' · clic derecho borra', '') : TOOL_HINT[editor.tool] }}</span>
+      <span class="hint">{{ editor.tool === 'fluid' && fluidState.fillMode ? 'clic llena de agua hasta esa altura' : editor.tool === 'fluid' && fluidState.faucetMode ? 'clic pone o quita un grifo' : editor.mode === 'voxel3d' ? (TOOL_HINT_3D[editor.tool] ?? TOOL_HINT[editor.tool]) : TOOL_HINT[editor.tool] }}</span>
       <template v-if="editor.tool === 'light'">
         <select v-model="editor.light.kind"><option v-for="[k, name] in LIGHT_KINDS" :key="k" :value="k">{{ name }}</option></select>
       </template>
       <template v-if="editor.tool === 'fluid'">
-        <button :class="{ on: fluidState.faucetMode }" title="Con el modo grifo, un clic pone una fuente continua (o la quita)" @click="fluidState.faucetMode = !fluidState.faucetMode">Grifo</button>
+        <div class="seg">
+          <button :class="{ on: !fluidState.faucetMode && !fluidState.fillMode }" title="Mientras se mantiene pulsado, cae agua y se reparte" @click="fluidState.faucetMode = false; fluidState.fillMode = false">Verter</button>
+          <button :class="{ on: fluidState.faucetMode }" title="Un clic pone una fuente continua (o la quita)" @click="fluidState.faucetMode = true; fluidState.fillMode = false">Grifo</button>
+          <button :class="{ on: fluidState.fillMode }" title="Un clic llena de agua, de una vez, todo lo conectado hasta esa altura (como una cuenca)" @click="fluidState.fillMode = true; fluidState.faucetMode = false">Llenar</button>
+        </div>
+        <span v-if="fluidState.fillMode && fluidState.last" class="hint">{{ fluidState.last }}</span>
         <span v-if="fluidState.faucets.length" class="hint">{{ fluidState.faucets.length }} grifo(s)</span>
         <button v-if="fluidState.running" @click="settleNow">Fijar ({{ fluidState.cells }})</button>
       </template>
@@ -297,6 +292,8 @@ void version;
     <span v-else>z {{ editor.z }}</span>
     <span>{{ model.size }} vóxeles</span>
     <span>{{ ui.renderMs }} ms</span>
+    <button class="ghost backend" :disabled="!ui.gpuAvailable" :title="ui.gpuAvailable ? 'Con qué se renderiza (los dos dan los mismos píxeles). Clic: cambiar' : 'Sin WebGL2: se renderiza en la CPU'"
+      @click="ui.backend = ui.backend === 'gpu' ? 'cpu' : 'gpu'">{{ ui.backend === 'gpu' ? 'GPU' : 'CPU' }}</button>
   </div>
 
   <!-- Nuevo / Tamaño del lienzo -->
@@ -377,7 +374,8 @@ aside.dragging :deep(header) { cursor: grabbing; }
 .dot.on { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
 .more { min-height: 44px; border-radius: 14px; color: var(--muted); }
 .palette { z-index: 4; bottom: 150px; left: 50%; transform: translateX(-10%); width: 400px; padding: 16px; }
-.status { left: 16px; bottom: 16px; display: flex; gap: 14px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.status { left: 16px; bottom: 16px; display: flex; align-items: center; gap: 14px; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.backend { min-height: 22px; padding: 0 8px; font-size: 11px; color: var(--muted); border-radius: 8px; }
 .modal { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(8, 7, 12, .6); backdrop-filter: blur(4px); }
 .dialog { width: 460px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .dialog h2 { font-size: 16px; }

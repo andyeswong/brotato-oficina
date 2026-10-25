@@ -5,13 +5,15 @@ import { reactive } from 'vue';
 import { key, unkey } from '@core/index';
 import { VoxelFluid } from '../../src/fluid/voxel';
 import { model, history, touch, currentMaterial } from './store';
+import { fillWater } from './edit';
 
 const WET = 0.35;           // masa a partir de la cual la celda se dibuja como agua
 const POUR = 0.7;           // agua por paso mientras se vierte
 const MARGIN = 14;          // la rejilla del fluido cubre el modelo y esto alrededor
 
 // Grifos: fuentes continuas que siguen vertiendo hasta que se quitan (con el modo grifo activo, un clic pone o quita)
-export const fluidState = reactive({ running: false, pouring: false, cells: 0, faucetMode: false, faucets: [] as Array<[number, number, number]> });
+// Con el modo llenar, un clic llena de agua hasta esa altura todo lo conectado, de una vez (edit.ts, fillWater)
+export const fluidState = reactive({ running: false, pouring: false, cells: 0, faucetMode: false, fillMode: false, faucets: [] as Array<[number, number, number]>, last: '' });
 
 let sim: VoxelFluid | null = null;
 let source: [number, number, number] | null = null;
@@ -101,6 +103,11 @@ export function toggleFaucet(x: number, y: number, z: number): void {
 
 export function startPour(x: number, y: number, z: number): void {
   if (z < 0) return;
+  if (fluidState.fillMode) {
+    const r = fillWater(x, y, z, currentMaterial());
+    fluidState.last = r.cells ? `${r.cells} celdas de agua${r.spill ? ' · llega al borde del lienzo' : ''}` : 'ahí no cabe agua (celda llena)';
+    return;
+  }
   if (fluidState.faucetMode) { toggleFaucet(x, y, z); return; }
   if (!sim) { sim = makeSim(x, y, z); value = currentMaterial(); }
   const i = sim.index(x, y, z);

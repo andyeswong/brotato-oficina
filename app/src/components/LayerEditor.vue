@@ -4,6 +4,7 @@ import { decode, rampOf } from '@core/index';
 import { model, history, version, editor, paint, currentMaterial, touch, toggleLight, ui } from '../store';
 import { SOURCE_PRESETS } from '../../../src/lighting';
 import { startPour, stopPour, fluidState } from '../fluidTool';
+import { fillBox, floodLayer } from '../edit';
 
 // Editor de una capa z vista desde arriba (norte arriba). Clic izquierdo pinta según la herramienta,
 // clic derecho borra. La capa de abajo se ve en fantasma para orientarse.
@@ -14,7 +15,10 @@ const box = ref<HTMLDivElement>();
 const cols = computed(() => editor.grid.maxX - editor.grid.minX + 1);
 const rows = computed(() => editor.grid.maxY - editor.grid.minY + 1);
 let painting = 0;            // 0 nada, 1 pintar, 2 borrar
-let lightDone = false;       // la fuente se pone una vez por clic, no al arrastrar
+let lightDone = false;       // la fuente (o el relleno, o el agua de "llenar") se pone una vez por clic, no al arrastrar
+// Caja: de la celda donde se pulsó a la que está bajo el ratón (se rellena al soltar)
+let boxFrom: [number, number] | null = null;
+let boxTo: [number, number] | null = null;
 
 function colorOf(v: number): string {
   const { ramp, tone } = decode(v);
@@ -80,6 +84,16 @@ function draw(): void {
     const cx = (fx - editor.grid.minX) * CELL + CELL / 2, cy = (editor.grid.maxY - fy) * CELL + CELL / 2;
     g.strokeStyle = '#7fe3ff'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, CELL * 0.35, 0, Math.PI * 2); g.stroke(); g.lineWidth = 1;
   }
+  if (boxFrom && boxTo) {
+    const q0 = Math.min(boxFrom[0], boxTo[0]) - editor.grid.minX, q1 = Math.max(boxFrom[0], boxTo[0]) - editor.grid.minX;
+    const r0 = editor.grid.maxY - Math.max(boxFrom[1], boxTo[1]), r1 = editor.grid.maxY - Math.min(boxFrom[1], boxTo[1]);
+    g.fillStyle = painting === 2 ? 'rgba(255,107,107,0.25)' : colorOf(currentMaterial());
+    g.globalAlpha = painting === 2 ? 1 : 0.6;
+    g.fillRect(q0 * CELL, r0 * CELL, (q1 - q0 + 1) * CELL, (r1 - r0 + 1) * CELL);
+    g.globalAlpha = 1;
+    g.strokeStyle = '#ffd166';
+    g.strokeRect(q0 * CELL + 0.5, r0 * CELL + 0.5, (q1 - q0 + 1) * CELL - 1, (r1 - r0 + 1) * CELL - 1);
+  }
   if (editor.mirrorX) {
     const mx = (editor.mirrorAxis - editor.grid.minX) * CELL + CELL / 2;
     g.strokeStyle = 'rgba(255,200,80,0.7)';
@@ -101,7 +115,17 @@ function apply(e: MouseEvent): void {
   if (!cell) return;
   const [x, y] = cell;
   if (editor.tool === 'fluid') {
-    if (painting === 1) startPour(x, y, editor.z);
+    if (painting === 1 && !(fluidState.fillMode && lightDone)) { startPour(x, y, editor.z); lightDone = true; }
+    return;
+  }
+  if (editor.tool === 'box') {
+    boxTo = cell;
+    if (!boxFrom) boxFrom = cell;
+    draw();
+    return;
+  }
+  if (editor.tool === 'fill') {
+    if (!lightDone) { floodLayer(x, y, editor.z, painting === 2 ? 0 : currentMaterial()); lightDone = true; }
     return;
   }
   if (editor.tool === 'light') {
@@ -123,7 +147,9 @@ function down(e: MouseEvent): void {
   e.preventDefault();
   painting = e.button === 2 ? 2 : 1;
   lightDone = false;
-  history.value.begin();
+  boxFrom = boxTo = null;
+  // La caja, el cubo y el agua de "llenar" abren su propio paso de deshacer (edit.ts)
+  if (!['box', 'fill', 'fluid'].includes(editor.tool)) history.value.begin();
   apply(e);
 }
 function move(e: MouseEvent): void {
@@ -134,8 +160,16 @@ function move(e: MouseEvent): void {
 function leave(): void { ui.cursor = null; up(); }
 function up(): void {
   if (!painting) return;
+  const erase = painting === 2;
   painting = 0;
-  if (editor.tool === 'fluid') { stopPour(); history.value.commit(); return; }
+  if (editor.tool === 'fluid') { stopPour(); return; }
+  if (editor.tool === 'box') {
+    if (boxFrom && boxTo) fillBox(boxFrom[0], boxFrom[1], editor.z, boxTo[0], boxTo[1], editor.z, erase ? 0 : currentMaterial());
+    boxFrom = boxTo = null;
+    draw();
+    return;
+  }
+  if (editor.tool === 'fill') return;
   history.value.commit();
   touch();
 }

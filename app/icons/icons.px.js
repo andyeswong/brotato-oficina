@@ -82,6 +82,38 @@ sprite("ic_pick", I, `
   c.............
   ..............`)
 
+sprite("ic_box", I, `
+  ..............
+  .ll........ll.
+  .laaaaaaaaaal.
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  ..aAAAAAAAAa..
+  .laaaaaaaaaal.
+  .ll........ll.
+  ..............`)
+
+sprite("ic_fill", I, `
+  ..............
+  .....mmm......
+  ....m...m.....
+  ...m.....m....
+  ..dlllllllld..
+  ..dllllllldaa.
+  ...dlllllldaA.
+  ...dllllld.aA.
+  ....dlllld.aA.
+  ....dlllld..a.
+  .....dddd.....
+  ..............
+  .aaaaaaaaaaaa.
+  ..............`)
+
 sprite("ic_light", I, `
   ......y.......
   ...y..y..y....

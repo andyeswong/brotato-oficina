@@ -5,7 +5,7 @@ import { sampleScene } from '../../src/samples/basic';
 // Estado del editor. El modelo es mutable y no reactivo (es un Map grande); cada cambio sube `version` y
 // los componentes que dibujan escuchan ese número.
 
-export type Tool = 'pen' | 'erase' | 'paint' | 'pick' | 'light' | 'fluid';
+export type Tool = 'pen' | 'erase' | 'paint' | 'pick' | 'box' | 'fill' | 'light' | 'fluid';
 export type LightKind = 'torch' | 'lamp' | 'brazier' | 'neon-pink' | 'neon-cyan' | 'screen';
 
 export const model = shallowRef<Model>(sampleScene());
@@ -43,6 +43,8 @@ export const ui = reactive({
   dialog: '' as '' | 'nuevo' | 'lienzo',          // el modal abierto
   cursor: null as [number, number, number] | null,
   renderMs: 0,
+  backend: 'gpu' as 'gpu' | 'cpu',               // con qué se renderiza (preview.ts); 'cpu' si no hay WebGL2
+  gpuAvailable: false,
 });
 
 export interface LightSource3D { id: string; kind: LightKind; x: number; y: number; z: number }
@@ -134,6 +136,8 @@ export function paint(x: number, y: number, z: number, value: number): void {
 export function loadFile(f: ModelFile & { lights?: LightSource3D[] }): void {
   replaceModel(Model.fromJSON(f));
   editor.light.sources.splice(0, editor.light.sources.length, ...(f.lights ?? []));
+  // Si trae luces, se ve con ellas (como al ponerlas con la herramienta)
+  if (f.lights?.length) editor.light.enabled = true;
 }
 
 export function newModel(): void {

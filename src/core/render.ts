@@ -1,5 +1,5 @@
 import { key, type VoxelSource } from './model';
-import { decode, rampOf, rgbOf, allowedColors } from './palette';
+import { decode, rampOf, rgbOf, allowedColors, type Palette } from './palette';
 
 // Render de vóxeles a pixel art por software. Determinista: mismo modelo y mismas opciones, mismos bytes.
 //
@@ -59,6 +59,9 @@ export interface Camera {
   yawSin: number;
   up: [number, number, number];
   fwd: [number, number, number];
+  zScale: number;               // lo que se estira z (1 en oblicua)
+  pivot: [number, number, number];
+  ppu: number;
 }
 
 export function camera(o: RenderOptions): Camera {
@@ -80,7 +83,7 @@ export function camera(o: RenderOptions): Camera {
     up = [0, a, b]; fwd = [0, b / l, -a / l]; zs = 1; se = a / l; ce = b / l;
   }
   return {
-    yawCos: cos, yawSin: sin, up, fwd,
+    yawCos: cos, yawSin: sin, up, fwd, zScale: zs, pivot: [pvx, pvy, pvz], ppu,
     project(x, y, z) {
       const px = x - pvx, py = y - pvy, pz = (z - pvz) * zs;
       const wx = px * cos - py * sin, wy = px * sin + py * cos;
@@ -122,6 +125,8 @@ const PLANE: Array<[[number, number, number], [number, number, number]]> = [
 // Las muestras se toman un poco desplazadas del centro del píxel (fracción binaria exacta): los bordes de
 // vóxel que caen justo en .5 se deciden siempre igual, sin ensanchar la silueta
 const SAMPLE = 0.5 + 1 / 1024;
+// Por debajo de esto, la suma de la normal suavizada es cero (el mínimo real, un vecino lleno a distancia 3, es ~0,02)
+export const SMOOTH_EPS = 1e-3;
 
 const norm = (v: [number, number, number]): [number, number, number] => {
   const l = Math.hypot(v[0], v[1], v[2]) || 1;
@@ -129,12 +134,9 @@ const norm = (v: [number, number, number]): [number, number, number] => {
 };
 const dot = (a: readonly number[], b: readonly number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
 
-export function render(model: VoxelSource, o: RenderOptions): Rendered {
+// La luz y la dirección de la vista en los ejes del modelo (las usan la CPU y la GPU)
+export function renderBasis(o: RenderOptions): { cam: Camera; Lm: [number, number, number]; viewM: [number, number, number] } {
   const cam = camera(o);
-  const smooth = o.smooth ?? 0.6;
-  const th = o.thresholds ?? { lit: 0.72, mid: 0.3 };
-  const { width: W, height: H } = o;
-
   const cos = cam.yawCos, sin = cam.yawSin;
   // Base de la cámara en el mundo ya girado: derecha, arriba de pantalla, hacia dentro de la pantalla
   const fwd = cam.fwd;
@@ -147,8 +149,14 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
   const Ls = norm(o.light ?? [-0.6, 0.75, 0.75]);
   // Luz de pantalla -> mundo girado -> modelo
   const Lw: [number, number, number] = [Ls[0], Ls[1] * up[1] - Ls[2] * fwd[1], Ls[1] * up[2] - Ls[2] * fwd[2]];
-  const Lm = norm(toModel(Lw));
-  const viewM = toModel(fwd);
+  return { cam, Lm: norm(toModel(Lw)), viewM: toModel(fwd) };
+}
+
+export function render(model: VoxelSource, o: RenderOptions): Rendered {
+  const { cam, Lm, viewM } = renderBasis(o);
+  const smooth = o.smooth ?? 0.6;
+  const th = o.thresholds ?? { lit: 0.72, mid: 0.3 };
+  const { width: W, height: H } = o;
 
   const project = cam.project;
 
@@ -189,7 +197,9 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
       const w = 1 / (dx * dx + dy * dy + dz * dz);
       sx += dx * w; sy += dy * w; sz += dz * w;
     }
-    const sn = norm([sx, sy, sz]);
+    // Con el aire alrededor simétrico (un vóxel suelto) la suma se anula: lo que quede son restos de coma flotante,
+    // sin dirección; se toma como cero (la normal de la cara)
+    const sn: [number, number, number] = Math.hypot(sx, sy, sz) < SMOOTH_EPS ? [0, 0, 0] : norm([sx, sy, sz]);
     const n = norm([d[0] * (1 - smooth) + sn[0] * smooth, d[1] * (1 - smooth) + sn[1] * smooth, d[2] * (1 - smooth) + sn[2] * smooth]);
     let I = Math.max(0, dot(n, Lm));
     if ((o.shadows ?? true) && inShadow(x + d[0], y + d[1], z + d[2])) I = Math.min(I, th.mid - 0.01);
@@ -249,6 +259,13 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
     }
   }
 
+  return finishRender(pal, o, color, depth, pickKey, pickFace);
+}
+
+// Lo que sigue al rasterizado, común a la CPU y a la GPU (src/view/gpu/voxrender.ts): los contornos y los colores.
+// `color` es el índice plano de cada píxel (rampa*16 + tono; -1 = vacío) y `depth` su profundidad.
+export function finishRender(pal: Palette, o: RenderOptions, color: Int32Array, depth: Float32Array, pickKey: Float64Array | null, pickFace: Int8Array | null): Rendered {
+  const { width: W, height: H } = o;
   // Contornos
   const mode = o.outline ?? 'outer';
   const final = Int32Array.from(color);

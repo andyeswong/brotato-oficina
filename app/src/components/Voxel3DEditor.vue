@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
-import { render, camera, key, unkey, decode, DIR_VECTORS, type RenderOptions, type Rendered } from '@core/index';
+import { camera, key, unkey, decode, DIR_VECTORS, type RenderOptions, type Rendered } from '@core/index';
+import { renderModel } from '../preview';
 import { model, history, version, editor, paint, currentMaterial, touch, toggleLight } from '../store';
 import { SOURCE_PRESETS } from '../../../src/lighting';
 import { startPour, stopPour, fluidState } from '../fluidTool';
+import { fillBox, floodLayer } from '../edit';
 
-// Edición sobre el modelo en 3D con el mismo render que la vista previa, a más píxeles por vóxel.
+// Edición sobre el modelo en 3D con el mismo render que la vista previa (en la GPU si hay), a más píxeles por vóxel.
 // Clic izquierdo: lápiz pone un vóxel sobre la cara que tocas (o en el suelo), borrar lo quita, repintar le
 // cambia el material, cuentagotas lo copia. Arrastre derecho: orbitar. Arrastre con el botón del medio: mover la
 // vista. Rueda: zoom. Doble clic con el del medio: vuelve a centrar.
@@ -19,6 +21,10 @@ let hover: [number, number, number] | null = null;
 let action: 0 | 1 | 2 | 3 = 0;       // 1 herramienta, 2 orbitar, 3 mover la vista
 let lastXY: [number, number] = [0, 0];
 const done = new Set<number>();      // vóxeles ya tocados en este trazo (borrar/repintar al arrastrar)
+// Caja: del hueco donde se pulsó al hueco bajo el ratón, con las alturas entre los dos (se rellena al soltar)
+let boxFrom: [number, number, number] | null = null;
+let boxTo: [number, number, number] | null = null;
+let once = false;                    // cubo y agua de "llenar": una vez por clic
 
 function options(): RenderOptions {
   return {
@@ -32,7 +38,7 @@ function draw(): void {
   const c = canvas.value;
   if (!c) return;
   opts = options();
-  last = render(model.value, opts);
+  last = renderModel(opts);
   const cam = camera(opts);
   c.width = W; c.height = H;
   const g = c.getContext('2d')!;
@@ -90,7 +96,9 @@ function draw(): void {
     g.beginPath(); g.arc(px, py, Math.max(5, editor.view3d.zoom * 0.45), 0, Math.PI * 2); g.stroke(); g.lineWidth = 1;
   }
 
-  if (hover) outlineVoxel(g, cam, hover);
+  if (boxFrom && boxTo) outlineVoxel(g, cam, [Math.min(boxFrom[0], boxTo[0]), Math.min(boxFrom[1], boxTo[1]), Math.min(boxFrom[2], boxTo[2])],
+    [Math.abs(boxTo[0] - boxFrom[0]) + 1, Math.abs(boxTo[1] - boxFrom[1]) + 1, Math.abs(boxTo[2] - boxFrom[2]) + 1]);
+  else if (hover) outlineVoxel(g, cam, hover);
 }
 
 // Fuente bajo el ratón (a pocos píxeles de su punto), para quitarla con la herramienta de luz
@@ -111,10 +119,10 @@ function quad(g: CanvasRenderingContext2D, cam: ReturnType<typeof camera>, x: nu
   g.beginPath(); p.forEach(([px, py], i) => (i ? g.lineTo(px, py) : g.moveTo(px, py))); g.closePath(); g.fill();
 }
 
-// Contorno del cubo objetivo: envolvente convexa de sus 8 esquinas proyectadas
-function outlineVoxel(g: CanvasRenderingContext2D, cam: ReturnType<typeof camera>, [x, y, z]: [number, number, number]): void {
+// Contorno del cubo objetivo (o de la caja, con su tamaño): envolvente convexa de sus 8 esquinas proyectadas
+function outlineVoxel(g: CanvasRenderingContext2D, cam: ReturnType<typeof camera>, [x, y, z]: [number, number, number], [sx, sy, sz]: [number, number, number] = [1, 1, 1]): void {
   const pts: Array<[number, number]> = [];
-  for (const dx of [0, 1]) for (const dy of [0, 1]) for (const dz of [0, 1]) { const p = cam.project(x + dx, y + dy, z + dz); pts.push([p[0], p[1]]); }
+  for (const dx of [0, sx]) for (const dy of [0, sy]) for (const dz of [0, sz]) { const p = cam.project(x + dx, y + dy, z + dz); pts.push([p[0], p[1]]); }
   pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const cross = (o: number[], a: number[], b: number[]) => (a[0]! - o[0]!) * (b[1]! - o[1]!) - (a[1]! - o[1]!) * (b[0]! - o[0]!);
   const lower: Array<[number, number]> = [], upper: Array<[number, number]> = [];
@@ -151,7 +159,19 @@ function target(e: MouseEvent): { hit: [number, number, number] | null; place: [
 function apply(e: MouseEvent, first: boolean): void {
   const { hit, place } = target(e);
   if (editor.tool === 'fluid') {
-    if (place && place[2] >= 0) startPour(place[0], place[1], place[2]);
+    if (place && place[2] >= 0 && !(fluidState.fillMode && once)) { startPour(place[0], place[1], place[2]); once = true; }
+    return;
+  }
+  if (editor.tool === 'box') {
+    if (place && place[2] >= 0) { boxTo = place; if (!boxFrom) boxFrom = place; }
+    return;
+  }
+  if (editor.tool === 'fill') {
+    if (once) return;
+    once = true;
+    // Sobre un vóxel: la mancha de su material en su capa; sobre el suelo: el hueco de la capa 0
+    const at = hit ?? place;
+    if (at && at[2] >= 0) floodLayer(at[0], at[1], at[2], currentMaterial());
     return;
   }
   if (editor.tool === 'light') {
@@ -181,7 +201,10 @@ function down(e: MouseEvent): void {
   if (e.button === 1) { action = 3; return; }        // botón del medio: mover la vista
   action = 1;
   done.clear();
-  history.value.begin();
+  once = false;
+  boxFrom = boxTo = null;
+  // La caja, el cubo y el agua de "llenar" abren su propio paso de deshacer (edit.ts)
+  if (!['box', 'fill', 'fluid'].includes(editor.tool)) history.value.begin();
   apply(e, true);
 }
 
@@ -200,13 +223,17 @@ function move(e: MouseEvent): void {
   }
   if (action === 1 && editor.tool !== 'pen') apply(e, false);
   const t = target(e);
-  hover = editor.tool === 'pen' || editor.tool === 'light' || editor.tool === 'fluid' ? (lightUnder(e) ?? t.place) : t.hit;
+  hover = ['pen', 'light', 'fluid', 'box'].includes(editor.tool) ? (lightUnder(e) ?? t.place) : t.hit;
   draw();
 }
 
 function up(): void {
-  if (action === 1 && editor.tool === 'fluid') { stopPour(); history.value.commit(); }
-  else if (action === 1) { history.value.commit(); touch(); }
+  if (action === 1 && editor.tool === 'fluid') stopPour();
+  else if (action === 1 && editor.tool === 'box') {
+    if (boxFrom && boxTo) fillBox(...boxFrom, ...boxTo, currentMaterial());
+    boxFrom = boxTo = null;
+    draw();
+  } else if (action === 1 && editor.tool !== 'fill') { history.value.commit(); touch(); }
   action = 0;
 }
 
