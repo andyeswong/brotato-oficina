@@ -129,6 +129,8 @@ export class StaticVoxels implements VoxelSource {
 export type EntityId = number | string;
 export type LightId = number | string;
 
+export type ShadowMode = boolean | 'always';
+
 export interface Entity {
   id: EntityId;              // numérico si lo da entities.add; un nombre si viene de addEntity (compatibilidad)
   modelId: number;           // en el registro de modelos del mundo (lo serializable)
@@ -137,7 +139,9 @@ export interface Entity {
   y: number;
   z: number;
   yaw: number;               // hacia dónde mira, en grados: 0 = sur (a la cámara), 90 = este. Es el `facing` de la API
-  castsShadow: boolean;      // da sombra con las luces del mundo
+  // Da sombra de verdad con las luces del mundo. Como mucho MAX_CASTERS por cuadro (frame2d.ts): las 'always'
+  // siempre (p. ej. el personaje), y el resto de las true, por cercanía al centro de la vista
+  castsShadow: ShadowMode;
   rampOffset: number;        // dónde empiezan sus rampas en la paleta del mundo
 }
 
@@ -146,7 +150,7 @@ export class EntityList extends Array<Entity> {
   static override get [Symbol.species]() { return Array; }
   owner!: WorldState;
   next = 1;
-  add(o: { model: VoxelSource | number; x: number; y: number; z: number; facing?: number; castsShadow?: boolean; id?: EntityId }): EntityId {
+  add(o: { model: VoxelSource | number; x: number; y: number; z: number; facing?: number; castsShadow?: ShadowMode; id?: EntityId }): EntityId {
     const w = this.owner;
     w.touchArea(o.x, o.y, ENTITY_REACH);
     const modelId = typeof o.model === 'number' ? o.model : w.models.register(o.model);
@@ -545,7 +549,7 @@ export class WorldState {
     for (const c of s.chunks) { h.num(c.version); if (c.data) h.bytes(c.data); else h.num(-1); }
     if (s.water) for (const k of ['depth', 'fl', 'fr', 'ft', 'fb', 'awake'] as const) h.bytes(s.water[k]);
     h.num(s.drops.n); h.bytes(s.drops.data);
-    for (const e of s.entities) { h.str(String(e.id)); h.num(e.modelId); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); h.num(e.castsShadow ? 1 : 0); }
+    for (const e of s.entities) { h.str(String(e.id)); h.num(e.modelId); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); h.num(e.castsShadow === 'always' ? 2 : e.castsShadow ? 1 : 0); }
     for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); }
     h.num(s.next.entity); h.num(s.next.light);
     h.num(s.clock); h.bytes(s.dynamicVersions);
@@ -561,7 +565,7 @@ export interface WorldSnapshot {
   chunks: Array<{ version: number; data: Uint16Array | null }>;
   water: ReturnType<import('../fluid/shallow').ShallowWater['exportState']> | null;
   drops: { data: Float32Array; n: number };
-  entities: Array<{ id: EntityId; modelId: number; x: number; y: number; z: number; yaw: number; castsShadow: boolean }>;
+  entities: Array<{ id: EntityId; modelId: number; x: number; y: number; z: number; yaw: number; castsShadow: ShadowMode }>;
   lights: WorldLight[];
   next: { entity: number; light: number };
   clock: number;

@@ -113,8 +113,9 @@ export function dropLook(state: WorldState, ambient: readonly [number, number, n
   return wr ? { color: rgbOf(wr.colors[4] ?? wr.colors[0]!), light: [ambient[0] * 1.7, ambient[1] * 1.7, ambient[2] * 1.8] } : null;
 }
 
-// Las entidades que dan sombra de verdad (con su cuerpo) en un cuadro: como mucho MAX_CASTERS, las de pies más
-// cercanos al centro de la vista; las demás solo llevan la de contacto. En el orden de la lista de entidades.
+// Las entidades que dan sombra de verdad (con su cuerpo) en un cuadro: como mucho MAX_CASTERS. Primero las de
+// castsShadow 'always' (el personaje), y el resto de los huecos, las true de pies más cercanos al centro de la vista;
+// las demás solo llevan la de contacto. En el orden de la lista de entidades.
 export const MAX_CASTERS = 8;
 export function shadowCasters(state: WorldState, b: Baked, o: Frame2DOptions): Entity[] {
   const cx = o.vx + o.vw / 2, cy = o.vy + o.vh / 2;
@@ -123,7 +124,8 @@ export function shadowCasters(state: WorldState, b: Baked, o: Frame2DOptions): E
     return { e, i, d: (sx - cx) ** 2 + (sy - cy) ** 2 };
   }).filter((c) => c.e.castsShadow);
   if (cand.length <= MAX_CASTERS) return cand.map((c) => c.e);
-  return cand.sort((a, c) => a.d - c.d || a.i - c.i).slice(0, MAX_CASTERS).sort((a, c) => a.i - c.i).map((c) => c.e);
+  const rank = (c: typeof cand[number]) => (c.e.castsShadow === 'always' ? 0 : 1);
+  return cand.sort((a, c) => rank(a) - rank(c) || a.d - c.d || a.i - c.i).slice(0, MAX_CASTERS).sort((a, c) => a.i - c.i).map((c) => c.e);
 }
 
 // Lo que hace falta para pintar una entidad: su render (de la caché), dónde cae su lienzo en la imagen horneada,

@@ -152,3 +152,22 @@ describe('ids deterministas (los tres detalles de FERN)', () => {
   });
 });
 
+
+describe('quién da sombra de verdad', () => {
+  it("castsShadow 'always' entra siempre en las MAX_CASTERS, aunque esté lejos del centro", async () => {
+    const { shadowCasters, MAX_CASTERS } = await import('../src/world/frame2d');
+    const { state, body, bake } = world();
+    const b = bake();
+    const o = { vx: 0, vy: 0, vw: 96, vh: 60, time: 0, lights: true, ambient: AMB };
+    // muchas cerca del centro, y la 'always' en una esquina
+    const far = state.entities.add({ model: body, x: 2, y: 2, z: 1, castsShadow: 'always' });
+    for (let k = 0; k < MAX_CASTERS + 4; k++) state.entities.add({ model: body, x: 44 + (k % 4), y: 28 + Math.floor(k / 4), z: 1 });
+    const casters = shadowCasters(state, b, o);
+    expect(casters).toHaveLength(MAX_CASTERS);
+    expect(casters.map((e) => e.id)).toContain(far);
+    // y la huella distingue 'always' de true
+    const h = state.hash();
+    state.entities.get(far)!.castsShadow = true;
+    expect(state.hash()).not.toBe(h);
+  });
+});
