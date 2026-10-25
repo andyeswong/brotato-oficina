@@ -3,7 +3,7 @@
 // pantallas (tienda, selección, fin, HUD), src/game/brotato/ui (funciones puras sobre un Painter); el bucle de ticks
 // fijos, src/game/runtime.ts.
 // ?seed=N fija la partida y salta la selección (el mundo sale de la semilla); ?nivel=oficina|medieval|cyberpunk fuerza
-// el tema; ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|no;
+// el tema; ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
 // ?ir=tienda|fin simula sin entrada hasta la primera tienda o hasta el final (para verify y las capturas).
 import { Model, render, type ModelFile, type VoxelSource } from '@core/index';
 import { TILE } from '../../../src/worldgen';
@@ -95,8 +95,11 @@ const lowDetail = document.getElementById('lowdetail')!;
 lowDetail.textContent = q.get('ruta') === 'cpu' ? 'Modo de bajo detalle (forzado con ?ruta=cpu)' : 'Sin aceleración gráfica: modo de bajo detalle';
 lowDetail.style.display = compositor.kind === 'cpu' ? 'block' : 'none';
 
-const OUTLINES: Record<string, { id: 'outer' | 'both' | 'none'; color?: string }> = {
+// El contorno de las entidades (compositor.frame) y, salvo en 'entidades', el del escenario (bakeWorld). 'entidades'
+// es la propuesta de NARUTO: separa enemigos y armas del suelo sin contornear el escenario; lo decide Andrés.
+const OUTLINES: Record<string, { id: 'outer' | 'both' | 'none'; color?: string; scenery?: false }> = {
   exterior: { id: 'outer' }, 'exterior-negro': { id: 'outer', color: INK }, interior: { id: 'both' }, 'interior-negro': { id: 'both', color: INK }, no: { id: 'none' },
+  entidades: { id: 'outer', color: INK, scenery: false },
 };
 const outline = OUTLINES[q.get('contorno') ?? 'exterior-negro'] ?? OUTLINES['exterior-negro']!;
 
@@ -177,7 +180,7 @@ function newRun(after?: () => void): void {
     level = levelFor(seed);
     theme = level.theme;
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level);
-    baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: INCLINE, outline: outline.id, outlineColor: outline.color });
+    baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: INCLINE, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color });
     ticks = new FixedLoop(game, input, 10);
     budget = new FrameBudget(3);
     shopMessage = null;
