@@ -56,6 +56,39 @@ const WEAPONS = {
     "PQP",
     ".P.",
   ] },
+  // ---- Catálogo 2 (borrador, 2026-10-25): abanico 15, perforador 22, barrido 16 del agarre a la punta
+  // Escopeta de neón: cuerpo corto de cromo, franjas rosas y boca ancha cian
+  abanico: { grip: [3, 4], half: { default: 1, C: 2, I: 2 }, rows: [
+    "...DLLLLLLLLLLLLLLC",
+    "..DMMPPMMPPMMMMMMCI",
+    "..DMMMMMMMMMMMMMMLC",
+    "..DDMMMMDD.........",
+    "...DMD.............",
+    "..DMMD.............",
+    "..DMD..............",
+    "..KKK..............",
+  ] },
+  // Rifle de raíles largo: raíles abiertos con el arco cian a todo lo largo y mira rosa
+  perforador: { grip: [7, 4], half: { default: 1 }, rows: [
+    "...........LLLLLL.............",
+    "...........MPPPPM.............",
+    "DD...DLLLL....................",
+    "DMDDMMHCICICICICICICICICICICIW",
+    "DMMMMMMLLLLLLLLLLLLLLLLLLLLLLW",
+    ".....DMD......................",
+    "....DMMD......................",
+    "....KKK.......................",
+  ] },
+  // Martillo hidráulico: mango negro, cabeza de cromo con los pistones de luz rosa
+  barrido: { grip: [1, 2], half: { default: 1, H: 3, Q: 3, P: 3, L: 3 }, rows: [
+    "............HHHHHH",
+    "............HQPPQH",
+    "DMDMDMDMDMDMHPPPPH",
+    "............HQPPQH",
+    "............LLLLLL",
+  ] },
+  perdigon2: { grip: [0, 0], half: { default: 0 }, rows: ["PQ"] },
+  bala2: { grip: [0, 0], half: { default: 0 }, rows: ["cCCCI"] },
 }
 
 const GRID = 28, MID = 14

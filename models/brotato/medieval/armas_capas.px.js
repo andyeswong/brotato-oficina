@@ -58,6 +58,37 @@ const WEAPONS = {
     "GVG",
     ".G.",
   ] },
+  // ---- Catálogo 2 (borrador, 2026-10-25): abanico 15, perforador 22, barrido 16 del agarre a la punta
+  // Trabuco: caja de madera y boca de latón acampanada
+  abanico: { grip: [3, 4], half: { default: 1, B: 2, N: 2 }, rows: [
+    "....TTTTTTTTTTTTNNN",
+    "..kWWSSSSSSSSSSSBBN",
+    "..kwwwwwwwwwwwwwBBN",
+    "...wwk.............",
+    "..www..............",
+    "..ww...............",
+    "..kk...............",
+  ] },
+  // Arcabuz rúnico largo: cañón de acero con una franja de runas verdes y culata de madera
+  perforador: { grip: [7, 4], half: { default: 1 }, rows: [
+    ".....WWWWWTTTTTTTTTTTTTTTTTTTT",
+    "kW..wwwwwwSGGGGGGGGGGGGGGGGGGS",
+    "kwwwwwwwwwssssssssssssssssssss",
+    ".kwwwwwwk.....................",
+    ".......w......................",
+    "......ww......................",
+    ".....kk.......................",
+  ] },
+  // Hacha de batalla: mango de madera, hoja de acero con el filo de runas ámbar
+  barrido: { grip: [1, 2], half: { default: 1, s: 1, S: 1, A: 1 }, rows: [
+    "............sSSSA.",
+    "............sSSSSA",
+    "kwwwwwwwwwwwBBBBBB",
+    "............sSSSSA",
+    "............sSSSA.",
+  ] },
+  metralla: { grip: [0, 0], half: { default: 0 }, rows: ["BN"] },
+  arpon: { grip: [0, 0], half: { default: 0 }, rows: ["gGGV"] },
 }
 
 const GRID = 28, MID = 14

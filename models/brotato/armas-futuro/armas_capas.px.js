@@ -67,6 +67,39 @@ const WEAPONS = {
   aguja: { grip: [0, 0], half: { default: 0 }, rows: [
     "ppPq",
   ] },
+  // ---- Catálogo 2 (borrador, 2026-10-25): abanico 15, perforador 22, barrido 16 del agarre a la punta
+  // Escopeta de pulsos: cuerpo corto, boca ancha y bandas cian
+  abanico: { grip: [3, 4], half: { default: 1, w: 2 }, rows: [
+    "...dhhhhhhhhhhhhhhw",
+    "..dmmCCmmCCmmmmmmlw",
+    "..dmmmmmmmmmmmmmmlw",
+    "..ddmmmmdd.........",
+    "...dmd.............",
+    "..dmmd.............",
+    "..dmd..............",
+    "..DDD..............",
+  ] },
+  // Rifle de agujas largo: mira con lente magenta y cañón largo con una ventana cian
+  perforador: { grip: [7, 4], half: { default: 1 }, rows: [
+    "...........hhhhhh.............",
+    "...........mPPPPm.............",
+    "dd...dhhhhhhhhhhhhhhhhhhhhhhhw",
+    "dmddmmmmmmmCCCmmmmmmmmmmmmmmlw",
+    "dmmmmmmmdd....................",
+    ".....dmd......................",
+    "....dmmd......................",
+    "....DDD.......................",
+  ] },
+  // Martillo de energía: mango largo y cabeza ancha con el núcleo cian
+  barrido: { grip: [1, 2], half: { default: 1, h: 3, i: 3, C: 3, D: 3 }, rows: [
+    "............hhhhhh",
+    "............hiCCih",
+    "Ddmmmmmmmmmmhiiiih",
+    "............hiCCih",
+    "............DDDDDD",
+  ] },
+  pulso: { grip: [0, 0], half: { default: 0 }, rows: ["Ci"] },
+  aguja2: { grip: [0, 0], half: { default: 0 }, rows: ["pPPPq"] },
 }
 
 const GRID = 28, MID = 14

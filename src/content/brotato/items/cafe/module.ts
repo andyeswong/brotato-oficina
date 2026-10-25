@@ -5,11 +5,15 @@ export default defineItem({
   id: 'cafe',
   name: 'Café',
   description: '+10 % de cadencia, −1 % de crítico. A la tercera taza tiembla el pulso.',
-  tags: ['oficina'],
   modifiers: [
     { stat: 'attack-speed-pct', add: 10 },
     { stat: 'crit-chance-pct', add: -1 },
   ],
   maxStack: 5,
   shop: { price: 12, order: 4 },
+  looks: {
+    oficina: { name: 'Café', description: '+10 % de cadencia, −1 % de crítico. A la tercera taza tiembla el pulso.' },
+    medieval: { name: 'Hidromiel', description: '+10 % de cadencia, −1 % de crítico. A la tercera jarra tiembla el pulso.' },
+    cyberpunk: { name: 'Café sintético', description: '+10 % de cadencia, −1 % de crítico. Al tercer vaso tiembla el pulso.' },
+  },
 });

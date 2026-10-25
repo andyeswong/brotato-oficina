@@ -64,6 +64,11 @@ const carryLightSchema = z.strictObject({
 });
 export type CarryLight = z.infer<typeof carryLightSchema>;
 
+// El aspecto de un ítem en un mundo: nombre y descripción que se enseñan en la tienda, y su icono (un modelo de
+// vóxeles, cuando llegue la interfaz). Como las armas: la simulación no lo lee.
+const itemLookSchema = z.strictObject({ name: z.string().min(1), description: z.string().optional(), icon: modelRef.optional() });
+const itemLooksSchema = z.strictObject({ oficina: itemLookSchema, medieval: itemLookSchema.optional(), cyberpunk: itemLookSchema.optional() });
+
 export const idSchema = z
   .string()
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'el id va en kebab-case: minúsculas, números y guiones');
@@ -273,6 +278,7 @@ export const itemSchema = z.strictObject({
   modifiers: z.array(modifierSchema).default([]),
   maxStack: z.number().int().positive().default(99),
   shop: shopEntrySchema.optional(),
+  looks: itemLooksSchema,                      // su aspecto en cada mundo (el de la oficina, obligatorio)
   hooks,
 });
 

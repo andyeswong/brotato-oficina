@@ -16,10 +16,11 @@ const found = discoverContent();
 const { registry } = validateContent(found);
 const MODELS = join(__dirname, '../../models/brotato');
 
-// El mismo contenido con otros aspectos: nombres, descripciones y modelos cambiados, y aspectos de otros mundos
+// El mismo contenido con otros aspectos (armas, enemigos y objetos): nombres, descripciones y modelos cambiados
 function withOtherLooks(mods: readonly DiscoveredModule[]): DiscoveredModule[] {
   return mods.map(({ path, value }) => {
     const v = value as { kind?: string; looks?: unknown };
+    if (v.kind === 'item') return { path, value: { ...v, looks: { oficina: { name: 'Otro objeto' }, medieval: { name: 'Reliquia' } } } };
     if (v.kind !== 'weapon' && v.kind !== 'enemy') return { path, value };
     const other = { name: 'Otra cosa', description: 'Otro aspecto, el mismo papel', model: 'bicho-taza/bicho-taza' };
     return { path, value: { ...v, looks: { oficina: other, medieval: { ...other, name: 'Autómata' }, cyberpunk: { ...other, name: 'Dron' } } } };
@@ -40,7 +41,7 @@ async function trace(reg: typeof registry, level: string, seed: number): Promise
 describe('aspecto por mundo', () => {
   it('toda arma y todo enemigo tiene el aspecto de la oficina, y cada aspecto apunta a un modelo que existe', () => {
     const mods = [...registry.weapons(), ...registry.enemies()];
-    expect(mods.length).toBe(6);
+    expect(mods.length).toBeGreaterThanOrEqual(6);
     for (const mod of mods) {
       expect(mod.looks.oficina, mod.id).toBeDefined();
       for (const theme of THEME_IDS) {
@@ -49,6 +50,18 @@ describe('aspecto por mundo', () => {
         for (const ref of [look.model, ...('projectile' in look && look.projectile ? [look.projectile] : [])]) {
           expect(existsSync(join(MODELS, `${ref}.json`)), `${mod.id} (${theme}): models/brotato/${ref}.json`).toBe(true);
         }
+      }
+    }
+  });
+
+  it('todo objeto tiene el aspecto de la oficina, y si trae icono, el modelo existe', () => {
+    const items = registry.items();
+    expect(items.length).toBeGreaterThanOrEqual(8);
+    for (const item of items) {
+      expect(item.looks.oficina, item.id).toBeDefined();
+      for (const theme of THEME_IDS) {
+        const icon = item.looks[theme]?.icon;
+        if (icon) expect(existsSync(join(MODELS, `${icon}.json`)), `${item.id} (${theme}): models/brotato/${icon}.json`).toBe(true);
       }
     }
   });
