@@ -8,7 +8,7 @@ import { Model, type ModelFile } from '@core/index';
 import { buildWorldState, type WorldTheme, type World } from '../../../src/world/build';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '../../../src/world/bake';
 import { FrameBudget } from '../../../src/view/budget';
-import { frame2D } from '../../../src/world/frame2d';
+import { createCompositor } from '../../../src/view/compositor';
 import { frame3D } from '../../../src/world/frame3d';
 import type { WorldState, Entity } from '../../../src/world/state';
 import { FixedLoop, NO_INPUT, Runtime, type TickInput } from '../../../src/game/runtime';
@@ -25,12 +25,21 @@ const canvas = document.getElementById('view') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 const loading = document.getElementById('loading')!;
 const modeBtn = document.getElementById('mode') as HTMLButtonElement;
-const g = canvas.getContext('2d')!;
 canvas.width = VW; canvas.height = VH;
+// El modo 2D lo compone la GPU (WebGL2) o, sin ella, la CPU (src/view/compositor.ts). El modo vóxel pinta con la CPU
+// en un lienzo 2D aparte: un lienzo con contexto WebGL no admite uno 2D.
+const compositor = createCompositor(canvas);
+const voxCanvas = document.createElement('canvas');
+voxCanvas.width = VW; voxCanvas.height = VH;
+voxCanvas.style.display = 'none';
+canvas.after(voxCanvas);
+const g = voxCanvas.getContext('2d')!;
 function fit(): void {
   const s = Math.max(1, Math.floor(Math.min(innerWidth / VW, innerHeight / VH)));
-  canvas.style.width = `${VW * s}px`; canvas.style.height = `${VH * s}px`;
-  canvas.style.marginTop = `${Math.max(0, (innerHeight - VH * s) / 2)}px`;
+  for (const c of [compositor.canvas, voxCanvas]) {
+    c.style.width = `${VW * s}px`; c.style.height = `${VH * s}px`;
+    c.style.marginTop = `${Math.max(0, (innerHeight - VH * s) / 2)}px`;
+  }
 }
 addEventListener('resize', fit); fit();
 
@@ -109,11 +118,10 @@ function frame(time: number): void {
   const vx = Math.max(0, Math.min(b.width - VW, fx - VW / 2));
   const top = Math.floor(b.cam.project(0, state.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
   const vy = Math.max(top, Math.min(b.height - VH, fy - VH / 2 - 12));
-  const out = frame2D(state, b, {
+  compositor.frame(state, b, {
     vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient,
     bob: (e) => (e === maia && moving && runtime && Math.floor(runtime.player.walked * 8) % 2 ? 1 : 0),
   });
-  g.putImageData(new ImageData(out as Uint8ClampedArray<ArrayBuffer>, VW, VH), 0, 0);
 }
 
 // Lo que cambia en los vóxeles se rehornea por trabajos, con el presupuesto de cada cuadro (src/view/budget.ts)
@@ -141,7 +149,7 @@ function loop(now: number): void {
   acc += performance.now() - t0; n++;
   if (n === 30) { avg = acc / n; acc = 0; n = 0; }
   hud.textContent = `VoxPix · un solo mundo en vóxeles · ${theme} · semilla ${seed}\n` +
-    `horneado ${bakeMs} ms${baked ? ` (render ${baked.ms.render}, luces ${baked.ms.light})` : ''} · cuadro ${avg.toFixed(1)} ms · luces ${lightsOn ? 'sí' : 'no'} · gotas ${state?.drops.count ?? 0}\n` +
+    `horneado ${bakeMs} ms${baked ? ` (render ${baked.ms.render}, luces ${baked.ms.light})` : ''} · cuadro ${avg.toFixed(1)} ms (${compositor.kind}) · luces ${lightsOn ? 'sí' : 'no'} · gotas ${state?.drops.count ?? 0}\n` +
     (mode === '2d' ? `WASD/flechas mover · Espacio pisotón · R otra semilla · T otro tema · L luz · V modo vóxel`
       : `MODO VÓXEL · arrastrar = girar · rueda = zoom · V vuelve al modo 2D`);
   next(loop);
@@ -153,6 +161,8 @@ function toggleMode(): void {
   mode = mode === '2d' ? 'voxel' : '2d';
   vox.dirty = true;
   modeBtn.textContent = mode === '2d' ? 'Modo vóxel' : 'Modo 2D';
+  compositor.canvas.style.display = mode === '2d' ? '' : 'none';
+  voxCanvas.style.display = mode === '2d' ? 'none' : '';
   modeBtn.classList.toggle('on', mode === 'voxel');
 }
 modeBtn.addEventListener('click', () => { toggleMode(); modeBtn.blur(); });
@@ -171,7 +181,7 @@ addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
 // Girar y hacer zoom en modo vóxel
 let drag: [number, number] | null = null;
-canvas.addEventListener('mousedown', (e) => { if (mode === 'voxel') drag = [e.clientX, e.clientY]; });
+voxCanvas.addEventListener('mousedown', (e) => { if (mode === 'voxel') drag = [e.clientX, e.clientY]; });
 addEventListener('mouseup', () => { drag = null; });
 addEventListener('mousemove', (e) => {
   if (!drag) return;
@@ -180,7 +190,7 @@ addEventListener('mousemove', (e) => {
   drag = [e.clientX, e.clientY];
   vox.dirty = true;
 });
-canvas.addEventListener('wheel', (e) => {
+voxCanvas.addEventListener('wheel', (e) => {
   if (mode !== 'voxel') return;
   e.preventDefault();
   vox.zoom = Math.max(1, Math.min(8, vox.zoom + (e.deltaY < 0 ? 1 : -1)));

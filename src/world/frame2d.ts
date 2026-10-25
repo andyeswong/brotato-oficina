@@ -1,8 +1,8 @@
 // Un cuadro del modo 2D del juego a partir del ESTADO DEL MUNDO: lo estático horneado (una vez por nivel), y
 // encima, con la misma cámara, prueba de profundidad y luz: las entidades, el agua y las gotas.
-import { render, camera, lightField3D, rgbOf, type PointLight3D } from '../core';
+import { render, camera, lightField3D, rgbOf, type PointLight3D, type Rendered } from '../core';
 import { resolveLight } from './lightutil';
-import { buildLayers, applyLayers } from '../lighting/shade';
+import { buildLayers, applyLayers, type LightLayers } from '../lighting/shade';
 import { lightView, worldPointAt, type Baked } from './bake';
 import { key, DIR_VECTORS, type VoxelSource } from '../core';
 import type { WorldLight } from './build';
@@ -18,11 +18,24 @@ export interface Frame2DOptions {
 }
 
 // Lienzo del render de una entidad y dónde caen sus pies
-const EW = 48, EH = 72, EOX = 24, EOY = 60;
+export const EW = 48, EH = 72;
+const EOX = 24, EOY = 60;
 // El render de una entidad no cambia mientras no cambie su modelo, su giro ni la proyección: se guarda
-const entityCache = new WeakMap<object, Map<string, ReturnType<typeof render>>>();
+const entityCache = new WeakMap<object, Map<string, Rendered>>();
 
 export function frame2D(state: WorldState, b: Baked, o: Frame2DOptions): Uint8ClampedArray {
+  const { view, total } = frame2DParts(state, b, o);
+  return total ? applyLayers(view, shadeLayers(total, o)) : view;
+}
+
+// Las capas de luz (MULTIPLY y ADD) de la luz por píxel de la vista
+export function shadeLayers(total: Float32Array, o: Frame2DOptions): LightLayers {
+  return buildLayers({ cell: 1, cols: o.vw, rows: o.vh, ambient: o.ambient, total }, { x: 0, y: 0, width: o.vw, height: o.vh }, { steps: 8, softGlow: true });
+}
+
+// El cuadro antes de la luz: el color de cada píxel y la luz que le llega (null sin luces). El compositor de la GPU
+// hace lo mismo; la prueba del oráculo compara los dos.
+export function frame2DParts(state: WorldState, b: Baked, o: Frame2DOptions): { view: Uint8ClampedArray; total: Float32Array | null } {
   const { vx, vy, vw, vh, ambient } = o;
   const view = new Uint8ClampedArray(vw * vh * 4);
   const depthBuf = new Float32Array(vw * vh);
@@ -30,10 +43,9 @@ export function frame2D(state: WorldState, b: Baked, o: Frame2DOptions): Uint8Cl
     depthBuf.set(b.depth.subarray((vy + y) * b.width + vx, (vy + y) * b.width + vx + vw), y * vw);
     view.set(b.rgba.subarray(((vy + y) * b.width + vx) * 4, ((vy + y) * b.width + vx + vw) * 4), y * vw * 4);
   }
-  const bg = o.background ?? [13, 12, 18];
+  const bg = o.background ?? BACKGROUND;
   for (let i = 3; i < view.length; i += 4) if (!view[i]) { view[i - 3] = bg[0]; view[i - 2] = bg[1]; view[i - 1] = bg[2]; view[i] = 255; }
   const total = o.lights ? lightView(b, vx, vy, vw, vh, ambient, o.time) : null;
-  const a = b.options.oblique?.y ?? 1;
   if (total) {
     // Luces dinámicas (las añadidas en partida): por cuadro, en su radio
     for (const l of state.lights) if (l.baked === false) addDynamicLight(b, l, total, o);
@@ -41,44 +53,51 @@ export function frame2D(state: WorldState, b: Baked, o: Frame2DOptions): Uint8Cl
     for (const e of state.entities) if (e.castsShadow) castShadow(state, b, e, total, o);
   }
 
-  for (const e of state.entities) drawEntity(state, b, e, view, depthBuf, total, o, a);
+  for (const e of state.entities) drawEntity(entityDraw(state, b, e, o), view, depthBuf, total, o);
 
   // El agua (tapa lo sumergido) y las gotas
   state.water?.draw(b, view, depthBuf, total, vx, vy, vw, vh, ambient, o.time, state.lights);
-  const wr = state.palette.ramps.find((r) => r.name === 'agua');
-  if (wr) state.drops.draw(b, view, depthBuf, total, vx, vy, vw, vh, rgbOf(wr.colors[4] ?? wr.colors[0]!), [ambient[0] * 1.7, ambient[1] * 1.7, ambient[2] * 1.8]);
+  const drop = dropLook(state, ambient);
+  if (drop) state.drops.draw(b, view, depthBuf, total, vx, vy, vw, vh, drop.color, drop.light);
+  return { view, total };
+}
 
-  return total
-    ? applyLayers(view, buildLayers({ cell: 1, cols: vw, rows: vh, ambient, total }, { x: 0, y: 0, width: vw, height: vh }, { steps: 8, softGlow: true }))
-    : view;
+export const BACKGROUND = [13, 12, 18] as const;
+
+// El color de las gotas (el tono claro del agua) y su luz
+export function dropLook(state: WorldState, ambient: readonly [number, number, number]): { color: [number, number, number]; light: [number, number, number] } | null {
+  const wr = state.palette.ramps.find((r) => r.name === 'agua');
+  return wr ? { color: rgbOf(wr.colors[4] ?? wr.colors[0]!), light: [ambient[0] * 1.7, ambient[1] * 1.7, ambient[2] * 1.8] } : null;
+}
+
+// Lo que hace falta para pintar una entidad: su render (de la caché), su luz por píxel (null sin luces), dónde cae
+// su lienzo en la imagen horneada, cuánto se suma a su profundidad y su sombra de contacto (centro y radio vertical)
+export interface EntityDraw {
+  img: Rendered;
+  etotal: Float32Array | null;
+  offX: number; offY: number; dOff: number;
+  fx: number; fy: number; sry: number;
 }
 
 // Una entidad del mundo con la misma cámara que el escenario, iluminada por cara con las fuentes del mundo y con
 // su sombra en el suelo. Su profundidad se pasa a la del mundo y lo que tiene delante la tapa.
-function drawEntity(state: WorldState, b: Baked, e: Entity, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, o: Frame2DOptions, a: number): void {
-  const { vx, vy, vw, vh, ambient } = o;
+export function entityDraw(state: WorldState, b: Baked, e: Entity, o: Frame2DOptions): EntityDraw {
+  const a = b.options.oblique?.y ?? 1;
   const X = Math.round(e.x), Y = Math.round(e.y), Z = e.z;
   const bob = o.bob ? o.bob(e) : 0;
   // Sombra de contacto bajo los pies (la de las luces la hace castShadow con el cuerpo de verdad)
   const feet = b.cam.project(X + 0.5, Y, Z);
   const fx = Math.floor(feet[0]), fy = Math.floor(feet[1]);
   const sry = Math.max(1.2, 2.5 * a);
-  if (total) for (let y = -Math.ceil(sry); y <= Math.ceil(sry); y++) for (let x = -6; x <= 6; x++) {
-    if ((x / 6.5) ** 2 + (y / sry) ** 2 > 1) continue;
-    const sx = fx - vx + x, sy = fy - vy + y;
-    if (sx < 0 || sy < 0 || sx >= vw || sy >= vh) continue;
-    const q = (sy * vw + sx) * 3;
-    total[q] = total[q]! * 0.7; total[q + 1] = total[q + 1]! * 0.7; total[q + 2] = total[q + 2]! * 0.72;
-  }
   const lo = { width: EW, height: EH, originX: EOX, originY: EOY, pivot: [0.5, 0, 0] as [number, number, number], yaw: e.yaw,
-    oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: 'none' as const, pick: !!total };
+    oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: 'none' as const, pick: o.lights };
   let cache = entityCache.get(e.model);
   if (!cache) entityCache.set(e.model, (cache = new Map()));
   const ck = `${e.yaw}|${lo.oblique.y}|${lo.oblique.z}|${lo.pick}`;
   let img = cache.get(ck);
   if (!img) { img = render(e.model, lo); cache.set(ck, img); }
   let etotal: Float32Array | null = null;
-  if (total) {
+  if (o.lights) {
     // Las luces del mundo en los ejes del modelo de la entidad (sin girar)
     const c = Math.cos((e.yaw * Math.PI) / 180), sn = Math.sin((e.yaw * Math.PI) / 180);
     const lights: PointLight3D[] = state.lights.map((l) => {
@@ -86,10 +105,23 @@ function drawEntity(state: WorldState, b: Baked, e: Entity, view: Uint8ClampedAr
       const dx = l.x - (X + 0.5), dy = l.y - Y;
       return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity };
     }).filter((l) => Math.hypot(l.x, l.y) < l.radius + 20);
-    etotal = lightField3D(e.model, img, camera(lo), lights, ambient, { floor: false });
+    etotal = lightField3D(e.model, img, camera(lo), lights, o.ambient, { floor: false });
   }
   const offX = X - EOX, offY = Math.round(b.options.originY - a * Y - Z) - EOY - bob;
   const dOff = Y * b.cam.fwd[1] + Z * b.cam.fwd[2];
+  return { img, etotal, offX, offY, dOff, fx, fy, sry };
+}
+
+function drawEntity(d: EntityDraw, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, o: Frame2DOptions): void {
+  const { vx, vy, vw, vh } = o;
+  const { img, etotal, offX, offY, dOff, fx, fy, sry } = d;
+  if (total) for (let y = -Math.ceil(sry); y <= Math.ceil(sry); y++) for (let x = -6; x <= 6; x++) {
+    if ((x / 6.5) ** 2 + (y / sry) ** 2 > 1) continue;
+    const sx = fx - vx + x, sy = fy - vy + y;
+    if (sx < 0 || sy < 0 || sx >= vw || sy >= vh) continue;
+    const q = (sy * vw + sx) * 3;
+    total[q] = total[q]! * 0.7; total[q + 1] = total[q + 1]! * 0.7; total[q + 2] = total[q + 2]! * 0.72;
+  }
   for (let j = 0; j < EH; j++) for (let i = 0; i < EW; i++) {
     const s = j * EW + i;
     if (!img.rgba[s * 4 + 3]) continue;
@@ -119,7 +151,7 @@ function contribution(l: { x: number; y: number; z: number; radius: number; inte
 }
 
 // Recuadro de la vista que puede tocar una esfera de radio r alrededor de (x, y, z)
-function screenBox(b: Baked, x: number, y: number, z: number, r: number, o: Frame2DOptions): [number, number, number, number] | null {
+export function screenBox(b: Baked, x: number, y: number, z: number, r: number, o: Frame2DOptions): [number, number, number, number] | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const dx of [-r, r]) for (const dy of [-r, r]) for (const zz of [-10, z + r]) {
     const [sx, sy] = b.cam.project(x + dx, y + dy, zz);
@@ -149,7 +181,7 @@ function addDynamicLight(b: Baked, l: WorldLight, total: Float32Array, o: Frame2
 
 // El cuerpo de una entidad como conjunto de vóxeles locales (girado al cuarto de vuelta más cercano) y su caja
 const occCache = new WeakMap<VoxelSource, Map<number, { set: Set<number>; min: [number, number, number]; max: [number, number, number] }>>();
-function occupancy(model: VoxelSource, yaw: number) {
+export function occupancy(model: VoxelSource, yaw: number) {
   const turns = ((Math.round(yaw / 90) % 4) + 4) % 4;
   let m = occCache.get(model);
   if (!m) occCache.set(model, (m = new Map()));
@@ -169,6 +201,10 @@ function occupancy(model: VoxelSource, yaw: number) {
   return o;
 }
 
+// Desempate: con entradas enteras, la muestra cae a menudo justo en el borde de un vóxel, y entonces el redondeo
+// decide de qué lado (y la GPU, en float32, redondea distinto). Se mide un poco más allá, igual en las dos.
+export const TIE = 1 / 1024;
+
 // ¿El segmento de P a la luz L (en coordenadas locales de la entidad) cruza un vóxel de su cuerpo?
 function blockedByBody(occ: ReturnType<typeof occupancy>, P: [number, number, number], L: [number, number, number]): boolean {
   // Recorte a la caja (método de las losas)
@@ -186,13 +222,13 @@ function blockedByBody(occ: ReturnType<typeof occupancy>, P: [number, number, nu
   const steps = Math.max(1, Math.ceil(len * 2));
   for (let k = 0; k <= steps; k++) {
     const t = t0 + ((t1 - t0) * k) / steps;
-    const x = P[0] + (L[0] - P[0]) * t, y = P[1] + (L[1] - P[1]) * t, z = P[2] + (L[2] - P[2]) * t;
+    const x = P[0] + (L[0] - P[0]) * t + TIE, y = P[1] + (L[1] - P[1]) * t + TIE, z = P[2] + (L[2] - P[2]) * t + TIE;
     if (occ.set.has(key(Math.floor(x), Math.floor(y), Math.floor(z)))) return true;
   }
   return false;
 }
 
-const SHADOW_REACH = 48;     // hasta dónde se busca sombra alrededor de la entidad (en planta)
+export const SHADOW_REACH = 48;     // hasta dónde se busca sombra alrededor de la entidad (en planta)
 
 function castShadow(state: WorldState, b: Baked, e: Entity, total: Float32Array, o: Frame2DOptions): void {
   const occ = occupancy(e.model, e.yaw);

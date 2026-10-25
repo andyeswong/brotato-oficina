@@ -24,3 +24,20 @@ Validación del arnés (condición de MAIA, 2026-10-24): el Brotato congelado (`
 Opciones: `-Shot C:\...\x.png` guarda una captura al final de la muestra (para comprobar qué se midió); `-Gpu` arranca
 Edge con la GPU en vez de `--disable-gpu` (para la ruta WebGL2). Ojo: el freno de CDP frena la CPU, no la GPU, así
 que con `-Gpu` la medida sale optimista; la aceptación final es en el Flip.
+
+## Ruta GPU (WebGL2), 2026-10-24
+
+Con `-Gpu`, la escena compone el cuadro en la GPU (src/view/gpu). El HUD dice `(gpu)` o `(cpu)`.
+
+**Ojo:** con la GPU real, Edge sin ventana no se ata a 60 Hz. A 1x da intervalos de 4,2 ms (~240 Hz). Por eso el p95
+es una cota, no la cifra de aceptación, y el freno de CDP no frena la GPU. La aceptación es en el Flip.
+
+| Escenario, 6x | p95 | Perdidos (>18 ms) | CPU por cuadro (HUD) |
+|---|---|---|---|
+| medieval, salida | 12,6 ms | 0,3 % | 5,4 ms |
+| oficina, salida | 12,7 ms | 0,5 % | 5,4 ms |
+| cyberpunk, salida | 12,6 ms | 0,1 % | 5,3 ms |
+| medieval, columna rota | 12,6 ms | 0,2 % | 4,6 ms |
+| medieval, lago con pisotones | 16,7 ms | 0,9 % | 3,7 ms |
+
+Antes, con el cuadro en CPU: 43-77 ms por cuadro y p95 de 67-133 ms.

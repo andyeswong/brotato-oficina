@@ -73,6 +73,10 @@ export class WaterLayer {
     return gx < 0 || gy < 0 || gx >= this.gw || gy >= this.gh ? -1 : gy * this.gw + gx;
   }
 
+  // Los 5 tonos del agua (RGB) y si una celda es de cuenca (para quien la dibuja por su cuenta, como la GPU)
+  get toneColors(): ReadonlyArray<readonly [number, number, number]> { return this.tones; }
+  isBasin(i: number): boolean { return this.basin[i] === 1; }
+
   // Todo en ejes del modelo (x este, y norte)
   depthAt(x: number, y: number): number { const i = this.cellOf(x, y); return i < 0 ? 0 : this.sim.depth[i]!; }
   surfaceAt(x: number, y: number): number { const i = this.cellOf(x, y); return i < 0 ? 0 : this.sim.surface(i); }

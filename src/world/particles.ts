@@ -20,6 +20,9 @@ export class Drops {
 
   get count(): number { return this.n; }
 
+  // Posición de la gota k (ejes del modelo), sin copias (para quien la dibuja por su cuenta, como la GPU)
+  at(k: number): [number, number, number] { const o = k * 8; return [this.d[o]!, this.d[o + 1]!, this.d[o + 2]!]; }
+
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, water = 0.02): void {
     if (this.n >= MAX) return;
     const o = this.n++ * 8;

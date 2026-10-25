@@ -34,6 +34,9 @@ export interface Baked {
   source: StaticVoxels;
   occ: Uint8Array;
   topZ: number;
+  // Lo que se ha publicado desde el horneado (para quien guarda una copia, p. ej. las texturas de la GPU): cada
+  // recuadro rehorneado con su número de serie. Solo se guardan los últimos; quien se quede atrás lo recarga todo.
+  published: { serial: number; rects: Array<{ serial: number; x0: number; y0: number; x1: number; y1: number }> };
 }
 
 // Lo mínimo que necesita el horneado de un mundo
@@ -65,6 +68,7 @@ export function bakeWorld(world: Bakeable, opts: { topZ?: number; incline?: numb
     width: img.width, height: img.height, rgba: img.rgba, depth: img.depth, face: img.pickFace!, pick: img.pickKey!,
     options, cam: camera(options), lights: [], version: world.model.clock, ms: { render: Math.round(t1 - t0), light: 0 },
     source: world.model, occ: new Uint8Array(world.width * world.depth * gridZ(topZ)), topZ,
+    published: { serial: 0, rects: [] },
   };
   fillOcc(b, 0, 0, world.width - 1, world.depth - 1);
   for (const l of world.lights) {
@@ -241,7 +245,11 @@ function publishRect(b: Baked, r: ScreenRect, buf: RectBuffers): void {
     b.depth[dst] = buf.depth[src]!; b.face[dst] = buf.face[src]!; b.pick[dst] = buf.pick[src]!;
     for (let ch = 0; ch < 4; ch++) b.rgba[dst * 4 + ch] = buf.rgba[src * 4 + ch]!;
   }
+  const pub = b.published;
+  pub.rects.push({ serial: ++pub.serial, ...r });
+  if (pub.rects.length > PUBLISHED_KEEP) pub.rects.shift();
 }
+const PUBLISHED_KEEP = 32;
 
 // ---- rehorneado como trabajos que se reanudan (para la cola con presupuesto de la vista)
 // run(deadline) trabaja hasta que el reloj pasa de `deadline` o acaba, y devuelve true si acabó. Mientras no acaba
