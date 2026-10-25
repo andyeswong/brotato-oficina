@@ -164,6 +164,11 @@ export class BrotatoGame {
     return out;
   }
 
+  // La entidad que dibuja a un enemigo de la oleada (por su uid de la simulación), si sigue en el mundo
+  enemyEntity(uid: number): EntityId | undefined {
+    return this.enemyIds.get(uid);
+  }
+
   // La simulación los anuncia en World.fx y no los vacía: se pasan aquí cada tick
   private collectFx(): void {
     const list = this.wave.fx;

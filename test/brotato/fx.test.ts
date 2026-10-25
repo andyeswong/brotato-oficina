@@ -3,7 +3,7 @@ import { Model, material } from '../../src/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
-import { Effects, FLOAT_ENEMY_S, FLOAT_PLAYER_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
+import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, FLOAT_PLAYER_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
 import { COLORS, type Painter } from '../../src/game/brotato/ui/paint';
 import { bakeWorld } from '../../src/world/bake';
 import type { WorldFx } from '../../src/game/brotato/sim/World';
@@ -171,5 +171,59 @@ describe('la partida junta los efectos para la vista', () => {
     }
     expect(all.length).toBeGreaterThan(256);   // si no, la prueba no prueba nada
     expect(b.takeFx()).toEqual(all.slice(-256));
+  });
+});
+
+describe('el destello de un golpe (el tinte de la entidad)', () => {
+  it('tiñe al golpe y lo quita a su tiempo: el enemigo blanco 60 ms, MAIA roja 90 ms', () => {
+    const g = new BrotatoGame(registry, 3, models, player, registry.level('oficina'));
+    const ents = g.state.entities;
+    const flashes = new Flashes<number | string>((id, c) => ents.setTint(id, c), (id) => !!ents.get(id));
+    flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s);
+    expect(ents.get(g.playerId)!.tint).toEqual([1, 51 / 255, 51 / 255]);
+    flashes.update(0.08);
+    expect(ents.get(g.playerId)!.tint).not.toBeNull();
+    flashes.update(0.02);
+    expect(ents.get(g.playerId)!.tint).toBeNull();
+    expect(flashes.count).toBe(0);
+    expect(FLASH_ENEMY).toEqual({ color: [1, 1, 1], s: 0.06 });
+  });
+
+  it('un golpe sobre un destello vivo lo alarga, y una entidad que ya no está se olvida sin error', () => {
+    const g = new BrotatoGame(registry, 3, models, player, registry.level('oficina'));
+    const ents = g.state.entities;
+    const flashes = new Flashes<number | string>((id, c) => ents.setTint(id, c), (id) => !!ents.get(id));
+    const id = ents.add({ model: one, x: 40, y: 40, z: 0, facing: 0, castsShadow: false });
+    flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s);
+    flashes.update(0.05);
+    flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s);
+    flashes.update(0.05);
+    expect(ents.get(id)!.tint).toEqual([1, 1, 1]);
+    ents.remove(id);
+    expect(() => flashes.update(1)).not.toThrow();
+    expect(flashes.count).toBe(0);
+    expect(() => flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s)).not.toThrow();
+  });
+
+  it('la partida dice qué entidad dibuja a cada enemigo golpeado', { timeout: 60_000 }, () => {
+    const g = new BrotatoGame(registry, 11, models, player, registry.level('medieval'));
+    let found = 0;
+    // Varias oleadas con el piloto: en la primera todo muere de un golpe (y el golpe que mata no deja entidad)
+    for (let t = 0; t < 30_000 && found < 5 && g.phase !== 'dead' && g.phase !== 'victory'; t++) {
+      if (g.phase === 'shop') { buyAll(g.run); g.leaveShop(); }
+      const d = steer(g.run, g.current.player, kite(g.current, g.run));
+      g.step({ dx: d.x, dy: d.y, stomp: false });
+      for (const f of g.takeFx()) {
+        if (f.type !== 'enemy-hit') continue;
+        const e = g.current.enemies.find((x) => x.uid === f.uid);
+        const id = g.enemyEntity(f.uid);
+        if (!e) { expect(id).toBeUndefined(); continue; }   // murió del golpe: su entidad ya se quitó
+        expect(id).toBeDefined();
+        const ent = g.state.entities.get(id!)!;
+        expect([ent.x, ent.y]).toEqual([Math.round(e.x), Math.round(e.y)]);
+        found++;
+      }
+    }
+    expect(found).toBeGreaterThan(0);
   });
 });

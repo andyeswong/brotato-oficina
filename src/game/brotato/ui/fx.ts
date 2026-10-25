@@ -40,6 +40,9 @@ const SCRAP_GRAVITY = 260;           // vóxeles/s², la de las gotas del mundo
 // Los trocitos NO son rojos: el material de la oficina es una chincheta roja y se confundirían con él al caer
 const SCRAP_COLORS = ['#fdf6ff', '#c9c3d9', '#8a94a6'] as const;
 const DIM = '#fdf6ff80';
+// El destello de un golpe, como en el Brotato: el enemigo en blanco 60 ms y MAIA en rojo 90 ms
+export const FLASH_ENEMY = { color: [1, 1, 1] as const, s: 0.06 };
+export const FLASH_PLAYER = { color: [1, 0.2, 0.2] as const, s: 0.09 };
 
 interface Floating {
   text: string;
@@ -100,6 +103,40 @@ function hash(a: number, b: number): number {
   let h = (Math.imul(Math.round(a * 16) | 0, 0x9e3779b1) ^ Math.imul(Math.round(b * 16) | 0, 0x85ebca6b)) >>> 0;
   h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
   return h;
+}
+
+type Rgb = readonly [number, number, number];
+
+// Los destellos vivos, por entidad: `apply` pone el tinte (o lo quita con null) en el mundo. Un golpe sobre una
+// entidad ya teñida alarga su destello. Lo que ya no existe (un enemigo que murió del golpe) se olvida sin tocarlo
+export class Flashes<Id> {
+  private live = new Map<Id, number>();
+
+  constructor(private readonly apply: (id: Id, color: Rgb | null) => void, private readonly exists: (id: Id) => boolean) {}
+
+  get count(): number {
+    return this.live.size;
+  }
+
+  flash(id: Id, color: Rgb, s: number): void {
+    if (!this.exists(id)) return;
+    this.apply(id, color);
+    this.live.set(id, Math.max(s, this.live.get(id) ?? 0));
+  }
+
+  update(dt: number): void {
+    for (const [id, t] of this.live) {
+      const left = t - dt;
+      if (left > 0) { this.live.set(id, left); continue; }
+      this.live.delete(id);
+      if (this.exists(id)) this.apply(id, null);
+    }
+  }
+
+  clear(): void {
+    for (const id of this.live.keys()) if (this.exists(id)) this.apply(id, null);
+    this.live.clear();
+  }
 }
 
 export class Effects {

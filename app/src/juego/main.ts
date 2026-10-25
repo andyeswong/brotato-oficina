@@ -27,7 +27,8 @@ import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from 
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { drawHud, hudText } from '../../../src/game/brotato/ui/hud';
-import { Effects, type FxScene } from '../../../src/game/brotato/ui/fx';
+import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
+import type { EntityId } from '../../../src/world/state';
 import maiaFile from '../../../models/maia/maia.json';
 
 const VW = 384, VH = 216, TOPZ = 40, INCLINE = 0.5;
@@ -179,6 +180,8 @@ let shopMessage: ShopMessage | null = null;
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
 let zones: Zone<ShopAction | SelectAction>[] = [];
 const effects = new Effects();
+// El destello de un golpe: el tinte plano de la entidad (NARUTO), solo aspecto, con el reloj de la vista
+const flashes = new Flashes<EntityId>((id, c) => game?.state.entities.setTint(id, c), (id) => !!game?.state.entities.get(id));
 const gfx = fxCanvas.getContext('2d')!;
 const fxPainter: Painter = { width: VW, height: VH, fill(x, y, w, h, color) { gfx.fillStyle = color; gfx.fillRect(x, y, w, h); }, icon: () => false };
 let drawn = '';                 // la firma de lo último pintado en la interfaz: solo se repinta si cambia
@@ -204,6 +207,7 @@ function newRun(after?: () => void): void {
     budget = new FrameBudget(3);
     shopMessage = null;
     effects.clear();
+    flashes.clear();
     screen = 'game';
     after?.();
     frame(performance.now() / 1000);
@@ -227,7 +231,7 @@ function toSelect(): void {
   level = levelFor(seed);
   theme = level.theme;
   game = null; baked = null; ticks = null;
-  effects.clear(); gfx.clearRect(0, 0, VW, VH);
+  flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
 }
@@ -257,10 +261,15 @@ function frame(time: number): void {
 function paintFx(vx: number, vy: number): void {
   const g = game!, b = baked!;
   gfx.clearRect(0, 0, VW, VH);
-  if (g.phase === 'shop') return;
+  if (g.phase === 'shop') { flashes.clear(); return; }
   const p = g.current.player;
   const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1) };
-  effects.add(g.takeFx(), scene);
+  const fx = g.takeFx();
+  for (const f of fx) {
+    if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); }
+    else if (f.type === 'player-hit') flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s);
+  }
+  effects.add(fx, scene);
   effects.paint(fxPainter, b.cam, vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
 }
 
@@ -306,6 +315,7 @@ function loop(now: number): void {
     if (over) { screen = 'end'; endAt = now; }
   }
   effects.update(Math.min(dt, 0.1));
+  flashes.update(dt);
   if (screen !== 'select') frame(now / 1000);
   if (game && baked) for (const job of rebakeChangedJobs(baked, game.state.lights)) budget.push(job);
   budget.run();
