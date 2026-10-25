@@ -1,6 +1,7 @@
 // Prueba de carga del compositor (NARUTO): el escenario con N entidades que andan en círculo con el walk de MAIA,
 // para medir cuántas caben (lo que necesita el Brotato: ~200 enemigos). No es el juego: las mueve la vista, sin
 // runtime. ?n=200  ?ruta=cpu  ?tema=oficina  ?sombras=0 (sin sombra de verdad)
+//   ?antorchas=10: las 10 primeras llevan una antorcha (luz puntual que va con ellas)   ?linterna=1: y una linterna
 import { generateLayout, TILE } from '../../../src/worldgen';
 import { THEMES } from '../../../src/content/themes';
 import { Model, type ModelFile } from '@core/index';
@@ -30,6 +31,10 @@ const cx = layout.spawn.x, cy = world.depth - 1 - layout.spawn.y;
 // Cada una en su órbita alrededor de la salida, a su velocidad
 const orbits = Array.from({ length: N }, (_, k) => ({ r: 14 + 7 * Math.sqrt(k), a0: k * 2.39996, w: (k % 2 ? 1 : -1) * (0.25 + (k % 7) * 0.04) }));
 const ids = orbits.map(() => state.entities.add({ model: walk[0]!, x: cx, y: cy, z: 1, castsShadow: q.get('sombras') !== '0' }));
+// Luces que se mueven con ellas (para medir su coste): antorchas en la mano y una linterna
+const torches = Math.min(N, Number(q.get('antorchas') ?? 0));
+for (let k = 0; k < torches; k++) state.lights.add({ kind: 'torch', x: 0, y: 0, z: 0, follow: { entity: ids[k]!, offset: [6, -4, 14] } });
+if (q.get('linterna') === '1' && ids.length) state.lights.add({ kind: 'lamp', x: 0, y: 0, z: 0, cone: 50, intensity: 1.6, radius: 90, follow: { entity: ids[ids.length - 1]!, offset: [0, -9, 14], dir: [0, -1, -0.3] } });
 
 const feet = baked.cam.project(cx + 0.5, cy, 1);
 const vx = Math.max(0, Math.min(baked.width - VW, Math.floor(feet[0]) - VW / 2));
@@ -62,7 +67,7 @@ function loop(now: number): void {
     for (const k of Object.keys(pAcc) as Array<keyof typeof pAcc>) { pAvg[k] = pAcc[k] / n; pAcc[k] = 0; }
     acc = upAcc = simAcc = n = 0;
   }
-  hud.textContent = `multitud: ${N} entidades · ${theme} · ruta ${compositor.kind}\ncuadro (CPU) ${avg.toFixed(1)} ms · de eso, preparar y subir ${upAvg.toFixed(1)} ms` +
+  hud.textContent = `multitud: ${N} entidades · ${torches} antorchas${q.get('linterna') === '1' ? ' · linterna' : ''} · ${theme} · ruta ${compositor.kind}\ncuadro (CPU) ${avg.toFixed(1)} ms · de eso, preparar y subir ${upAvg.toFixed(1)} ms` +
     ` (horneado ${pAvg.baked.toFixed(1)}, entidades ${pAvg.entities.toFixed(1)}, sombras ${pAvg.casters.toFixed(1)}, agua ${pAvg.water.toFixed(1)}, gotas ${pAvg.drops.toFixed(1)})\nmover ${N} y step del mundo ${simAvg.toFixed(1)} ms`;
   requestAnimationFrame(loop);
 }

@@ -213,9 +213,11 @@ export class LightList extends Array<WorldLight> {
   next = 1;
   add(o: Omit<WorldLight, 'id' | 'baked'> & { id?: LightId }): LightId {
     const id = o.id ?? this.next++;
-    this.push({ ...o, id, baked: false });
+    this.push({ ...o, id, baked: false, ...(o.follow ? { owner: o.follow.entity } : {}) });
+    if (o.follow) this.owner?.placeFollowers();
     return id;
   }
+  owner?: WorldState;
   get(id: LightId): WorldLight | undefined { return this.find((l) => l.id === id); }
   move(id: LightId, x: number, y: number, z: number): void {
     const l = this.get(id);
@@ -286,6 +288,7 @@ export class WorldState {
     this.models = new ModelRegistry(this);
     this.dynamicVersions = new Uint32Array(solid.versions.length);
     this.entities.owner = this;
+    this.lights.owner = this;
     // Las del worldgen son fijas: se hornean
     for (const l of lights) this.lights.push({ ...l, baked: l.baked ?? true });
     this.rngState = (opts.seed ?? 1) >>> 0;
@@ -475,6 +478,22 @@ export class WorldState {
   }
 
   // Un tick de simulación: 1/60 s fijo
+  // Las luces que van con una entidad, en su sitio: el offset (y la dirección) girados con su facing. Si la entidad ya
+  // no está, la luz se queda donde estaba.
+  placeFollowers(): void {
+    for (const l of this.lights) {
+      const f = l.follow;
+      if (!f) continue;
+      const e = this.entities.get(f.entity);
+      if (!e) continue;
+      const a = (e.yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+      const rot = (v: readonly [number, number, number]): [number, number, number] => [v[0] * c - v[1] * s, v[0] * s + v[1] * c, v[2]];
+      const o = rot(f.offset);
+      l.x = e.x + 0.5 + o[0]; l.y = e.y + o[1]; l.z = e.z + o[2];
+      if (f.dir) l.dir = rot(f.dir);
+    }
+  }
+
   step(): void {
     const dt = TICK;
     // La fuente: un chorro de gotas que cae del borde del cuenco al pilón (con el azar del mundo)
@@ -496,6 +515,7 @@ export class WorldState {
       }
     }
     this.drops.step(dt, this.water, (x, y) => this.groundAt(x, y));
+    this.placeFollowers();
     this.tick++;
   }
 
@@ -558,7 +578,7 @@ export class WorldState {
     if (s.water) for (const k of ['depth', 'fl', 'fr', 'ft', 'fb', 'awake'] as const) h.bytes(s.water[k]);
     h.num(s.drops.n); h.bytes(s.drops.data);
     for (const e of s.entities) { h.str(String(e.id)); h.num(e.modelId); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); h.num(e.castsShadow === 'always' ? 2 : e.castsShadow ? 1 : 0); }
-    for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); h.f64(l.dir?.[0] ?? 9); h.f64(l.dir?.[1] ?? 9); h.f64(l.dir?.[2] ?? 9); h.f64(l.cone ?? -1); h.str(String(l.owner ?? '')); }
+    for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); h.f64(l.dir?.[0] ?? 9); h.f64(l.dir?.[1] ?? 9); h.f64(l.dir?.[2] ?? 9); h.f64(l.cone ?? -1); h.str(String(l.owner ?? '')); h.str(l.follow ? JSON.stringify(l.follow) : ''); }
     h.num(s.next.entity); h.num(s.next.light);
     h.num(s.clock); h.bytes(s.dynamicVersions);
     return h.hex();

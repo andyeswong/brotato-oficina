@@ -309,15 +309,30 @@ function addDynamicLight(b: Baked, l: WorldLight, total: Float32Array, o: Frame2
   const box = screenBox(b, l.x, l.y, l.z, p.radius, o);
   if (!box) return;
   const [x0, y0, x1, y1] = box;
-  for (let sy = y0; sy <= y1; sy++) for (let sx = x0; sx <= x1; sx++) {
-    const f = b.face[sy * b.width + sx]!;
-    if (f < 0) continue;
-    const P = worldPointAt(b, sx, sy);
-    if (!P) continue;
-    const w = contribution(p, P, DIR_VECTORS[f]!);
-    if (!w) continue;
-    const q = ((sy - o.vy) * o.vw + (sx - o.vx)) * 3;
-    total[q] = total[q]! + p.color[0] * w; total[q + 1] = total[q + 1]! + p.color[1] * w; total[q + 2] = total[q + 2]! + p.color[2] * w;
+  // Sin asignaciones por píxel (con una multitud llevando luces, esto corre millones de veces): el punto del mundo de
+  // worldPointAt y la aportación de contribution, en línea y con la misma aritmética, y fuera del radio se descarta
+  // antes de la raíz
+  const a = b.options.oblique?.y ?? 1, f1 = b.cam.fwd[1], f2 = b.cam.fwd[2], O = b.options.originY, den = a * f2 - f1;
+  const r = p.radius, r2 = r * r, [cr, cg, cb] = p.color;
+  for (let sy = y0; sy <= y1; sy++) {
+    const P = O - (sy + 0.5);
+    for (let sx = x0; sx <= x1; sx++) {
+      const idx = sy * b.width + sx;
+      const f = b.face[idx]!;
+      if (f < 0) continue;
+      const d = b.depth[idx]!;
+      if (d === Infinity) continue;
+      const wy = (P * f2 - d) / den, wz = P - a * wy;
+      const dx = l.x - sx, dy = l.y - wy, dz = l.z - wz;
+      const dd = dx * dx + dy * dy + dz * dz;
+      if (dd >= r2) continue;
+      // contribution(), en línea
+      const dist = Math.hypot(dx, dy, dz), n = DIR_VECTORS[f]!, k = 1 - dist / r;
+      const w = k * k * p.intensity * (dist < 1e-6 ? 1 : facing((n[0] * dx + n[1] * dy + n[2] * dz) / dist)) * (p.spot ? spotFactor(p.spot, -dx, -dy, -dz) : 1);
+      if (!w) continue;
+      const q = ((sy - o.vy) * o.vw + (sx - o.vx)) * 3;
+      total[q] = total[q]! + cr * w; total[q + 1] = total[q + 1]! + cg * w; total[q + 2] = total[q + 2]! + cb * w;
+    }
   }
 }
 

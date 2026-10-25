@@ -171,3 +171,23 @@ describe('quién da sombra de verdad', () => {
     expect(state.hash()).not.toBe(h);
   });
 });
+
+describe('luces que van con una entidad (follow)', () => {
+  it('se colocan con el offset y la dirección girados con su facing, al final del tick, y entran en la huella', () => {
+    const { state, body } = world();
+    const id = state.entities.add({ model: body, x: 40, y: 30, z: 1, facing: 0 });
+    const lid = state.lights.add({ kind: 'lamp', x: 0, y: 0, z: 0, cone: 40, follow: { entity: id, offset: [0, -7, 1], dir: [0, -1, -0.3] } });
+    const l = state.lights.get(lid)!;
+    expect(l.owner).toBe(id);
+    // mirando al sur (facing 0): delante es -y
+    expect([l.x, l.y, l.z]).toEqual([40.5, 23, 2]);
+    expect(l.dir![1]).toBeCloseTo(-1);
+    const h0 = state.hash();
+    // mirando al este (facing 90): delante es +x
+    state.entities.move(id, 50, 30, 1, 90);
+    state.step();
+    expect(l.x).toBeCloseTo(57.5); expect(l.y).toBeCloseTo(30); expect(l.z).toBe(2);
+    expect(l.dir![0]).toBeCloseTo(1); expect(l.dir![1]).toBeCloseTo(0);
+    expect(state.hash()).not.toBe(h0);
+  });
+});

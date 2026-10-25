@@ -86,6 +86,9 @@ export interface WorldLight {
   cone?: number;
   // La entidad que la lleva (una linterna, un farol): su cuerpo no le hace sombra a esta luz
   owner?: number | string;
+  // Va con una entidad: al final de cada tick se coloca en `offset` (y, si es un foco, apunta a `dir`), los dos en
+  // los ejes del modelo de la entidad (el frente es -y), girados con su facing. Su dueño es esa entidad.
+  follow?: { entity: number | string; offset: readonly [number, number, number]; dir?: readonly [number, number, number] };
 }
 
 export interface World {

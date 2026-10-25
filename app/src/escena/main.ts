@@ -234,21 +234,16 @@ outlineBtn.addEventListener('click', () => { cycleOutline(); outlineBtn.blur(); 
 showOutline();
 if (mode === 'voxel') { mode = '2d'; toggleMode(); }
 
-// Linterna (F o ?linterna=1): un foco que lleva MAIA a la altura del pecho y apunta hacia donde mira, algo hacia el
-// suelo. Es de la demo: se mueve y se apunta cada cuadro con lights.move y lights.aim.
+// Linterna (F o ?linterna=1): un foco que va con MAIA (lights.add con follow), justo delante de ella a la altura
+// del pecho y apuntando hacia donde mira, algo hacia el suelo. El mundo la coloca en cada tick.
 let flashlight: number | string | null = null;
 let flashlightWanted = q.get('linterna') === '1';
 function updateFlashlight(): void {
-  if (!state || !runtime) return;
+  if (!state || !maia) return;
   if (flashlightWanted && (flashlight === null || !state.lights.get(flashlight))) {
-    flashlight = state.lights.add({ kind: 'lamp', x: 0, y: 0, z: 0, dir: [0, -1, -0.3], cone: 50, intensity: 1.6, radius: 90, owner: maia?.id });
+    flashlight = state.lights.add({ kind: 'lamp', x: 0, y: 0, z: 0, cone: 50, intensity: 1.6, radius: 90, follow: { entity: maia.id, offset: [0, -9, 14], dir: [0, -1, -0.3] } });
   }
   if (!flashlightWanted && flashlight !== null) { if (state.lights.get(flashlight)) state.lights.remove(flashlight); flashlight = null; }
-  if (flashlight === null) return;
-  const p = runtime.player, a = (p.facing * Math.PI) / 4;
-  const dx = Math.sin(a), dy = -Math.cos(a);
-  state.lights.move(flashlight, p.x + 0.5 + dx * 9, p.y + dy * 9, p.z + 14);   // justo delante de su cuerpo
-  state.lights.aim(flashlight, [dx, dy, -0.3]);
 }
 
 addEventListener('keydown', (e) => {
