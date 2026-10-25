@@ -20,7 +20,7 @@ for (let i = 0; i < N; i++) {
   let img!: ReturnType<typeof render>;
   time('render de MAIA', () => { img = render(maia, lo); });
   time('luz por cara de MAIA', () => { lightField3D(maia, img, camera(lo), [{ x: 0, y: 30, z: 20, radius: 110, color: [1, 0.6, 0.3], intensity: 1 }], amb, { floor: false }); });
-  time('agua', () => { depth.fill(Infinity); state.water!.draw(b, view, depth, total, 0, 60, 384, 216, amb, i / 60); });
+  time('agua', () => { depth.fill(Infinity); state.water!.draw(b, view, depth, total, 0, 60, 384, 216, amb, i / 60, state.lights); });
   time('capas de luz (build+apply)', () => { applyLayers(view, buildLayers({ cell: 1, cols: 384, rows: 216, ambient: amb, total }, { x: 0, y: 0, width: 384, height: 216 }, { steps: 8, softGlow: true })); });
 }
 for (const [k, v] of Object.entries(T)) console.log(k.padEnd(30), (v / N).toFixed(2), 'ms');

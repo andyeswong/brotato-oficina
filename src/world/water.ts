@@ -7,8 +7,8 @@
 //   - refracción: el fondo se ve desplazado según la inclinación de la superficie.
 import { ShallowWater } from '../fluid/shallow';
 import { rgbOf } from '../core';
-import { SOURCE_PRESETS, lightIntensity, lightOf } from '../lighting';
-import type { World } from './build';
+import { resolveLight } from './lightutil';
+import type { World, WorldLight } from './build';
 import type { Baked } from './bake';
 import { worldPalette, M } from './build';
 
@@ -117,17 +117,18 @@ export class WaterLayer {
 
   // Dibuja el agua en la vista (vx, vy, vw, vh de la imagen horneada). `view` y `depthBuf` tienen lo ya dibujado
   // (mundo + personajes); `total` (opcional) es la luz por píxel de la vista, que aquí se completa.
+  // `worldLights`: todas las luces del mundo (fijas y dinámicas)
   draw(b: Baked, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, vx: number, vy: number, vw: number, vh: number,
-    ambient: readonly [number, number, number], time: number): void {
+    ambient: readonly [number, number, number], time: number, worldLights: readonly WorldLight[]): void {
     const { sim, gw, gh, world } = this;
     const a = b.options.oblique?.y ?? 1;
     const originY = b.options.originY;
     const f1 = b.cam.fwd[1], f2 = b.cam.fwd[2];
     // El rayo reflejado sube por la misma columna de pantalla: por píxel avanza tPerPx, y su profundidad crece dPerT por t
     const tPerPx = 1 / (a * f1 - f2), dPerT = f1 * f1 - f2 * f2;
-    const lights = b.lights.map((bl) => {
-      const l = bl.light, p = SOURCE_PRESETS[l.kind];
-      return { x: l.x, y: l.y, z: l.z, r: p.radius, c: p.color, k: lightIntensity(lightOf({ id: l.id, kind: l.kind, x: 0, y: 0 }), time) };
+    const lights = worldLights.map((l) => {
+      const p = resolveLight(l, time);
+      return { x: l.x, y: l.y, z: l.z, r: p.radius, c: p.color, k: p.intensity };
     });
     // Hacia la cámara (para el brillo especular)
     const vlen = Math.hypot(f1, f2), Vy = -f1 / vlen, Vz = -f2 / vlen;

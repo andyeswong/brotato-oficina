@@ -106,28 +106,111 @@ export class StaticVoxels implements VoxelSource {
   }
 }
 
+export type EntityId = number | string;
+export type LightId = number | string;
+
 export interface Entity {
-  id: string;
+  id: EntityId;              // numérico si lo da entities.add; un nombre si viene de addEntity (compatibilidad)
+  modelId: number;           // en el registro de modelos del mundo (lo serializable)
   model: VoxelSource;        // su modelo, en sus propios ejes (los pies en el origen)
-  x: number;                 // posición de los pies en el mundo (vóxeles del modelo)
+  x: number;                 // posición de los pies en el mundo (ejes del modelo)
   y: number;
   z: number;
-  yaw: number;               // grados; 0 = mira al sur (a la cámara)
+  yaw: number;               // hacia dónde mira, en grados: 0 = sur (a la cámara), 90 = este. Es el `facing` de la API
+  castsShadow: boolean;      // da sombra con las luces del mundo
   rampOffset: number;        // dónde empiezan sus rampas en la paleta del mundo
+}
+
+// Las entidades del mundo: un array (se recorre y se busca como siempre) con add / move / remove
+export class EntityList extends Array<Entity> {
+  static override get [Symbol.species]() { return Array; }
+  owner!: WorldState;
+  next = 1;
+  add(o: { model: VoxelSource | number; x: number; y: number; z: number; facing?: number; castsShadow?: boolean; id?: EntityId }): EntityId {
+    const w = this.owner;
+    const modelId = typeof o.model === 'number' ? o.model : w.models.register(o.model);
+    const model = w.models.get(modelId);
+    const id = o.id ?? this.next++;
+    this.push({ id, modelId, model, x: o.x, y: o.y, z: o.z, yaw: o.facing ?? 0, castsShadow: o.castsShadow ?? true, rampOffset: w.models.rampOffset(modelId) });
+    return id;
+  }
+  get(id: EntityId): Entity | undefined { return this.find((e) => e.id === id); }
+  move(id: EntityId, x: number, y: number, z: number, facing?: number): void {
+    const e = this.get(id);
+    if (!e) throw new Error(`no hay entidad ${id}`);
+    e.x = x; e.y = y; e.z = z;
+    if (facing !== undefined) e.yaw = facing;
+  }
+  remove(id: EntityId): void {
+    const i = this.findIndex((e) => e.id === id);
+    if (i >= 0) this.splice(i, 1);
+  }
+}
+
+// Las luces del mundo: las fijas del worldgen (baked: se hornean) y las que se añaden en partida (dinámicas: se suman
+// cada cuadro en su radio). Un array con add / move / remove.
+export class LightList extends Array<WorldLight> {
+  static override get [Symbol.species]() { return Array; }
+  next = 1;
+  add(o: Omit<WorldLight, 'id' | 'baked'> & { id?: LightId }): LightId {
+    const id = o.id ?? this.next++;
+    this.push({ ...o, id, baked: false });
+    return id;
+  }
+  get(id: LightId): WorldLight | undefined { return this.find((l) => l.id === id); }
+  move(id: LightId, x: number, y: number, z: number): void {
+    const l = this.get(id);
+    if (!l) throw new Error(`no hay luz ${id}`);
+    if (l.baked) throw new Error(`la luz ${id} está horneada: las fijas no se mueven`);
+    l.x = x; l.y = y; l.z = z;
+  }
+  remove(id: LightId): void {
+    const i = this.findIndex((l) => l.id === id);
+    if (i >= 0) this.splice(i, 1);
+  }
+}
+
+// Registro de modelos: el estado guarda ids (serializable); las rampas de cada modelo se suman una vez a la paleta
+export class ModelRegistry {
+  private list: VoxelSource[] = [];
+  private offsets: number[] = [];
+  constructor(private owner: WorldState) {}
+  register(model: VoxelSource): number {
+    const i = this.list.indexOf(model);
+    if (i >= 0) return i;
+    const w = this.owner;
+    this.offsets.push(w.palette.ramps.length);
+    w.palette = { ...w.palette, ramps: [...w.palette.ramps, ...model.palette.ramps] };
+    w.solid.palette = w.palette;
+    this.list.push(model);
+    return this.list.length - 1;
+  }
+  get(id: number): VoxelSource {
+    const m = this.list[id];
+    if (!m) throw new Error(`no hay modelo ${id}`);
+    return m;
+  }
+  rampOffset(id: number): number { return this.offsets[id]!; }
 }
 
 export interface ViewRegion { x0: number; y0: number; x1: number; y1: number }
 
 export class WorldState {
   palette: Palette;
-  readonly entities: Entity[] = [];
+  readonly entities = new EntityList();
+  readonly lights = new LightList();
+  readonly models: ModelRegistry;
   readonly drops: Drops;
   tick = 0;
   private rngState: number;
 
-  constructor(readonly solid: StaticVoxels, readonly lights: WorldLight[], public water: WaterLayer | null,
+  constructor(readonly solid: StaticVoxels, lights: WorldLight[], public water: WaterLayer | null,
     opts: { seed?: number; fountain?: Fountain | null } = {}) {
     this.palette = solid.palette;
+    this.models = new ModelRegistry(this);
+    this.entities.owner = this;
+    // Las del worldgen son fijas: se hornean
+    for (const l of lights) this.lights.push({ ...l, baked: l.baked ?? true });
     this.rngState = (opts.seed ?? 1) >>> 0;
     this.fountain = opts.fountain ?? null;
     this.drops = new Drops(() => this.random());
@@ -157,22 +240,13 @@ export class WorldState {
   get width(): number { return this.solid.width; }
   get depth(): number { return this.solid.depth; }
 
-  // Añade una entidad: sus rampas se suman a la paleta del mundo (una vez por modelo)
+  // Compatibilidad: una entidad con nombre (lo mismo que entities.add con id = nombre). Devuelve la entidad.
   addEntity(id: string, model: VoxelSource, x: number, y: number, z = 0, yaw = 0): Entity {
-    const same = this.entities.find((e) => e.model === model);
-    let rampOffset: number;
-    if (same) rampOffset = same.rampOffset;
-    else {
-      rampOffset = this.palette.ramps.length;
-      this.palette = { ...this.palette, ramps: [...this.palette.ramps, ...model.palette.ramps] };
-      this.solid.palette = this.palette;
-    }
-    const e: Entity = { id, model, x, y, z, yaw, rampOffset };
-    this.entities.push(e);
-    return e;
+    this.entities.add({ id, model, x, y, z, facing: yaw });
+    return this.entities.get(id)!;
   }
 
-  entity(id: string): Entity | undefined { return this.entities.find((e) => e.id === id); }
+  entity(id: EntityId): Entity | undefined { return this.entities.get(id); }
 
   // Material de una entidad en la paleta del mundo
   static remap(e: Entity, v: number): number {
@@ -322,8 +396,9 @@ export class WorldState {
       chunks: this.solid.exportChunks(),
       water: this.water ? this.water.sim.exportState() : null,
       drops: this.drops.exportState(),
-      entities: [...this.entities].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((e) => ({ id: e.id, x: e.x, y: e.y, z: e.z, yaw: e.yaw })),
-      lights: this.lights.map((l) => ({ ...l })),
+      entities: [...this.entities].sort((a, b) => byId(a.id, b.id)).map((e) => ({ id: e.id, modelId: e.modelId, x: e.x, y: e.y, z: e.z, yaw: e.yaw, castsShadow: e.castsShadow })),
+      lights: [...this.lights].sort((a, b) => byId(a.id, b.id)).map((l) => ({ ...l })),
+      next: { entity: this.entities.next, light: this.lights.next },
     };
   }
 
@@ -332,8 +407,15 @@ export class WorldState {
     this.solid.importChunks(s.chunks);
     if (this.water && s.water) this.water.sim.importState(s.water);
     this.drops.importState(s.drops);
-    for (const se of s.entities) { const e = this.entity(se.id); if (e) Object.assign(e, { x: se.x, y: se.y, z: se.z, yaw: se.yaw }); }
-    this.lights.splice(0, this.lights.length, ...s.lights.map((l) => ({ ...l })));
+    // Las entidades y luces vuelven a ser exactamente las de la instantánea (las nuevas se van, las quitadas vuelven)
+    this.entities.length = 0;
+    for (const se of s.entities) {
+      const model = this.models.get(se.modelId);
+      this.entities.push({ id: se.id, modelId: se.modelId, model, x: se.x, y: se.y, z: se.z, yaw: se.yaw, castsShadow: se.castsShadow, rampOffset: this.models.rampOffset(se.modelId) });
+    }
+    this.lights.length = 0;
+    this.lights.push(...s.lights.map((l) => ({ ...l })));
+    this.entities.next = s.next.entity; this.lights.next = s.next.light;
   }
 
   // Huella (FNV-1a de 32 bits) de todo el estado, en un orden fijo
@@ -344,8 +426,9 @@ export class WorldState {
     for (const c of s.chunks) { h.num(c.version); if (c.data) h.bytes(c.data); else h.num(-1); }
     if (s.water) for (const k of ['depth', 'fl', 'fr', 'ft', 'fb', 'awake'] as const) h.bytes(s.water[k]);
     h.num(s.drops.n); h.bytes(s.drops.data);
-    for (const e of s.entities) { h.str(e.id); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); }
-    for (const l of [...s.lights].sort((a, b) => (a.id < b.id ? -1 : 1))) { h.str(l.id); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); }
+    for (const e of s.entities) { h.str(String(e.id)); h.num(e.modelId); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); h.num(e.castsShadow ? 1 : 0); }
+    for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); }
+    h.num(s.next.entity); h.num(s.next.light);
     return h.hex();
   }
 }
@@ -358,8 +441,9 @@ export interface WorldSnapshot {
   chunks: Array<{ version: number; data: Uint16Array | null }>;
   water: ReturnType<import('../fluid/shallow').ShallowWater['exportState']> | null;
   drops: { data: Float32Array; n: number };
-  entities: Array<{ id: string; x: number; y: number; z: number; yaw: number }>;
+  entities: Array<{ id: EntityId; modelId: number; x: number; y: number; z: number; yaw: number; castsShadow: boolean }>;
   lights: WorldLight[];
+  next: { entity: number; light: number };
 }
 
 // FNV-1a de 32 bits sobre los bytes, en orden
@@ -376,4 +460,12 @@ class Fnv {
   f64(n: number): void { this.buf.setFloat64(0, n); this.bytes(new Uint8Array(this.buf.buffer, 0, 8)); }
   str(s: string): void { for (let i = 0; i < s.length; i++) this.num(s.charCodeAt(i)); this.num(0); }
   hex(): string { return (this.h >>> 0).toString(16).padStart(8, '0'); }
+}
+
+// Orden estable de ids (números antes que nombres)
+function byId(a: EntityId, b: EntityId): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'number') return -1;
+  if (typeof b === 'number') return 1;
+  return a < b ? -1 : a > b ? 1 : 0;
 }

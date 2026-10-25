@@ -2,7 +2,7 @@
 // en cada píxel) y, por cada luz, su peso en cada píxel de su zona, con la caída del juego, el ángulo con la
 // cara y la sombra de los propios vóxeles. Por cuadro solo queda sumar las luces con su parpadeo (lightView).
 import { render, camera, unkey, DIR_VECTORS, type RenderOptions, type Camera } from '../core';
-import { SOURCE_PRESETS, lightIntensity, lightOf } from '../lighting';
+import { resolveLight } from './lightutil';
 import type { World, WorldLight } from './build';
 
 export interface BakedLight {
@@ -18,6 +18,7 @@ export interface Baked {
   height: number;
   rgba: Uint8ClampedArray<ArrayBuffer>;
   depth: Float32Array;
+  face: Int8Array;              // qué cara se ve en cada píxel (índice en DIR_VECTORS; -1 = nada): para las luces dinámicas
   options: RenderOptions;
   cam: Camera;
   lights: BakedLight[];
@@ -71,7 +72,8 @@ export function bakeWorld(world: World, opts: { topZ?: number; incline?: number 
 
   const lights: BakedLight[] = [];
   for (const l of world.lights) {
-    const p = SOURCE_PRESETS[l.kind];
+    if (l.baked === false) continue;                 // las dinámicas no se hornean: se suman cada cuadro
+    const p = resolveLight(l, 0);
     const r = p.radius;
     // Zona de la imagen: la proyección de la caja que rodea la esfera de la luz
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -101,16 +103,16 @@ export function bakeWorld(world: World, opts: { topZ?: number; incline?: number 
         if (d < r) {
           const fa = d < 1e-6 ? 1 : facing((n[0] * ax + n[1] * ay + n[2] * az) / d);
           const k2 = 1 - d / r;
-          if (fa > 0 && !occluded(vx + 0.5 + n[0], vy + 0.5 + n[1], vz + 0.5 + n[2], l.x, l.y, l.z)) w = k2 * k2 * fa * p.intensity;
+          if (fa > 0 && !occluded(vx + 0.5 + n[0], vy + 0.5 + n[1], vz + 0.5 + n[2], l.x, l.y, l.z)) w = k2 * k2 * fa * p.base;
         }
         cache.set(ck, w);
       }
       weight[j * rect.w + i] = w;
     }
-    lights.push({ light: l, color: p.color, intensity: p.intensity, rect, weight });
+    lights.push({ light: l, color: p.color, intensity: p.base, rect, weight });
   }
   const t2 = performance.now();
-  return { width: img.width, height: img.height, rgba: img.rgba, depth: img.depth, options, cam, lights, ms: { render: Math.round(t1 - t0), light: Math.round(t2 - t1) } };
+  return { width: img.width, height: img.height, rgba: img.rgba, depth: img.depth, face: img.pickFace!, options, cam, lights, ms: { render: Math.round(t1 - t0), light: Math.round(t2 - t1) } };
 }
 
 // Luz total (ambiente + fuentes con su parpadeo en `time`) de una ventana de la imagen horneada
@@ -121,7 +123,7 @@ export function lightView(b: Baked, vx: number, vy: number, vw: number, vh: numb
     const r = bl.rect;
     const ix0 = Math.max(vx, r.x), iy0 = Math.max(vy, r.y), ix1 = Math.min(vx + vw, r.x + r.w), iy1 = Math.min(vy + vh, r.y + r.h);
     if (ix0 >= ix1 || iy0 >= iy1) continue;
-    const k = lightIntensity(lightOf({ id: bl.light.id, kind: bl.light.kind, x: 0, y: 0 }), time) / bl.intensity;
+    const k = resolveLight(bl.light, time).intensity / bl.intensity;
     const [cr, cg, cb] = bl.color;
     for (let y = iy0; y < iy1; y++) {
       const src = (y - r.y) * r.w - r.x, dst = (y - vy) * vw - vx;
@@ -134,4 +136,15 @@ export function lightView(b: Baked, vx: number, vy: number, vw: number, vh: numb
     }
   }
   return total;
+}
+
+// El punto del mundo que se ve en un píxel de la imagen horneada (de su profundidad: en la proyección oblicua la
+// pantalla y la profundidad son dos ecuaciones lineales en y, z). null si ahí no hay nada.
+export function worldPointAt(b: Baked, sx: number, sy: number): [number, number, number] | null {
+  const d = b.depth[sy * b.width + sx]!;
+  if (d === Infinity) return null;
+  const a = b.options.oblique?.y ?? 1, f1 = b.cam.fwd[1], f2 = b.cam.fwd[2];
+  const P = b.options.originY - (sy + 0.5);            // = a*y + z
+  const y = (P * f2 - d) / (a * f2 - f1);
+  return [sx, y, P - a * y];
 }

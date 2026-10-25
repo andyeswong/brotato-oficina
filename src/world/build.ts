@@ -74,7 +74,13 @@ const SOUTH_WALL_H = 6;            // la del sur, más baja: si no, taparía el 
 const COLUMN_H = 34;
 
 // Una luz del mundo, en coordenadas del MODELO (vóxeles)
-export interface WorldLight { id: string; kind: SourceKind; x: number; y: number; z: number }
+export interface WorldLight {
+  id: number | string;
+  kind: SourceKind;
+  x: number; y: number; z: number;
+  intensity?: number; radius?: number; color?: readonly [number, number, number];   // ajustes sobre el preset
+  baked?: boolean;           // fija (se hornea); si no, dinámica (se suma cada cuadro)
+}
 
 export interface World {
   model: StaticVoxels;

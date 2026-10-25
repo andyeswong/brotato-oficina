@@ -15,7 +15,7 @@ for (const theme of ['medieval', 'cyberpunk', 'oficina'] as const) {
   for (let f = 0; f < 120; f++) {
     if (f % 6 === 0) w.disturb(170, world.depth - 1 - 170, 0.5);
     let t0 = performance.now(); w.step(1 / 60); tSim += performance.now() - t0;
-    t0 = performance.now(); w.draw(b, view, depth, total, 0, 60, 384, 216, THEMES[theme].ambient, f / 60); tDraw += performance.now() - t0;
+    t0 = performance.now(); w.draw(b, view, depth, total, 0, 60, 384, 216, THEMES[theme].ambient, f / 60, world.lights); tDraw += performance.now() - t0;
   }
   console.log(theme, `sim ${(tSim / 120).toFixed(2)} ms`, `dibujo ${(tDraw / 120).toFixed(2)} ms`, `volumen ${vol0.toFixed(0)} -> ${w.sim.totalVolume().toFixed(0)}`);
 }

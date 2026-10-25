@@ -2,7 +2,7 @@
 // salen de state.view (compuestos al vuelo, sin copias), con la luz 2.5D de las mismas fuentes (las entidades y el
 // agua también tapan la luz).
 import { render, camera, lightField3D, type PointLight3D, type RenderOptions } from '../core';
-import { SOURCE_PRESETS, lightIntensity, lightOf } from '../lighting';
+import { resolveLight } from './lightutil';
 import { buildLayers, applyLayers } from '../lighting/shade';
 import type { WorldState } from './state';
 
@@ -38,7 +38,7 @@ export function frame3D(state: WorldState, o: Frame3DOptions): Uint8ClampedArray
   if (!o.lights) return rgba;
   const lights: PointLight3D[] = state.lights
     .filter((l) => Math.abs(l.x - cx) < o.radius + 70 && Math.abs(l.y - cy) < o.radius + 70)
-    .map((l) => { const p = SOURCE_PRESETS[l.kind]; return { x: l.x, y: l.y, z: l.z, radius: p.radius, color: p.color, intensity: lightIntensity(lightOf({ id: l.id, kind: l.kind, x: 0, y: 0 }), o.time) }; });
+    .map((l) => { const p = resolveLight(l, o.time); return { x: l.x, y: l.y, z: l.z, radius: p.radius, color: p.color, intensity: p.intensity }; });
   const total = lightField3D(src, img, camera(ro), lights, o.ambient, { floor: false });
   return applyLayers(rgba, buildLayers({ cell: 1, cols: W, rows: H, ambient: o.ambient, total }, { x: 0, y: 0, width: W, height: H }, { steps: 8, softGlow: true }));
 }

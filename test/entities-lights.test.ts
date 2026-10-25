@@ -1,0 +1,95 @@
+import { describe, it, expect } from 'vitest';
+import { Model, material, box } from '../src/core';
+import { StaticVoxels, WorldState } from '../src/world/state';
+import { bakeWorld } from '../src/world/bake';
+import { frame2D } from '../src/world/frame2d';
+import type { World } from '../src/world/build';
+
+const PAL = { ramps: [{ name: 'suelo', colors: ['#202020', '#404040', '#606060', '#808080', '#a0a0a0'] }] };
+const AMB = [0.3, 0.3, 0.3] as const;
+
+function world(): { state: WorldState; bake: () => ReturnType<typeof bakeWorld>; body: Model } {
+  const s = new StaticVoxels(structuredClone(PAL), 96, 64, -4, 30);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 96; x++) s.set(x, y, 0, material(0, 2));
+  const state = new WorldState(s, [], null);
+  const body = new Model({ ramps: [{ name: 'cuerpo', colors: ['#400000', '#800000', '#c00000'] }] });
+  box(body, -2, -2, 0, 2, 2, 12, material(0, 1));
+  const w = { model: s, lights: [], width: 96, depth: 64 } as unknown as World;
+  return { state, body, bake: () => bakeWorld(w, { topZ: 30, incline: 0.5 }) };
+}
+
+const lum = (rgba: Uint8ClampedArray, i: number) => rgba[i * 4]! + rgba[i * 4 + 1]! + rgba[i * 4 + 2]!;
+
+describe('entidades con id', () => {
+  it('add da un id numérico; move y remove; la huella y restore las incluyen', () => {
+    const { state, body } = world();
+    const id = state.entities.add({ model: body, x: 40, y: 30, z: 1, facing: 90 });
+    expect(typeof id).toBe('number');
+    expect(state.entities.get(id)!.yaw).toBe(90);
+    const h0 = state.hash();
+    const snap = state.snapshot();
+    state.entities.move(id, 45, 30, 1, 180);
+    expect(state.hash()).not.toBe(h0);
+    const id2 = state.entities.add({ model: body, x: 10, y: 10, z: 1 });
+    state.entities.remove(id);
+    expect(state.entities.get(id)).toBeUndefined();
+    state.restore(snap);
+    expect(state.entities.get(id)!.x).toBe(40);
+    expect(state.entities.get(id2)).toBeUndefined();
+    expect(state.hash()).toBe(h0);
+  });
+
+  it('el mismo modelo se registra una vez (sus rampas no se repiten en la paleta)', () => {
+    const { state, body } = world();
+    const n0 = state.palette.ramps.length;
+    state.entities.add({ model: body, x: 10, y: 10, z: 1 });
+    state.entities.add({ model: body, x: 20, y: 10, z: 1 });
+    expect(state.palette.ramps.length).toBe(n0 + 1);
+  });
+});
+
+describe('luces con id', () => {
+  it('una luz dinámica alumbra el suelo cerca, y al quitarla todo vuelve a estar como antes', () => {
+    const { state, bake } = world();
+    const b = bake();
+    const opts = { vx: 0, vy: 0, vw: b.width, vh: b.height, time: 0, lights: true, ambient: AMB };
+    const before = frame2D(state, b, opts);
+    const [sx, sy] = b.cam.project(48, 32, 1);
+    const i = Math.floor(sy) * b.width + Math.floor(sx);
+    const id = state.lights.add({ kind: 'lamp', x: 48, y: 32, z: 10 });
+    const lit = frame2D(state, b, opts);
+    expect(lum(lit, i)).toBeGreaterThan(lum(before, i) + 30);
+    state.lights.move(id, 5, 5, 10);
+    expect(lum(frame2D(state, b, opts), i)).toBeLessThan(lum(lit, i));
+    state.lights.remove(id);
+    expect(frame2D(state, b, opts)).toEqual(before);
+  });
+
+  it('las luces del worldgen están horneadas: no se mueven', () => {
+    const s = new StaticVoxels(structuredClone(PAL), 16, 16, -2, 10);
+    const state = new WorldState(s, [{ id: 'antorcha', kind: 'torch', x: 4, y: 4, z: 6 }], null);
+    expect(state.lights[0]!.baked).toBe(true);
+    expect(() => state.lights.move('antorcha', 1, 1, 1)).toThrow(/horneada/);
+  });
+});
+
+describe('sombra de las entidades', () => {
+  it('el suelo detrás del cuerpo (respecto a la luz) queda más oscuro con castsShadow', () => {
+    const { state, bake, body } = world();
+    const b = bake();
+    state.lights.add({ kind: 'lamp', x: 64, y: 32, z: 8 });              // luz al este, baja
+    const id = state.entities.add({ model: body, x: 44, y: 32, z: 1 });
+    const opts = { vx: 0, vy: 0, vw: b.width, vh: b.height, time: 0, lights: true, ambient: AMB };
+    // Un punto del suelo al oeste del cuerpo: el cuerpo está entre él y la luz
+    const [sx, sy] = b.cam.project(36, 32, 1);
+    const i = Math.floor(sy) * b.width + Math.floor(sx);
+    const withShadow = frame2D(state, b, opts);
+    state.entities.get(id)!.castsShadow = false;
+    const without = frame2D(state, b, opts);
+    expect(lum(withShadow, i)).toBeLessThan(lum(without, i) - 20);
+    // Y un punto al este (entre el cuerpo y la luz) no cambia
+    const [ex, ey] = b.cam.project(52, 32, 1);
+    const j = Math.floor(ey) * b.width + Math.floor(ex);
+    expect(lum(withShadow, j)).toBe(lum(without, j));
+  });
+});
