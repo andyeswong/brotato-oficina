@@ -5,6 +5,7 @@ import { buildWorldState, type WorldTheme } from '../../src/world/build';
 import { generateLayout, TILE } from '../../src/worldgen';
 import { THEMES } from '../../src/content/themes';
 import { FixedLoop, Runtime, type TickInput } from '../../src/game/runtime';
+import { Model, material } from '../../src/core';
 
 // Las partidas largas tardan: en oficina, una de 2400 ticks por partida pasa de los 5 s por defecto
 const SLOW = 30_000;
@@ -120,6 +121,26 @@ describe('determinismo del runtime', () => {
     const loop = new FixedLoop(rt, script(2));
     expect(loop.advance(10)).toBe(5);
     expect(loop.advance(1 / 60)).toBe(1);
+  });
+
+  it('con modelo, el runtime crea la entidad del mundo, la lleva con el cuerpo y entra en la huella', () => {
+    const layout = generateLayout(THEMES.medieval.spec, 7);
+    const model = new Model({ ramps: [{ name: 'tela', colors: ['#202040', '#404080', '#6060c0'] }] }, 'cubo');
+    for (let z = 0; z < 6; z++) for (let y = -2; y < 2; y++) for (let x = -2; x < 2; x++) model.set(x, y, z, material(0, 1));
+    const make = () => {
+      const { state } = buildWorldState(layout, 'medieval');
+      return new Runtime(state, { x: layout.spawn.x, y: layout.rows * TILE - 1 - layout.spawn.y }, { radius: 4, speed: 70, model });
+    };
+    const a = make(), b = make();
+    const input = script(7);
+    run(a, input, 300); run(b, input, 300);
+    const e = a.world.entities.get(a.entityId!)!;
+    expect([e.x, e.y, e.z]).toEqual([Math.round(a.player.x), Math.round(a.player.y), a.player.z]);
+    expect(e.yaw).toBe(a.player.facing * 45);
+    expect(a.hash()).toBe(b.hash());
+    // Si la entidad se moviera distinto, la huella lo vería
+    b.world.entities.move(b.entityId!, e.x + 1, e.y, e.z, e.yaw);
+    expect(a.hash()).not.toBe(b.hash());
   });
 
   it('src/game no usa reloj ni azar del navegador', () => {

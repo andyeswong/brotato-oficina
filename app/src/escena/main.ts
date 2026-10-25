@@ -64,8 +64,8 @@ function rebuild(): void {
     let spawn = { x: layout.spawn.x, y: world.depth - 1 - layout.spawn.y };
     const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
     if (pos && pos.length === 2 && pos.every(Number.isFinite)) spawn = { x: pos[0]!, y: pos[1]! };
-    maia = state.addEntity('maia', maiaModel, 0, 0);
-    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, entity: 'maia' });
+    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel });
+    maia = state.entities.get(runtime.entityId!) ?? null;
     if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
     ticks = new FixedLoop(runtime, input);
     bakeMs = Math.round(performance.now() - t0);

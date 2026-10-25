@@ -2,7 +2,8 @@
 // resolver colisiones -> eventos sobre el mundo -> world.step(). Determinista: la misma semilla y la misma entrada por
 // tick dan la misma partida, byte a byte (lo comprueba test/game/determinism.test.ts). Sin reloj ni Math.random:
 // el azar, si hace falta, sale de world.random().
-import { TICK, type WorldState } from '../world/state';
+import { TICK, type EntityId, type WorldState } from '../world/state';
+import type { VoxelSource } from '../core';
 import { DEFAULT_RULES, moveBody, restZ, type Body, type MoveRules } from './body';
 
 // Lo que llega de los mandos en un tick. dx, dy en ejes del modelo (dy > 0 = norte); se normaliza la dirección.
@@ -17,7 +18,7 @@ export const NO_INPUT: TickInput = { dx: 0, dy: 0, stomp: false };
 export interface PlayerConfig {
   radius: number;
   speed: number;        // vóxeles por segundo en seco
-  entity?: string;      // id de la entidad del mundo que lo dibuja (su modelo), si la hay
+  model?: VoxelSource | number;   // su modelo (o su id en world.models): el runtime crea la entidad que lo dibuja
   rules?: MoveRules;
 }
 
@@ -37,13 +38,16 @@ const RIPPLE_HZ = 12;                     // ondas al andar por el agua
 export class Runtime {
   tick = 0;
   readonly player: Body & { facing: number; inWater: boolean; walked: number };
+  readonly entityId: EntityId | null;     // la entidad del mundo que lo dibuja, si tiene modelo
   private readonly rules: MoveRules;
 
   constructor(readonly world: WorldState, spawn: { x: number; y: number }, readonly config: PlayerConfig) {
     this.rules = config.rules ?? DEFAULT_RULES;
     const r = config.radius;
     this.player = { x: spawn.x, y: spawn.y, z: restZ(world, spawn.x, spawn.y, r), r, facing: 0, inWater: false, walked: 0 };
-    this.syncEntity();
+    const p = this.player;
+    this.entityId = config.model === undefined ? null
+      : world.entities.add({ model: config.model, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0 });
   }
 
   step(input: TickInput): void {
@@ -77,13 +81,9 @@ export class Runtime {
 
   // La entidad que lo dibuja va donde el cuerpo (público para colocarlo a mano fuera de un tick, p. ej. ?pos y ?dir)
   syncEntity(): void {
-    const id = this.config.entity;
-    const e = id ? this.world.entities.find((en) => en.id === id) : undefined;
-    if (!e) return;
-    e.x = Math.round(this.player.x);
-    e.y = Math.round(this.player.y);
-    e.z = this.player.z;
-    e.yaw = this.player.facing * 45;
+    if (this.entityId === null) return;
+    const p = this.player;
+    this.world.entities.move(this.entityId, Math.round(p.x), Math.round(p.y), p.z, p.facing * 45);
   }
 
   snapshot(): RuntimeSnapshot {
