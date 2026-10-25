@@ -3,6 +3,7 @@
 // tick dan la misma partida, byte a byte (lo comprueba test/game/determinism.test.ts). Sin reloj ni Math.random:
 // el azar, si hace falta, sale de world.random().
 import { TICK, type EntityId, type ShadowMode, type WorldState } from '../world/state';
+import type { SourceKind } from '../lighting/lights';
 import type { VoxelSource } from '../core';
 import { DEFAULT_RULES, moveBody, restZ, WADE, waterFactor, type Body, type MoveRules } from './body';
 import { WALK_FRAME_MS } from '../anim/walk';
@@ -20,9 +21,27 @@ export interface PlayerConfig {
   radius: number;
   speed: number;        // vóxeles por segundo en seco
   model?: VoxelSource | number;   // su modelo (o su id en world.models): el runtime crea la entidad que lo dibuja
-  walk?: ReadonlyArray<VoxelSource | number>;
-  shadow?: ShadowMode;          // su sombra real: 'always' la reserva siempre (MAIA), true compite por cercanía   // los cuadros del walk, en orden del ciclo (WALK_FRAME_MS cada uno); sin ellos anda con el quieto
+  walk?: ReadonlyArray<VoxelSource | number>;   // los cuadros del walk, en orden del ciclo (WALK_FRAME_MS cada uno); sin ellos anda con el quieto
+  shadow?: ShadowMode;          // su sombra real: 'always' la reserva siempre (MAIA), true compite por cercanía
+  carry?: CarryConfig;          // la luz que lleva en la mano (solo de aspecto)
   rules?: MoveRules;
+}
+
+// La luz que lleva en la mano (linterna, antorcha): una entidad con su modelo, colocada junto al cuerpo y girada con
+// él, y una luz del núcleo que la sigue (follow). Solo de aspecto: no toca el movimiento ni los choques.
+export interface CarryConfig {
+  model: VoxelSource | number;
+  kind: SourceKind;
+  cone?: number;                                  // foco: apertura en grados; sin él, luz puntual
+  hand: readonly [number, number, number];        // el agarre, desde los pies, mirando al frente (y negativo)
+  emit: readonly [number, number, number];        // de dónde sale la luz, desde el agarre
+}
+
+// Un vector del marco del cuerpo (mirando al frente) girado al facing de la entidad (grados): la misma cuenta que
+// placeFollowers del núcleo, para que la mano y su luz coincidan
+function turn(v: readonly [number, number, number], yaw: number): [number, number, number] {
+  const a = (yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  return [v[0] * c - v[1] * s, v[0] * s + v[1] * c, v[2]];
 }
 
 export type Player = Body & { facing: number; inWater: boolean; walked: number; moving: boolean };
@@ -39,6 +58,8 @@ export class Runtime {
   tick = 0;
   readonly player: Player;
   readonly entityId: EntityId | null;     // la entidad del mundo que lo dibuja, si tiene modelo
+  readonly carryId: EntityId | null = null;   // la entidad de lo que lleva en la mano, si lleva algo
+  readonly carryLightId: number | string | null = null;
   private readonly rules: MoveRules;
   private readonly idleModel: number | null = null;   // ids en world.models: se registran una vez, al crear la partida
   private readonly walkModels: number[] = [];
@@ -55,6 +76,16 @@ export class Runtime {
     }
     this.entityId = this.idleModel === null ? null
       : world.entities.add({ model: this.idleModel, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0, castsShadow: config.shadow ?? true });
+    const carry = config.carry;
+    if (carry && this.entityId !== null) {
+      this.carryId = world.entities.add({ model: id(carry.model), x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0, castsShadow: false });
+      // La luz sale del agarre más emit; un foco apunta al frente y algo hacia el suelo
+      this.carryLightId = world.lights.add({
+        kind: carry.kind, x: p.x, y: p.y, z: p.z, ...(carry.cone ? { cone: carry.cone } : {}),
+        follow: { entity: this.carryId, offset: carry.emit, ...(carry.cone ? { dir: [0, -1, -0.3] as const } : {}) },
+      });
+    }
+    this.syncEntity();
   }
 
   step(input: TickInput): void {
@@ -93,6 +124,10 @@ export class Runtime {
     const p = this.player;
     this.world.entities.move(this.entityId, Math.round(p.x), Math.round(p.y), p.z, p.facing * 45);
     this.world.entities.setModel(this.entityId, this.modelNow());
+    if (this.carryId !== null && this.config.carry) {
+      const h = turn(this.config.carry.hand, p.facing * 45);
+      this.world.entities.move(this.carryId, Math.round(p.x + h[0]), Math.round(p.y + h[1]), p.z + h[2], p.facing * 45);
+    }
   }
 
   // El modelo que toca: andando, el cuadro del walk por lo que lleva andado (determinista, entra en la huella);

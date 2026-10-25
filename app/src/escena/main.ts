@@ -14,6 +14,19 @@ import { frame3D } from '../../../src/world/frame3d';
 import type { WorldState, Entity } from '../../../src/world/state';
 import { FixedLoop, NO_INPUT, Runtime, type TickInput } from '../../../src/game/runtime';
 import maiaFile from '../../../models/maia/maia.json';
+import maiaContent from '../../../src/content/brotato/characters/maia/module';
+import { type CarryConfig } from '../../../src/game/runtime';
+
+// La luz que lleva MAIA en cada mundo, del contenido del juego (carryLight): linterna en la oficina y en cyberpunk,
+// antorcha en el medieval. Siempre equipada (MAIA); ?luz=no la quita, para comparar.
+const LIGHT_MODELS = import.meta.glob('../../../models/brotato/luces/*.json', { eager: true, import: 'default' }) as Record<string, ModelFile>;
+function carryFor(t: WorldTheme): CarryConfig | undefined {
+  if (q.get('luz') === 'no') return undefined;
+  const c = maiaContent.carryLight?.[t] ?? maiaContent.carryLight?.oficina;
+  const file = c && LIGHT_MODELS[`../../../models/brotato/${c.model}.json`];
+  if (!c || !file) return undefined;
+  return { model: Model.fromJSON(file), kind: c.kind, cone: c.cone, hand: c.hand, emit: c.emit };
+}
 
 const VW = 384, VH = 216;
 const TOPZ = 40;
@@ -107,7 +120,7 @@ function rebuild(): void {
     let spawn = { x: layout.spawn.x, y: world.depth - 1 - layout.spawn.y };
     const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
     if (pos && pos.length === 2 && pos.every(Number.isFinite)) spawn = { x: pos[0]!, y: pos[1]! };
-    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel, walk: WALK ? walkFrames(maiaModel) : undefined, shadow: 'always' });
+    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel, walk: WALK ? walkFrames(maiaModel) : undefined, shadow: 'always', carry: carryFor(theme) });
     maia = state.entities.get(runtime.entityId!) ?? null;
     if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
     // Hasta 10 ticks por cuadro (un tick cuesta ~0,7 ms): el modo vóxel pinta a 8-10 fps y con el tope de 5 MAIA andaba
@@ -179,7 +192,6 @@ function loop(now: number): void {
   last = now;
   if (q.has('agitar') && Math.floor(now / 700) !== Math.floor((now - dt * 1000) / 700)) stomp = true;   // pruebas sin teclado
   ticks?.advance(dt);              // ticks fijos de 1/60: el runtime del juego
-  updateFlashlight();
   const t0 = performance.now();
   frame(now / 1000);
   if (state && baked && romper?.length === 2 && !roto && runtime && runtime.tick > 180) {
@@ -194,7 +206,7 @@ function loop(now: number): void {
   showRoute();
   hud.textContent = `VoxPix · un solo mundo en vóxeles · ${theme} · semilla ${seed}\n` +
     `horneado ${bakeMs} ms${baked ? ` (render ${baked.ms.render}, luces ${baked.ms.light})` : ''} · cuadro ${avg.toFixed(1)} ms (${compositor.kind}) · luces ${lightsOn ? 'sí' : 'no'} · gotas ${state?.drops.count ?? 0}\n` +
-    (mode === '2d' ? `WASD/flechas mover · Espacio pisotón · F linterna · R otra semilla · T otro tema · L luz · C contorno · V modo vóxel`
+    (mode === '2d' ? `WASD/flechas mover · Espacio pisotón · R otra semilla · T otro tema · L luz · C contorno · V modo vóxel`
       : `MODO VÓXEL · WASD andar · arrastrar = girar · rueda = zoom · C contorno · V vuelve al modo 2D`);
   next(loop);
 }
@@ -236,22 +248,10 @@ outlineBtn.addEventListener('click', () => { cycleOutline(); outlineBtn.blur(); 
 showOutline();
 if (mode === 'voxel') { mode = '2d'; toggleMode(); }
 
-// Linterna (F o ?linterna=1): un foco que va con MAIA (lights.add con follow), justo delante de ella a la altura
-// del pecho y apuntando hacia donde mira, algo hacia el suelo. El mundo la coloca en cada tick.
-let flashlight: number | string | null = null;
-let flashlightWanted = q.get('linterna') === '1';
-function updateFlashlight(): void {
-  if (!state || !maia) return;
-  if (flashlightWanted && (flashlight === null || !state.lights.get(flashlight))) {
-    flashlight = state.lights.add({ kind: 'lamp', x: 0, y: 0, z: 0, cone: 50, intensity: 1.6, radius: 90, follow: { entity: maia.id, offset: [0, -9, 14], dir: [0, -1, -0.3] } });
-  }
-  if (!flashlightWanted && flashlight !== null) { if (state.lights.get(flashlight)) state.lights.remove(flashlight); flashlight = null; }
-}
 
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys.add(k);
-  if (k === 'f') { flashlightWanted = !flashlightWanted; vox.dirty = true; }
   if (k === 'r') { seed = (seed * 7919 + 13) % 100000; rebuild(); }
   if (k === 't') { theme = THEME_IDS[(THEME_IDS.indexOf(theme) + 1) % THEME_IDS.length]!; rebuild(); }
   if (k === 'l') { lightsOn = !lightsOn; vox.dirty = true; }

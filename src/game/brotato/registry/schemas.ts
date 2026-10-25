@@ -56,11 +56,14 @@ const looksSchema = z.strictObject({ oficina: lookSchema, medieval: lookSchema.o
 
 // La luz que lleva el personaje en cada mundo (linterna, antorcha...): solo de aspecto, siempre equipada y fuera de
 // la tienda (MAIA, 2026-10-25). model es el objeto en la mano; kind, el tipo de luz del núcleo; cone, si es un foco,
-// su apertura en grados (sin él, luz puntual). La simulación no la lee.
+// su apertura en grados (sin él, luz puntual); hand y emit, dónde se coge y de dónde sale la luz. La simulación no
+// la lee.
 const carryLightSchema = z.strictObject({
   model: modelRef,
   kind: z.enum(Object.keys(SOURCE_PRESETS) as [SourceKind, ...SourceKind[]]),
   cone: z.number().min(1).max(180).optional(),
+  hand: z.tuple([z.number(), z.number(), z.number()]),       // dónde va el agarre, desde los pies del personaje (mirando al frente, y negativo)
+  emit: z.tuple([z.number(), z.number(), z.number()]),       // de dónde sale la luz, desde el agarre del modelo (la lente, la llama)
 });
 export type CarryLight = z.infer<typeof carryLightSchema>;
 

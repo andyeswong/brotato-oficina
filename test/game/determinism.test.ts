@@ -170,6 +170,34 @@ describe('determinismo del runtime', () => {
     expect(e().modelId).toBe(idleId);
   });
 
+  it('la luz en la mano: la entidad va junto al cuerpo girada con él, su luz sale de la lente y la partida se repite', () => {
+    const layout = generateLayout(THEMES.oficina.spec, 2);
+    const pal = { ramps: [{ name: 'metal', colors: ['#202040', '#404080', '#6060c0'] }] };
+    const cube = (h: number) => { const m = new Model(pal, `c${h}`); for (let z = 0; z < h; z++) m.set(0, 0, z, material(0, 1)); return m; };
+    const carry = { model: cube(2), kind: 'lantern' as const, cone: 40, hand: [8, -2, 6] as const, emit: [0, -7, 1] as const };
+    const make = () => {
+      const { state } = buildWorldState(layout, 'oficina');
+      return new Runtime(state, { x: layout.spawn.x, y: layout.rows * TILE - 1 - layout.spawn.y }, { radius: 4, speed: 70, model: cube(6), carry });
+    };
+    const a = make(), b = make();
+    const input = script(4);
+    run(a, input, 200); run(b, input, 200);
+    expect(a.hash()).toBe(b.hash());
+    const hand = a.world.entities.get(a.carryId!)!;
+    const p = a.player, yaw = p.facing * 45, r = (yaw * Math.PI) / 180;
+    // La mano: el agarre girado con el facing del cuerpo
+    expect(hand.x).toBe(Math.round(p.x + 8 * Math.cos(r) + 2 * Math.sin(r)));
+    expect(hand.y).toBe(Math.round(p.y + 8 * Math.sin(r) - 2 * Math.cos(r)));
+    expect(hand.z).toBe(p.z + 6);
+    expect(hand.yaw).toBe(yaw);
+    // La luz: un foco en la lente (emit girado desde la mano) que apunta hacia donde mira
+    const light = a.world.lights.get(a.carryLightId!)!;
+    expect(light.cone).toBe(40);
+    expect(light.x).toBeCloseTo(hand.x + 0.5 + 7 * Math.sin(r), 6);
+    expect(light.y).toBeCloseTo(hand.y - 7 * Math.cos(r), 6);
+    expect(light.z).toBe(hand.z + 1);
+  });
+
   it('src/game (con la simulación del Brotato) y su contenido no usan reloj ni azar del navegador', () => {
     const files = ['../../src/game', '../../src/content/brotato'].flatMap((d) =>
       (readdirSync(join(__dirname, d), { recursive: true }) as string[]).filter((f) => f.endsWith('.ts')).map((f) => join(__dirname, d, f)));
