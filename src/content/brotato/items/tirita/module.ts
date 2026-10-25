@@ -8,5 +8,5 @@ export default defineItem({
   tags: ['oficina', 'vida'],
   modifiers: [{ stat: 'life-steal-pct', add: 4 }],
   maxStack: 5,
-  shop: { price: 10 },
+  shop: { price: 10, order: 8 },
 });

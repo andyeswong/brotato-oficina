@@ -10,5 +10,5 @@ export default defineItem({
     { stat: 'max-hp', add: 3 },
     { stat: 'speed-pct', add: -3 },
   ],
-  shop: { price: 15 },
+  shop: { price: 15, order: 6 },
 });

@@ -10,5 +10,5 @@ export default defineItem({
     { stat: 'ranged-damage', add: 2 },
     { stat: 'armor', add: 1 },
   ],
-  shop: { price: 16 },
+  shop: { price: 16, order: 1 },
 });

@@ -11,5 +11,5 @@ export default defineItem({
     { stat: 'crit-chance-pct', add: -1 },
   ],
   maxStack: 5,
-  shop: { price: 12 },
+  shop: { price: 12, order: 4 },
 });

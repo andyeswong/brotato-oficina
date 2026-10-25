@@ -16,5 +16,5 @@ export default defineWeapon({
     { damage: 32, cooldown: 0.8, range: 40, critChance: 0.11, critMult: 2.2 },
   ],
   length: 19,   // del agarre a la punta: en el Brotato, ancho de la celda menos el agarre
-  shop: { price: 12 },
+  shop: { price: 12, order: 3 },
 });

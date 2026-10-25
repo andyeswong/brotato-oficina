@@ -207,6 +207,10 @@ const shopEntrySchema = z.strictObject({
   price: z.number().int().positive(),
   weight: z.number().positive().default(1),
   minWave: z.number().int().min(1).default(1),
+  // Puesto en la lista de la que sale cada oferta (las armas antes que los ítems, cada grupo por este número). Sin
+  // él, el orden dependería del nombre de la carpeta: renombrar un módulo cambiaría qué sale en la tienda con la
+  // misma semilla. Empate o sin número: por id.
+  order: z.number().int().min(0).optional(),
 });
 
 const tierSchema = z.strictObject({

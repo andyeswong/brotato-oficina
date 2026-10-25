@@ -7,5 +7,5 @@ export default defineItem({
   description: '+6 % de esquiva. No oyes nada, tampoco los golpes.',
   tags: ['oficina'],
   modifiers: [{ stat: 'dodge-pct', add: 6 }],
-  shop: { price: 18, minWave: 2 },
+  shop: { price: 18, minWave: 2, order: 2 },
 });

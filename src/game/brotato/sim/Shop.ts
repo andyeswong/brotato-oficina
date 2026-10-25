@@ -89,11 +89,13 @@ export class Shop {
     const weapons = registry
       .weapons()
       .filter((w) => w.shop && w.shop.minWave <= wave)
-      .map((w) => ({ kind: 'weapon' as const, id: w.id, weight: w.shop!.weight, basePrice: w.shop!.price }));
+      .map((w) => ({ kind: 'weapon' as const, id: w.id, weight: w.shop!.weight, basePrice: w.shop!.price, order: w.shop!.order ?? Infinity }));
     const items = registry
       .items()
       .filter((i) => i.shop && i.shop.minWave <= wave && this.run.itemCount(i.id) < i.maxStack)
-      .map((i) => ({ kind: 'item' as const, id: i.id, weight: i.shop!.weight, basePrice: i.shop!.price }));
-    return [...weapons, ...items];
+      .map((i) => ({ kind: 'item' as const, id: i.id, weight: i.shop!.weight, basePrice: i.shop!.price, order: i.shop!.order ?? Infinity }));
+    // Por shop.order, no por el orden del registro (que es el de las carpetas)
+    const byOrder = (a: { id: string; order: number }, b: { id: string; order: number }) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return [...weapons.sort(byOrder), ...items.sort(byOrder)].map(({ order: _o, ...p }) => p);
   }
 }
