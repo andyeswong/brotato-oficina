@@ -30,6 +30,14 @@ export default defineCharacter({
 
   startingWeapons: ['tiro'],
 
+  // La luz que lleva en cada mundo: solo de aspecto (la simulación no la lee). Linterna con foco en la oficina y en
+  // cyberpunk (cian, como sus lentes), antorcha de luz puntual en el medieval.
+  carryLight: {
+    oficina: { model: 'luces/linterna', kind: 'lantern', cone: 40 },
+    medieval: { model: 'luces/antorcha', kind: 'torch' },
+    cyberpunk: { model: 'luces/linterna-neon', kind: 'lantern', cone: 40 },
+  },
+
 
   hooks: {
     onWaveStart(_ev, api) {

@@ -54,6 +54,16 @@ export const lookSchema = z.strictObject({
 export type Look = z.infer<typeof lookSchema>;
 const looksSchema = z.strictObject({ oficina: lookSchema, medieval: lookSchema.optional(), cyberpunk: lookSchema.optional() });
 
+// La luz que lleva el personaje en cada mundo (linterna, antorcha...): solo de aspecto, siempre equipada y fuera de
+// la tienda (MAIA, 2026-10-25). model es el objeto en la mano; kind, el tipo de luz del núcleo; cone, si es un foco,
+// su apertura en grados (sin él, luz puntual). La simulación no la lee.
+const carryLightSchema = z.strictObject({
+  model: modelRef,
+  kind: z.enum(Object.keys(SOURCE_PRESETS) as [SourceKind, ...SourceKind[]]),
+  cone: z.number().min(1).max(180).optional(),
+});
+export type CarryLight = z.infer<typeof carryLightSchema>;
+
 export const idSchema = z
   .string()
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'el id va en kebab-case: minúsculas, números y guiones');
@@ -116,6 +126,7 @@ export const characterSchema = z.strictObject({
     speed: z.number().positive(),                // vóxeles por segundo con speed-pct = 0
     orbit: z.number().positive().default(14),    // radio del círculo en que flotan sus armas
   }),
+  carryLight: z.strictObject({ oficina: carryLightSchema, medieval: carryLightSchema.optional(), cyberpunk: carryLightSchema.optional() }).optional(),
   hooks,
 });
 

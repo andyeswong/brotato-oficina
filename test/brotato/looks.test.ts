@@ -53,6 +53,15 @@ describe('aspecto por mundo', () => {
     }
   });
 
+  it('la luz que lleva MAIA en cada mundo apunta a un modelo que existe', () => {
+    const light = registry.character('maia').carryLight!;
+    expect(light.oficina).toBeDefined();
+    for (const theme of THEME_IDS) {
+      const l = light[theme];
+      if (l) expect(existsSync(join(MODELS, `${l.model}.json`)), `${theme}: models/brotato/${l.model}.json`).toBe(true);
+    }
+  });
+
   it('un mundo sin aspecto propio usa el de la oficina', () => {
     const tiro = registry.weapon('tiro');
     expect(lookOf(tiro, 'oficina').name).toBe('Pistola de plasma');
