@@ -28,7 +28,8 @@ const modeBtn = document.getElementById('mode') as HTMLButtonElement;
 canvas.width = VW; canvas.height = VH;
 // El modo 2D lo compone la GPU (WebGL2) o, sin ella, la CPU (src/view/compositor.ts). El modo vóxel pinta con la CPU
 // en un lienzo 2D aparte: un lienzo con contexto WebGL no admite uno 2D.
-const compositor = createCompositor(canvas);
+// ?ruta=cpu fuerza la composición en la CPU (el fallback, y para medirla como antes); por defecto, la GPU si hay WebGL2
+const compositor = createCompositor(canvas, { prefer: q.get('ruta') === 'cpu' ? 'cpu' : 'gpu' });
 const voxCanvas = document.createElement('canvas');
 voxCanvas.width = VW; voxCanvas.height = VH;
 voxCanvas.style.display = 'none';
