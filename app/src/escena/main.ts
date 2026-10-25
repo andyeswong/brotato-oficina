@@ -26,6 +26,21 @@ const canvas = document.getElementById('view') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 const loading = document.getElementById('loading')!;
 const modeBtn = document.getElementById('mode') as HTMLButtonElement;
+// Letrero visible cuando el modo 2D se compone en la CPU (sin WebGL2, o si se perdió el contexto): bajo detalle, sin
+// sombras de verdad ni reflejos (MAIA no quiere que eso solo lo diga el '(cpu)' del HUD). Lo crea la escena, sin tocar
+// el HTML.
+const lowDetail = document.createElement('div');
+lowDetail.style.cssText = 'position:fixed;left:50%;bottom:12px;transform:translateX(-50%);padding:6px 12px;'
+  + 'background:#1a1420e6;color:#ffd08a;border:1px solid #6a4a2a;font:13px system-ui,sans-serif;border-radius:4px;'
+  + 'pointer-events:none;display:none;z-index:10';
+document.body.appendChild(lowDetail);
+function showRoute(): void {
+  const cpu = mode === '2d' && compositor.kind === 'cpu';
+  const text = !cpu ? '' : q.get('ruta') === 'cpu' ? 'Modo de bajo detalle (forzado con ?ruta=cpu)' : 'Sin aceleración gráfica: modo de bajo detalle';
+  if (lowDetail.textContent !== text) lowDetail.textContent = text;
+  const display = cpu ? 'block' : 'none';
+  if (lowDetail.style.display !== display) lowDetail.style.display = display;
+}
 canvas.width = VW; canvas.height = VH;
 // El modo 2D lo compone la GPU (WebGL2) o, sin ella, la CPU (src/view/compositor.ts). El modo vóxel pinta con la CPU
 // en un lienzo 2D aparte: un lienzo con contexto WebGL no admite uno 2D.
@@ -173,6 +188,7 @@ function loop(now: number): void {
   budget.run();
   acc += performance.now() - t0; n++;
   if (n === 30) { avg = acc / n; acc = 0; n = 0; }
+  showRoute();
   hud.textContent = `VoxPix · un solo mundo en vóxeles · ${theme} · semilla ${seed}\n` +
     `horneado ${bakeMs} ms${baked ? ` (render ${baked.ms.render}, luces ${baked.ms.light})` : ''} · cuadro ${avg.toFixed(1)} ms (${compositor.kind}) · luces ${lightsOn ? 'sí' : 'no'} · gotas ${state?.drops.count ?? 0}\n` +
     (mode === '2d' ? `WASD/flechas mover · Espacio pisotón · R otra semilla · T otro tema · L luz · C contorno · V modo vóxel`
