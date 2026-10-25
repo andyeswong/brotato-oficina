@@ -7,7 +7,7 @@ import { startPour, stopPour, fluidState } from '../fluidTool';
 
 // Editor de una capa z vista desde arriba (norte arriba). Clic izquierdo pinta según la herramienta,
 // clic derecho borra. La capa de abajo se ve en fantasma para orientarse.
-// La capa llena el escenario: el lado de la celda es el que cabe (entre 6 y 40 px)
+// La capa llena el escenario: el lado de la celda es el que cabe (entre 2 y 40 px, para lienzos grandes)
 let CELL = 14;
 const canvas = ref<HTMLCanvasElement>();
 const box = ref<HTMLDivElement>();
@@ -24,7 +24,7 @@ function colorOf(v: number): string {
 function fit(): void {
   const b = box.value;
   if (!b) return;
-  CELL = Math.max(6, Math.min(40, Math.floor(Math.min((b.clientWidth - 16) / cols.value, (b.clientHeight - 16) / rows.value))));
+  CELL = Math.max(2, Math.min(40, Math.floor(Math.min((b.clientWidth - 16) / cols.value, (b.clientHeight - 16) / rows.value))));
   draw();
 }
 
@@ -55,10 +55,12 @@ function draw(): void {
     }
   }
   // Rejilla, ejes y eje del espejo
-  g.strokeStyle = 'rgba(255,255,255,0.06)';
+  // Con celdas diminutas (lienzos grandes), una línea cada 8 celdas en vez de cada una
+  const every = CELL >= 6 ? 1 : 8;
+  g.strokeStyle = CELL >= 6 ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.08)';
   g.beginPath();
-  for (let q = 0; q <= cols.value; q++) { g.moveTo(q * CELL + 0.5, 0); g.lineTo(q * CELL + 0.5, c.height); }
-  for (let r = 0; r <= rows.value; r++) { g.moveTo(0, r * CELL + 0.5); g.lineTo(c.width, r * CELL + 0.5); }
+  for (let q = 0; q <= cols.value; q++) { if ((editor.grid.minX + q) % every) continue; g.moveTo(q * CELL + 0.5, 0); g.lineTo(q * CELL + 0.5, c.height); }
+  for (let r = 0; r <= rows.value; r++) { if ((editor.grid.maxY + 1 - r) % every) continue; g.moveTo(0, r * CELL + 0.5); g.lineTo(c.width, r * CELL + 0.5); }
   g.stroke();
   const ox = (0 - editor.grid.minX) * CELL, oy = (editor.grid.maxY - 0) * CELL;
   g.strokeStyle = 'rgba(140,120,216,0.8)';
@@ -140,13 +142,15 @@ function up(): void {
 
 function wheel(e: WheelEvent): void {
   e.preventDefault();
-  editor.z = Math.max(0, editor.z + (e.deltaY < 0 ? 1 : -1));
+  editor.z = Math.max(0, Math.min(editor.grid.maxZ, editor.z + (e.deltaY < 0 ? 1 : -1)));
 }
 
 let ro: ResizeObserver | null = null;
 onMounted(() => { ro = new ResizeObserver(fit); if (box.value) ro.observe(box.value); fit(); });
 onUnmounted(() => ro?.disconnect());
-watch([version, () => JSON.stringify(fluidState.faucets), () => JSON.stringify(editor.light.sources), () => editor.z, () => editor.mirrorX, () => editor.mirrorAxis, () => editor.grid], draw, { deep: true });
+watch([version, () => JSON.stringify(fluidState.faucets), () => JSON.stringify(editor.light.sources), () => editor.z, () => editor.mirrorX, () => editor.mirrorAxis], draw, { deep: true });
+// Con otro tamaño de lienzo, otra celda
+watch(() => ({ ...editor.grid }), fit, { deep: true });
 </script>
 
 <template>

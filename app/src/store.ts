@@ -19,7 +19,8 @@ export const editor = reactive({
   z: 0,
   mirrorX: false,
   mirrorAxis: 0,               // espejo respecto al centro del vóxel x = mirrorAxis
-  grid: { minX: -20, maxX: 19, minY: -10, maxY: 9 },
+  // La rejilla donde se edita (el lienzo): x e y con el pivote (0, 0) en medio, y z de 0 a maxZ (las capas)
+  grid: { minX: -20, maxX: 19, minY: -10, maxY: 9, maxZ: 23 },
   view: { yaw: 0, elevation: 30, outline: 'outer' as 'none' | 'outer' | 'both', scale: 8, turn: 8 },
   mode: 'layers' as 'layers' | 'voxel3d',                    // cómo se edita: por capas o sobre el modelo en 3D
   view3d: { yaw: -30, elevation: 35, zoom: 12, panX: 0, panY: 0 },   // pan: desplazamiento de la vista en píxeles
@@ -38,7 +39,8 @@ export const ui = reactive({
   layersOpen: true,
   previewOpen: true,
   paletteOpen: false,
-  menu: '' as '' | 'archivo' | 'exportar',
+  menu: '' as '' | 'archivo' | 'edicion' | 'exportar',
+  dialog: '' as '' | 'nuevo' | 'lienzo',          // el modal abierto
   cursor: null as [number, number, number] | null,
   renderMs: 0,
 });
@@ -72,8 +74,53 @@ export function replaceModel(m: Model): void {
     editor.grid = {
       minX: Math.min(-20, b.minX - 2), maxX: Math.max(19, b.maxX + 2),
       minY: Math.min(-10, b.minY - 2), maxY: Math.max(9, b.maxY + 2),
+      maxZ: Math.max(23, b.maxZ + 2),
     };
   }
+  touch();
+}
+
+// ---- tamaño del lienzo (la rejilla): ancho (x), fondo (y) y alto (z, las capas)
+export function gridSize(): { w: number; d: number; h: number } {
+  const g = editor.grid;
+  return { w: g.maxX - g.minX + 1, d: g.maxY - g.minY + 1, h: g.maxZ + 1 };
+}
+
+// La rejilla de w x d x h centrada en el pivote
+function gridOf(w: number, d: number, h: number) {
+  const minX = -Math.floor(w / 2), minY = -Math.floor(d / 2);
+  return { minX, maxX: minX + w - 1, minY, maxY: minY + d - 1, maxZ: h - 1 };
+}
+
+// Cuántos vóxeles del modelo quedarían fuera de una rejilla de ese tamaño
+export function voxelsOutside(w: number, d: number, h: number): number {
+  const g = gridOf(w, d, h);
+  let n = 0;
+  for (const [x, y, z] of model.value.entries()) if (x < g.minX || x > g.maxX || y < g.minY || y > g.maxY || z < 0 || z > g.maxZ) n++;
+  return n;
+}
+
+// Cambia el tamaño del lienzo; con `crop`, lo que queda fuera se borra (en un paso de deshacer)
+export function setGridSize(w: number, d: number, h: number, crop: boolean): void {
+  const g = gridOf(w, d, h);
+  if (crop) {
+    const out = [...model.value.entries()].filter(([x, y, z]) => x < g.minX || x > g.maxX || y < g.minY || y > g.maxY || z < 0 || z > g.maxZ);
+    if (out.length) {
+      history.value.begin();
+      for (const [x, y, z] of out) history.value.set(x, y, z, 0);
+      history.value.commit();
+    }
+  }
+  editor.grid = g;
+  editor.z = Math.min(editor.z, g.maxZ);
+  touch();
+}
+
+// Modelo nuevo, vacío, con la paleta actual y un lienzo de ese tamaño
+export function newModelSized(name: string, w: number, d: number, h: number): void {
+  replaceModel(new Model(model.value.palette, name || 'nuevo'));
+  editor.grid = gridOf(w, d, h);
+  editor.z = 0;
   touch();
 }
 

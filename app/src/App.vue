@@ -5,9 +5,10 @@ import Voxel3DEditor from './components/Voxel3DEditor.vue';
 import Viewport from './components/Viewport.vue';
 import PalettePanel from './components/PalettePanel.vue';
 import LayersPanel from './components/LayersPanel.vue';
+import CanvasSizeDialog from './components/CanvasSizeDialog.vue';
 import { vDraggable } from './drag';
 import PxIcon from './components/PxIcon.vue';
-import { model, history, editor, touch, loadFile, newModel, replaceModel, version, paint, ui } from './store';
+import { model, history, editor, touch, loadFile, replaceModel, version, paint, ui, gridSize } from './store';
 import type { LightKind, Tool } from './store';
 import { sampleScene } from '../../src/samples/basic';
 import { Model, render, assertClosedPalette } from '@core/index';
@@ -28,7 +29,7 @@ const TOOL_HINT: Record<Tool, string> = {
 const pngScale = ref(4);
 // Los menús se cierran al hacer clic fuera
 function closeMenus(): void { ui.menu = ''; }
-function toggleMenu(m: 'archivo' | 'exportar'): void { ui.menu = ui.menu === m ? '' : m; }
+function toggleMenu(m: 'archivo' | 'edicion' | 'exportar'): void { ui.menu = ui.menu === m ? '' : m; }
 
 function undo(): void { if (history.value.undo()) touch(); }
 function redo(): void { if (history.value.redo()) touch(); }
@@ -164,7 +165,7 @@ function key(e: KeyboardEvent): void {
   else if (e.key === 'f') editor.tool = 'fluid';
   else if (e.key === 'Tab') { e.preventDefault(); editor.mode = editor.mode === 'layers' ? 'voxel3d' : 'layers'; }
   else if (e.key === 'm') editor.mirrorX = !editor.mirrorX;
-  else if (e.key === 'PageUp' || e.key === 'w') editor.z++;
+  else if (e.key === 'PageUp' || e.key === 'w') editor.z = Math.min(editor.grid.maxZ, editor.z + 1);
   else if (e.key === 'PageDown' || e.key === 's') editor.z = Math.max(0, editor.z - 1);
 }
 
@@ -197,8 +198,15 @@ void version;
     <span class="logo">VoxPix</span>
     <span class="name" :title="`${model.size} vóxeles`">{{ model.name }}</span>
     <button class="ghost" :class="{ on: ui.menu === 'archivo' }" @click="toggleMenu('archivo')">Archivo ▾</button>
+    <button class="ghost" :class="{ on: ui.menu === 'edicion' }" @click="toggleMenu('edicion')">Edición ▾</button>
+    <div v-if="ui.menu === 'edicion'" class="menu card edicion" data-repel>
+      <button class="ghost" :disabled="!history.canUndo" @click="undo(); closeMenus()"><PxIcon name="undo" />Deshacer <span class="kbd">Ctrl+Z</span></button>
+      <button class="ghost" :disabled="!history.canRedo" @click="redo(); closeMenus()"><PxIcon name="redo" />Rehacer <span class="kbd">Ctrl+Y</span></button>
+      <hr />
+      <button class="ghost" @click="ui.dialog = 'lienzo'; closeMenus()"><PxIcon name="layers" />Tamaño del lienzo… <span class="kbd">{{ gridSize().w }}×{{ gridSize().d }}×{{ gridSize().h }}</span></button>
+    </div>
     <div v-if="ui.menu === 'archivo'" class="menu card" data-repel>
-      <button class="ghost" @click="newModel(); closeMenus()"><PxIcon name="new" />Nuevo</button>
+      <button class="ghost" @click="ui.dialog = 'nuevo'; closeMenus()"><PxIcon name="new" />Nuevo…</button>
       <button class="ghost" @click="replaceModel(sampleScene()); closeMenus()"><PxIcon name="sample" />Escena de muestra</button>
       <label class="btn ghost"><input type="file" accept=".json" @change="open($event); closeMenus()" /><PxIcon name="open" />Abrir…</label>
       <button class="ghost" @click="save(); closeMenus()"><PxIcon name="save" />Guardar</button>
@@ -291,6 +299,9 @@ void version;
     <span>{{ ui.renderMs }} ms</span>
   </div>
 
+  <!-- Nuevo / Tamaño del lienzo -->
+  <CanvasSizeDialog v-if="ui.dialog" :key="ui.dialog" :mode="ui.dialog" />
+
   <!-- Importar de pxl -->
   <div v-if="pxl" class="modal" @click.self="pxl = null">
     <div class="card dialog">
@@ -334,6 +345,8 @@ void version;
 .top-right { top: 16px; right: 16px; display: flex; gap: 8px; align-items: flex-start; z-index: 5; }
 .menu { position: absolute; top: calc(100% + 8px); left: 0; display: flex; flex-direction: column; gap: 2px; padding: 8px; min-width: 240px; }
 .menu.right { left: auto; right: 0; }
+.menu.edicion { left: 150px; }
+.kbd { margin-left: auto; color: var(--faint); font-size: 11px; padding-left: 16px; }
 .menu button, .menu .btn { justify-content: flex-start; border-radius: 10px; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; width: auto; }
 .png-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 6px 4px 14px; }
