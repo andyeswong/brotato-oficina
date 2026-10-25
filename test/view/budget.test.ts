@@ -78,6 +78,22 @@ describe('presupuesto de la vista por cuadro', () => {
     expect(b.pending).toBe(1);
   });
 
+  it('un trabajo que espera a otro que va detrás no bloquea la cola (la luz que espera a su recuadro)', () => {
+    const { clock, log, job } = harness();
+    const b = new FrameBudget(3, clock.now);
+    const rect = job('rect:0,0,32,32', 4);
+    const light = job('light:3', 2);
+    // La luz solo puede correr cuando el recuadro ha acabado
+    const waiting: ViewJob = { key: 'light:3', run: (d) => (rect.left > 0 ? false : light.run(d)) };
+    b.push(job('light:3', 5));          // trabajo viejo de la luz...
+    b.push(rect);
+    b.push(waiting);                    // ...sustituido en su sitio, delante de su recuadro
+    let frames = 0;
+    while (b.pending && frames < 20) { b.run(); frames++; }
+    expect(b.pending).toBe(0);
+    expect(log).toEqual(['rect:0,0,32,32', 'rect:0,0,32,32', 'rect:0,0,32,32', 'rect:0,0,32,32', 'light:3', 'light:3']);
+  });
+
   it('sin trabajos no mira el reloj ni gasta nada', () => {
     let calls = 0;
     const b = new FrameBudget(3, () => { calls++; return 0; });

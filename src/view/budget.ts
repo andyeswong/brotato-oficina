@@ -5,7 +5,8 @@
 
 // Un trabajo que se puede reanudar. run trabaja hasta pasar `deadline` (ms de performance.now) o acabar, y devuelve
 // true si acabó. Cada llamada hace al menos una unidad de trabajo, aunque el plazo ya haya vencido: si no, no
-// avanzaría nunca. Mientras no acaba, la vista sigue enseñando lo viejo.
+// avanzaría nunca. La excepción es un trabajo que todavía no puede empezar (espera a otro): devuelve false sin
+// gastar tiempo y la cola sigue con el siguiente. Mientras no acaba, la vista sigue enseñando lo viejo.
 export interface ViewJob {
   readonly key: string;     // lo que rehace ("light:12", "rect:3,4"): un trabajo nuevo con la misma key sustituye al viejo
   run(deadline: number): boolean;
@@ -43,12 +44,15 @@ export class FrameBudget {
       deadline = start;          // una porción mínima: el primer trabajo hace una unidad y para
     }
     this.starved = 0;
+    // En orden; un trabajo que no puede avanzar todavía (no acaba ni gasta tiempo: p. ej. una luz que espera a que
+    // se publique su recuadro, que va detrás en la cola) se salta en este cuadro y se sigue con el siguiente
+    let i = 0;
     do {
-      const job = this.queue[0]!;
+      const job = this.queue[i]!;
       const t = this.now();
-      if (job.run(deadline)) this.queue.shift();
-      else if (this.now() === t) break;   // no acabó y no gastó nada: no insistir en este cuadro
-    } while (this.queue.length && this.now() < deadline);
+      if (job.run(deadline)) this.queue.splice(i, 1);
+      else if (this.now() === t) i++;
+    } while (i < this.queue.length && this.now() < deadline);
     return this.now() - start;
   }
 }

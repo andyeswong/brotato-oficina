@@ -6,7 +6,8 @@ import { generateLayout, TILE, type Layout } from '../../../src/worldgen';
 import { THEMES } from '../../../src/content/themes';
 import { Model, type ModelFile } from '@core/index';
 import { buildWorldState, type WorldTheme, type World } from '../../../src/world/build';
-import { bakeWorld, type Baked } from '../../../src/world/bake';
+import { bakeWorld, rebakeChangedJobs, type Baked } from '../../../src/world/bake';
+import { FrameBudget } from '../../../src/view/budget';
 import { frame2D } from '../../../src/world/frame2d';
 import { frame3D } from '../../../src/world/frame3d';
 import type { WorldState, Entity } from '../../../src/world/state';
@@ -68,6 +69,7 @@ function rebuild(): void {
     maia = state.entities.get(runtime.entityId!) ?? null;
     if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
     ticks = new FixedLoop(runtime, input);
+    budget = new FrameBudget(3);       // los trabajos del mapa anterior no sirven para este
     bakeMs = Math.round(performance.now() - t0);
     vox.dirty = true;
     loading.style.display = 'none';
@@ -114,6 +116,13 @@ function frame(time: number): void {
   g.putImageData(new ImageData(out as Uint8ClampedArray<ArrayBuffer>, VW, VH), 0, 0);
 }
 
+// Lo que cambia en los vóxeles se rehornea por trabajos, con el presupuesto de cada cuadro (src/view/budget.ts)
+let budget = new FrameBudget(3);
+// ?romper=x,y: a los 3 s quita todo lo que hay encima del suelo en el tile de 16x16 de (x, y) (prueba del rehorneado
+// sin teclado: con ?romper=296,135 desaparece la columna al suroeste de la salida en medieval, semilla 7)
+const romper = q.get('romper')?.split(',').map(Number);
+let roto = false;
+
 let last = performance.now(), avg = 0, acc = 0, n = 0;
 function loop(now: number): void {
   const dt = (now - last) / 1000;
@@ -122,6 +131,13 @@ function loop(now: number): void {
   ticks?.advance(dt);              // ticks fijos de 1/60: el runtime del juego
   const t0 = performance.now();
   frame(now / 1000);
+  if (state && baked && romper?.length === 2 && !roto && runtime && runtime.tick > 180) {
+    roto = true;
+    const x0 = Math.floor(romper[0]! / TILE) * TILE, y0 = Math.floor(romper[1]! / TILE) * TILE;   // en ejes del modelo los tiles también caen en múltiplos de 16
+    for (let z = 1; z < 48; z++) for (let y = y0; y < y0 + TILE; y++) for (let x = x0; x < x0 + TILE; x++) if (state.solid.get(x, y, z)) state.solid.set(x, y, z, 0);
+  }
+  if (state && baked) for (const job of rebakeChangedJobs(baked, state.lights)) budget.push(job);
+  budget.run();
   acc += performance.now() - t0; n++;
   if (n === 30) { avg = acc / n; acc = 0; n = 0; }
   hud.textContent = `VoxPix · un solo mundo en vóxeles · ${theme} · semilla ${seed}\n` +
