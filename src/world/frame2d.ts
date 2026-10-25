@@ -16,6 +16,7 @@ export interface Frame2DOptions {
   bob?: (e: Entity) => number;                          // saltito al andar (píxeles)
   background?: readonly [number, number, number];
   outline?: 'none' | 'outer' | 'both';                 // contorno de las entidades (por defecto, ninguno)
+  outlineColor?: string;                                // su color fijo (si no, el tono 0 de la rampa vecina)
 }
 
 // Lienzo del render de una entidad y dónde caen sus pies
@@ -91,10 +92,10 @@ export function entityDraw(state: WorldState, b: Baked, e: Entity, o: Frame2DOpt
   const fx = Math.floor(feet[0]), fy = Math.floor(feet[1]);
   const sry = Math.max(1.2, 2.5 * a);
   const lo = { width: EW, height: EH, originX: EOX, originY: EOY, pivot: [0.5, 0, 0] as [number, number, number], yaw: e.yaw,
-    oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: o.outline ?? 'none', pick: o.lights };
+    oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: o.outline ?? 'none', ...(o.outlineColor ? { outlineColor: o.outlineColor } : {}), pick: o.lights };
   let cache = entityCache.get(e.model);
   if (!cache) entityCache.set(e.model, (cache = new Map()));
-  const ck = `${e.yaw}|${lo.oblique.y}|${lo.oblique.z}|${lo.pick}|${lo.outline}`;
+  const ck = `${e.yaw}|${lo.oblique.y}|${lo.oblique.z}|${lo.pick}|${lo.outline}|${o.outlineColor ?? ''}`;
   let img = cache.get(ck);
   if (!img) { img = withOutlineDepth(render(e.model, lo)); cache.set(ck, img); }
   let etotal: Float32Array | null = null;

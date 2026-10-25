@@ -29,6 +29,7 @@ export interface RenderOptions {
   flat?: boolean;               // sombreado ya pintado en los colores (arte hecho a mano): no mueve el tono
   outline?: 'none' | 'outer' | 'both';
   innerGap?: number;            // salto de profundidad para el contorno interior
+  outlineColor?: string;        // color fijo del contorno (#rrggbb); si no, el de la paleta o el tono 0 de la rampa vecina
   ppu?: number;                 // píxeles por vóxel (1 = pixel art final; más = zoom del editor)
   pick?: boolean;               // devolver qué vóxel y qué cara se ve en cada píxel (para editar en 3D)
   // Proyección oblicua del pixel art 3/4 (la del juego): cada vóxel hacia el norte sube `y` píxeles y cada vóxel
@@ -261,7 +262,7 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
         const ni = i + di, nj = j + dj;
         if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
         const n = nj * W + ni;
-        if (color[n]! >= 0 && depth[n]! < depth[idx]! - gap) { final[idx] = (color[idx]! & ~15); break; }   // tono 0 de su rampa
+        if (color[n]! >= 0 && depth[n]! < depth[idx]! - gap) { final[idx] = o.outlineColor ? OUTLINE : (color[idx]! & ~15); break; }   // tono 0 de su rampa
       }
     }
   }
@@ -280,7 +281,7 @@ export function render(model: VoxelSource, o: RenderOptions): Rendered {
   }
 
   const rgba = new Uint8ClampedArray(W * H * 4);
-  const outlineRgb = pal.outline ? rgbOf(pal.outline) : null;
+  const outlineRgb = o.outlineColor ? rgbOf(o.outlineColor) : pal.outline ? rgbOf(pal.outline) : null;
   for (let p = 0; p < W * H; p++) {
     const c = final[p]!;
     if (c === -1) continue;

@@ -56,9 +56,17 @@ let seed = Number(q.get('seed') ?? 7);
 let lightsOn = true;
 // Contorno (como el de VoxPix): exterior, exterior + interior (los saltos de profundidad: paredes, columnas) o ninguno.
 // ?contorno=exterior|interior|no
-const OUTLINES = [{ id: 'outer', name: 'exterior' }, { id: 'both', name: 'interior' }, { id: 'none', name: 'no' }] as const;
-type Outline = typeof OUTLINES[number]['id'];
-let outline: Outline = OUTLINES.find((o) => o.name === q.get('contorno'))?.id ?? 'none';
+// Cada uno, con el tono más oscuro de la rampa vecina (como VoxPix) o marcado: casi negro.
+// ?contorno=exterior|exterior-negro|interior|interior-negro|no
+const INK = '#0d0c12';
+const OUTLINES = [
+  { name: 'exterior', id: 'outer', color: undefined }, { name: 'exterior-negro', id: 'outer', color: INK },
+  { name: 'interior', id: 'both', color: undefined }, { name: 'interior-negro', id: 'both', color: INK },
+  { name: 'no', id: 'none', color: undefined },
+] as const;
+let outlineIx = Math.max(0, OUTLINES.findIndex((o) => o.name === (q.get('contorno') ?? 'no')));
+let outline: 'outer' | 'both' | 'none' = OUTLINES[outlineIx]!.id;
+let outlineColor: string | undefined = OUTLINES[outlineIx]!.color;
 let layout: Layout = generateLayout(THEMES[theme].spec, seed);
 let world: World | null = null;
 let state: WorldState | null = null;
@@ -79,7 +87,7 @@ function rebuild(): void {
     const t0 = performance.now();
     layout = generateLayout(THEMES[theme].spec, seed);
     ({ world, state } = buildWorldState(layout, theme));
-    baked = bakeWorld(world, { topZ: TOPZ, incline: INCLINE, outline });
+    baked = bakeWorld(world, { topZ: TOPZ, incline: INCLINE, outline, outlineColor });
     // La salida viene del worldgen (filas hacia abajo): se pasa a ejes del modelo una vez, aquí
     let spawn = { x: layout.spawn.x, y: world.depth - 1 - layout.spawn.y };
     const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
@@ -122,7 +130,7 @@ function frame(time: number): void {
     // Se redibuja al girar, al hacer zoom y mientras MAIA anda; si no, a pocos Hz para el parpadeo y el agua
     if (!vox.dirty && !moving && time - lastVoxelDraw < 0.15) return;
     const out = frame3D(state, { width: VW, height: VH, center: [maia.x, maia.y], radius: 72, yaw: vox.yaw, elevation: vox.elevation, zoom: vox.zoom,
-      time, lights: lightsOn, ambient: THEMES[theme].ambient, outline });
+      time, lights: lightsOn, ambient: THEMES[theme].ambient, outline, outlineColor });
     g.putImageData(new ImageData(out as Uint8ClampedArray<ArrayBuffer>, VW, VH), 0, 0);
     vox.dirty = false; lastVoxelDraw = time;
     return;
@@ -135,7 +143,7 @@ function frame(time: number): void {
   const top = Math.floor(b.cam.project(0, state.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
   const vy = Math.max(top, Math.min(b.height - VH, fy - VH / 2 - 12));
   compositor.frame(state, b, {
-    vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient, outline,
+    vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient, outline, outlineColor,
     // Sin walk, un bote de 1 px al andar; el walk ya trae el sube y baja del cuerpo
     bob: (e) => (!WALK && e === maia && moving && runtime && Math.floor(runtime.player.walked * 8) % 2 ? 1 : 0),
   });
@@ -188,17 +196,19 @@ modeBtn.addEventListener('click', () => { toggleMode(); modeBtn.blur(); });
 // así que se vuelve a hornear (sin tocar la partida: el estado del mundo es el mismo)
 const outlineBtn = document.getElementById('outline') as HTMLButtonElement;
 function showOutline(): void {
-  outlineBtn.textContent = `Contorno: ${OUTLINES.find((o) => o.id === outline)!.name}`;
+  outlineBtn.textContent = `Contorno: ${OUTLINES[outlineIx]!.name.replace('-', ' ')}`;
   outlineBtn.classList.toggle('on', outline !== 'none');
 }
 function cycleOutline(): void {
-  outline = OUTLINES[(OUTLINES.findIndex((o) => o.id === outline) + 1) % OUTLINES.length]!.id;
+  outlineIx = (outlineIx + 1) % OUTLINES.length;
+  outline = OUTLINES[outlineIx]!.id;
+  outlineColor = OUTLINES[outlineIx]!.color;
   showOutline();
   vox.dirty = true;
   if (!world) return;
   loading.style.display = 'flex';
   setTimeout(() => {
-    baked = bakeWorld(world!, { topZ: TOPZ, incline: INCLINE, outline });
+    baked = bakeWorld(world!, { topZ: TOPZ, incline: INCLINE, outline, outlineColor });
     budget = new FrameBudget(3);
     loading.style.display = 'none';
   }, 30);
