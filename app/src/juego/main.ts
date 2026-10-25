@@ -217,6 +217,9 @@ const pending = new Map<Quarter, { prep: ReturnType<typeof prepareViewJob>; bg: 
 let runStart = 0;
 // Los trabajos de esos giros, aparte del FrameBudget del rehorneado: tienen su presupuesto según la fase (ui/turn.ts)
 let bgJobs: BgJob[] = [];
+// Los giros listos que faltan por subir a la GPU (compositor.upload, NARUTO): se suben de uno en uno y solo fuera de la
+// oleada, porque subir uno es el cuadro de 33-50 ms que daba girar en el Flip. Ya subidos, girar solo cambia los enlaces
+let toUpload: Baked[] = [];
 const turnBg = new TurnBackground();
 const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number; how: string }> = [];
 (window as unknown as { __giros: typeof bakeLog }).__giros = bakeLog;
@@ -251,6 +254,7 @@ function newRun(after?: () => void): void {
     views.clear();
     pending.clear();
     bgJobs = [];
+    toUpload = [];
     quarter = 0;
     runStart = performance.now();
     cur = bakeView(0);
@@ -308,7 +312,7 @@ function keep(q: Quarter, t: TurnView, t0: number, how: string): TurnView {
 function collectViews(): void {
   for (const [k, p] of pending) {
     const r = p.prep.result();
-    if (r) keep(k, r, runStart, 'segundo plano (desde el empezar)');
+    if (r) { keep(k, r, runStart, 'segundo plano (desde el empezar)'); toUpload.push(r.baked); }
   }
 }
 
@@ -355,7 +359,7 @@ function toSelect(): void {
   seed = (seed * 7919 + 13) % 1000003;
   level = levelFor(seed);
   theme = level.theme;
-  game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear(); bgJobs = [];
+  game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear(); bgJobs = []; toUpload = [];
   flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
@@ -462,6 +466,9 @@ function loop(now: number): void {
     if (dt * 1000 > 30 || bgMs > 10) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: Math.round(bgMs), rebakeMs: Math.round(spent), q: first ?? -1, phase: game.phase, stage });
   } else if (game && dt * 1000 > 30) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: 0, rebakeMs: Math.round(spent), q: -1, phase: game.phase });
   if (pending.size) collectViews();
+  // Subir a la GPU un giro listo por cuadro, sin juego (el que se sube pasa a ser el actual del compositor, pero el
+  // siguiente cuadro vuelve al del giro actual desde su caché de 4, sin coste)
+  if (game && toUpload.length && game.phase !== 'wave') compositor.upload(toUpload.shift()!);
   drawUi();
   next(loop);
 }

@@ -15,7 +15,7 @@
     "models:check": "node scripts/import-models.mjs --check"
   },
   "dependencies": {
-    "voxpix": "github:andyeswong/voxpix#23ac832",
+    "voxpix": "github:andyeswong/voxpix#14b01d6",
     "zod": "^4.6.7"
   },
   "devDependencies": {
