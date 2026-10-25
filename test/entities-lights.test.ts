@@ -93,3 +93,38 @@ describe('sombra de las entidades', () => {
     expect(lum(withShadow, j)).toBe(lum(without, j));
   });
 });
+
+describe('ids deterministas (los tres detalles de FERN)', () => {
+  it('restore seguido de add da el mismo id que en la partida original', () => {
+    const { state, body } = world();
+    state.entities.add({ model: body, x: 1, y: 1, z: 1 });
+    const snap = state.snapshot();
+    const a = state.entities.add({ model: body, x: 2, y: 2, z: 1 });
+    const la = state.lights.add({ kind: 'torch', x: 5, y: 5, z: 5 });
+    state.restore(snap);
+    expect(state.entities.add({ model: body, x: 2, y: 2, z: 1 })).toBe(a);
+    expect(state.lights.add({ kind: 'torch', x: 5, y: 5, z: 5 })).toBe(la);
+  });
+
+  it('remove no devuelve su id: los nuevos siempre crecen', () => {
+    const { state, body } = world();
+    const a = state.entities.add({ model: body, x: 1, y: 1, z: 1 }) as number;
+    state.entities.remove(a);
+    const b = state.entities.add({ model: body, x: 1, y: 1, z: 1 }) as number;
+    expect(b).toBeGreaterThan(a);
+    const l1 = state.lights.add({ kind: 'lamp', x: 1, y: 1, z: 4 }) as number;
+    state.lights.remove(l1);
+    expect(state.lights.add({ kind: 'lamp', x: 1, y: 1, z: 4 }) as number).toBeGreaterThan(l1);
+  });
+
+  it('una luz dinámica es estado: añadirla, moverla o quitarla cambia la huella', () => {
+    const { state } = world();
+    const h0 = state.hash();
+    const id = state.lights.add({ kind: 'lamp', x: 10, y: 10, z: 6 });
+    const h1 = state.hash();
+    state.lights.move(id, 11, 10, 6);
+    const h2 = state.hash();
+    expect(new Set([h0, h1, h2]).size).toBe(3);
+  });
+});
+
