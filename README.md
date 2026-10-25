@@ -26,7 +26,8 @@ Parámetros de `juego.html`:
 
 ## El motor
 
-VoxPix es una dependencia (`"voxpix"` en `package.json`) y se importa como `@voxpix/...`. El alias apunta a su `src`
+VoxPix es una dependencia (`"voxpix": "github:andyeswong/voxpix#<commit>"` en `package.json`, fijada a un commit) y
+se importa como `@voxpix/...`. El alias apunta a su `src`
 en TypeScript, sin compilar, y está en `tsconfig.json`, `vitest.config.ts` y `app/vite.config.ts`. Lo que el juego
 necesita del motor (prewarm, tinte de entidades, el tick fijo...) se añade a VoxPix como función general, no aquí.
 
@@ -39,3 +40,13 @@ necesita del motor (prewarm, tinte de entidades, el tick fijo...) se añade a Vo
 - `src/game/brotato/ui`: las pantallas (tienda, selección, fin, HUD) y los efectos, como funciones puras sobre un Painter.
 - `app/src/juego`: la vista (cámara, compositor, entrada, lienzos).
 - `models/brotato`: los modelos de vóxeles del juego. `src/anim/rigs-brotato.ts`: el andar de los bichos.
+
+Mientras el repo de VoxPix sea privado, `npm install` necesita acceso a GitHub. En una máquina sin él, pero con un clon
+de VoxPix en ese commit, se puede redirigir solo para la instalación, sin tocar la configuración de git:
+
+```sh
+GIT_CONFIG_COUNT=2 \
+  GIT_CONFIG_KEY_0=url./ruta/a/voxpix.insteadOf GIT_CONFIG_VALUE_0=ssh://git@github.com/andyeswong/voxpix.git \
+  GIT_CONFIG_KEY_1=url./ruta/a/voxpix.insteadOf GIT_CONFIG_VALUE_1=https://github.com/andyeswong/voxpix.git \
+  npm install
+```
