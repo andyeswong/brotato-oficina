@@ -6,6 +6,9 @@ import { generateLayout, TILE } from '../../src/worldgen';
 import { THEMES } from '../../src/content/themes';
 import { FixedLoop, Runtime, type TickInput } from '../../src/game/runtime';
 
+// Las partidas largas tardan: en oficina, una de 2400 ticks por partida pasa de los 5 s por defecto
+const SLOW = 30_000;
+
 // La partida es función de la semilla y de la entrada de cada tick, nada más: ni del ritmo de cuadros, ni del orden
 // en que se construyó el mundo, ni del reloj. Es lo que hizo posibles las curvas de balance de 64 semillas del Brotato.
 
@@ -56,7 +59,7 @@ describe('determinismo del runtime', () => {
     expect(seen.size, 'la partida tiene que cambiar entre controles').toBe(4);
     // En el mapa con agua, el guion tiene que meterse en ella: si no, las ondas y las gotas no se prueban
     if (theme === 'medieval') expect(wet, 'el jugador nunca pisó el agua').toBe(true);
-  });
+  }, SLOW);
 
   it('un solo pisotón de diferencia en el agua cambia la huella', () => {
     const a = game('medieval', 7), b = game('medieval', 7);
@@ -69,7 +72,7 @@ describe('determinismo del runtime', () => {
     const changed = (t: number) => (t === wet ? { ...base(t), stomp: !base(t).stomp } : base(t));
     run(a, base, wet + 120); run(b, changed, wet + 120);
     expect(a.hash()).not.toBe(b.hash());
-  });
+  }, SLOW);
 
   it('otra semilla, otra partida', () => {
     const a = game('medieval', 7), b = game('medieval', 8);
@@ -110,7 +113,7 @@ describe('determinismo del runtime', () => {
       hashes.add(rt.hash());
     }
     expect(hashes.size).toBe(1);
-  });
+  }, SLOW);
 
   it('un cuadro enorme no encadena más de 5 ticks: la partida se frena, no se acumula', () => {
     const rt = game('oficina', 2);

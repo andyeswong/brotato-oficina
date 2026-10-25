@@ -10,6 +10,9 @@ import { fits, footprint, moveBody, restZ, type Body } from '../../src/game/body
 // pisa; un cuerpo nunca acaba dentro de un sólido ni en agua honda; resbala por las paredes; los disparos dan en
 // las columnas. Mismo criterio que bounds.test.ts del Brotato.
 
+// Las pruebas que recorren mapas enteros tardan más que los 5 s por defecto en máquinas lentas (oficina)
+const SLOW = 30_000;
+
 const THEME_IDS: WorldTheme[] = ['medieval', 'cyberpunk', 'oficina'];
 const SEEDS = [1, 2, 3, 7];
 
@@ -62,7 +65,7 @@ describe('colisión del runtime contra el worldgen', () => {
     expect(walls).toBeGreaterThan(0);
     expect(pillars).toBeGreaterThan(0);
     expect(free).toBeGreaterThan(50);
-  });
+  }, SLOW);
 
   it.each(THEME_IDS.flatMap((t) => SEEDS.map((s) => [t, s] as const)))('%s, semilla %i: andando al azar, nunca dentro de un sólido ni en agua honda', (theme, seed) => {
     const { layout, state } = level(theme, seed);
@@ -87,7 +90,7 @@ describe('colisión del runtime contra el worldgen', () => {
     }
     expect(travelled, 'el cuerpo tiene que moverse de verdad').toBeGreaterThan(1500);
     expect(blocked, 'y chocar con algo, o la prueba no prueba nada').toBeGreaterThan(0);
-  });
+  }, SLOW);
 });
 
 describe('agua honda', () => {
@@ -118,7 +121,7 @@ describe('agua honda', () => {
       tested++;
     }
     expect(tested, 'ningún mapa tenía agua honda: la prueba no prueba nada').toBeGreaterThan(0);
-  });
+  }, SLOW);
 });
 
 describe('colisión en una sala de prueba', () => {
