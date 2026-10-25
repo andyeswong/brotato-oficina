@@ -159,6 +159,8 @@ function frame(time: number): void {
   const vy = Math.max(top, Math.min(b.height - VH, fy - VH / 2 - 12));
   compositor.frame(state, b, {
     vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient, outline, outlineColor,
+    // ?luces=N: solo las N luces más cercanas alumbran a cada entidad (para ajustar en el Flip)
+    ...(q.get('luces') ? { entityLightCap: Number(q.get('luces')) } : {}),
     // Sin walk, un bote de 1 px al andar; el walk ya trae el sube y baja del cuerpo
     bob: (e) => (!WALK && e === maia && moving && runtime && Math.floor(runtime.player.walked * 8) % 2 ? 1 : 0),
   });

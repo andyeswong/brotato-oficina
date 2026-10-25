@@ -50,6 +50,7 @@ function crowd(n: number) {
 
 interface Scenario {
   name: string;
+  lightCap?: number;      // tope de luces por entidad (entityLightCap)
   theme: WorldTheme;
   pos?: [number, number];
   ticks: number;
@@ -95,6 +96,23 @@ const SCENARIOS: Scenario[] = [
     },
   },
   { name: 'oficina multitud de 60', theme: 'oficina', ticks: 30, setup: crowd(60) },
+  {
+    name: 'medieval 30 con antorchas, sin tope', theme: 'medieval', ticks: 30,
+    setup: (s, rt) => {
+      crowd(30)(s, rt);
+      const ids = s.entities.map((e) => e.id).filter((id) => id !== rt.entityId);
+      for (let k = 0; k < 6; k++) s.lights.add({ kind: 'torch', x: 0, y: 0, z: 0, follow: { entity: ids[k * 4]!, offset: [6, -4, 14] } });
+    },
+  },
+  {
+    // Antorchas llevadas por entidades y un tope de 2 luces por entidad: las dos rutas eligen las mismas
+    name: 'medieval 30 con antorchas, tope 2', theme: 'medieval', ticks: 30, lightCap: 2,
+    setup: (s, rt) => {
+      crowd(30)(s, rt);
+      const ids = s.entities.map((e) => e.id).filter((id) => id !== rt.entityId);
+      for (let k = 0; k < 6; k++) s.lights.add({ kind: 'torch', x: 0, y: 0, z: 0, follow: { entity: ids[k * 4]!, offset: [6, -4, 14] } });
+    },
+  },
   { name: 'medieval multitud de 200', theme: 'medieval', ticks: 30, setup: crowd(200) },
 ];
 
@@ -177,7 +195,7 @@ async function run(): Promise<void> {
     const maia = state.entities.get(rt.entityId!)!;
     const { vx, vy } = viewOf(state, b, maia.x, maia.y, maia.z);
     const ambient = THEMES[sc.theme].ambient;
-    const o: Frame2DOptions = { vx, vy, vw: VW, vh: VH, time: sc.ticks / 60, lights: sc.lights ?? true, ambient };
+    const o: Frame2DOptions = { vx, vy, vw: VW, vh: VH, time: sc.ticks / 60, lights: sc.lights ?? true, ambient, ...(sc.lightCap !== undefined ? { entityLightCap: sc.lightCap } : {}) };
     if (sc.after) { gpu.read(state, b, o, 'color'); sc.after(state, b); }
     const c0 = performance.now();
     const parts = frame2DParts(state, b, o);

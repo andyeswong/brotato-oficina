@@ -38,6 +38,9 @@ export interface PointLight3D {
 }
 
 export const RAY_NUDGE = [1 / 1024, 2 / 1024, 3 / 1024] as const;
+// Lo mismo para el final del rayo (la luz): una luz llevada por una entidad, pasada a los ejes de su modelo, cae a
+// menudo justo en el borde de una celda, y la celda donde termina el rayo dependería del redondeo
+export const LIGHT_NUDGE = [3 / 1024, 1 / 1024, 2 / 1024] as const;
 
 // Cuánto recibe una cara según su ángulo con la luz: de lado aún recibe algo, de espaldas nada
 const facing = (ndl: number) => (ndl > 0 ? 0.35 + 0.65 * ndl : 0);
@@ -61,9 +64,10 @@ export function lightField3D(
   // por qué lado; la GPU (src/view/gpu/shaders.ts) desplaza igual, así las dos rutas dan lo mismo.
   function occluded(px0: number, py0: number, pz0: number, l: PointLight3D): boolean {
     const px = px0 + RAY_NUDGE[0], py = py0 + RAY_NUDGE[1], pz = pz0 + RAY_NUDGE[2];
-    const dx = l.x - px, dy = l.y - py, dz = l.z - pz;
+    const lx = l.x + LIGHT_NUDGE[0], ly = l.y + LIGHT_NUDGE[1], lz = l.z + LIGHT_NUDGE[2];
+    const dx = lx - px, dy = ly - py, dz = lz - pz;
     let x = Math.floor(px), y = Math.floor(py), z = Math.floor(pz);
-    const tx = Math.floor(l.x), ty = Math.floor(l.y), tz = Math.floor(l.z);
+    const tx = Math.floor(lx), ty = Math.floor(ly), tz = Math.floor(lz);
     const sx = Math.sign(dx), sy = Math.sign(dy), sz = Math.sign(dz);
     const ddx = sx ? Math.abs(1 / dx) : Infinity, ddy = sy ? Math.abs(1 / dy) : Infinity, ddz = sz ? Math.abs(1 / dz) : Infinity;
     let mx = sx ? (sx > 0 ? x + 1 - px : px - x) * ddx : Infinity;

@@ -21,6 +21,8 @@ export interface Frame2DOptions {
   // contacto), sin reflejo en el agua, y cada entidad con la luz del suelo bajo sus pies en vez de su luz por cara.
   // Por defecto, 'completo' (y la GPU siempre es completo)
   detail?: 'completo' | 'bajo';
+  // Tope de luces por entidad: solo las N más cercanas (de las que llegan) alumbran a cada una. Sin tope, todas.
+  entityLightCap?: number;
 }
 
 // Lienzo del render de una entidad y dónde caen sus pies
@@ -181,16 +183,48 @@ export function onView(d: EntitySprite, o: Frame2DOptions): boolean {
 }
 
 // La luz por píxel de una entidad, iluminada por cara con las fuentes del mundo (en los ejes de su modelo, sin girar)
-export function entityLight(state: WorldState, d: EntitySprite, o: Frame2DOptions): Float32Array {
+// Las luces del mundo en los ejes del modelo de una entidad (sin girar), con su índice en state.lights
+function entityLocalLights(state: WorldState, d: EntitySprite, o: Frame2DOptions): Array<PointLight3D & { index: number }> {
   const { e, X, Y, Z, bob } = d;
   const c = Math.cos((e.yaw * Math.PI) / 180), sn = Math.sin((e.yaw * Math.PI) / 180);
-  const lights: PointLight3D[] = state.lights.map((l) => {
+  return state.lights.map((l, index) => {
     const p = resolveLight(l, o.time);
     const dx = l.x - (X + 0.5), dy = l.y - Y;
     // el cono del foco, girado a los ejes del modelo igual que la posición
     const spot = p.spot && { ...p.spot, dir: [p.spot.dir[0] * c + p.spot.dir[1] * sn, -p.spot.dir[0] * sn + p.spot.dir[1] * c, p.spot.dir[2]] as [number, number, number] };
-    return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity, spot };
-  }).filter((l) => Math.hypot(l.x, l.y) < l.radius + 20);
+    return { index, x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity, spot };
+  });
+}
+
+// Qué luces alumbran a una entidad, con tope: las N que mejor la alcanzan (menor distancia menos radio; en un empate,
+// la primera). Devuelve sus índices en state.lights, o null si no hay tope. La GPU recibe lo mismo como máscara por
+// entidad, así las dos rutas eligen igual. `radii`: el radio de cada luz, calculado una vez por cuadro (con una
+// multitud, resolver las luces por entidad costaba más que dibujarlas).
+export function entityLightPick(state: WorldState, d: EntitySprite, o: Frame2DOptions, radii?: readonly number[]): number[] | null {
+  const cap = o.entityLightCap;
+  if (cap === undefined) return null;
+  const ex = d.X + 0.5, ey = d.Y, ez = d.Z + d.bob;
+  const best: number[] = [], score: number[] = [];
+  const lights = state.lights;
+  for (let i = 0; i < lights.length; i++) {
+    const l = lights[i]!;
+    const dx = l.x - ex, dy = l.y - ey, dz = l.z - ez;
+    const m = Math.sqrt(dx * dx + dy * dy + dz * dz) - (radii ? radii[i]! : resolveLight(l, o.time).radius);
+    // insertar en orden (son pocas)
+    let k = best.length;
+    while (k > 0 && score[k - 1]! > m) k--;
+    if (k >= cap) continue;
+    best.splice(k, 0, i); score.splice(k, 0, m);
+    if (best.length > cap) { best.pop(); score.pop(); }
+  }
+  return best.sort((a, b) => a - b);
+}
+
+export function entityLight(state: WorldState, d: EntitySprite, o: Frame2DOptions): Float32Array {
+  const pick = entityLightPick(state, d, o);
+  const lights: PointLight3D[] = entityLocalLights(state, d, o)
+    .filter((l) => Math.hypot(l.x, l.y) < l.radius + 20 && (!pick || pick.includes(l.index)));
+  const { e } = d;
   const total = lightField3D(e.model, d.img, camera(d.ro), lights, o.ambient, { floor: false });
   // Lo emisivo lleva su propia luz: se ve con su color, sin que la luz del mundo lo oscurezca
   const em = emissiveMask(d);

@@ -12,7 +12,7 @@
 //     (dónde va, qué sprite) y la tabla de luces.
 import { DIR_VECTORS, unkey } from '../../core';
 import { resolveLight } from '../../world/lightutil';
-import { entitySprite, entityDepthRange, emissiveMask, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
+import { entitySprite, entityDepthRange, entityLightPick, emissiveMask, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
 import { worldPointAt, type Baked, type BakedLight } from '../../world/bake';
 import type { WorldState } from '../../world/state';
 import type { Rendered, VoxelSource } from '../../core';
@@ -128,7 +128,7 @@ export class GpuCompositor {
       gl.bindVertexArray(null);
       return [vao, buf];
     };
-    [this.entVao, this.entBuf] = instanced(this.ent.prog, [['aPlace', 4], ['aPos', 4], ['aOcc', 4], ['aOccSize', 4]]);
+    [this.entVao, this.entBuf] = instanced(this.ent.prog, [['aPlace', 4], ['aPos', 4], ['aOcc', 4], ['aOccSize', 4], ['aMask', 2]]);
     [this.contactVao, this.contactBuf] = instanced(this.contact.prog, [['aFeet', 3]]);
     this.vao = gl.createVertexArray()!;
     this.dropsVao = gl.createVertexArray()!;
@@ -217,7 +217,7 @@ export class GpuCompositor {
     up = performance.now();
     const E = this.ensureEntTarget(o.vw, o.vh);
     const sprites = state.entities.map((e) => entitySprite(b, e, o)).filter((d) => onView(d, o));
-    this.drawEntities(sprites, E, o, lights.length);
+    this.drawEntities(state, sprites, E, o, lights.length);
     this.parts.entities = performance.now() - up;
     upMs += this.parts.entities;
 
@@ -428,7 +428,7 @@ export class GpuCompositor {
   }
 
   // Las entidades a la capa de entidades (color, su luz, profundidad, con z-buffer) y sus sombras de contacto
-  private drawEntities(sprites: EntitySprite[], E: EntTarget, o: Frame2DOptions, nLights: number): void {
+  private drawEntities(state: WorldState, sprites: EntitySprite[], E: EntTarget, o: Frame2DOptions, nLights: number): void {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, E.fbo);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
@@ -444,13 +444,15 @@ export class GpuCompositor {
 
     // Registro por entidad: dónde va su lienzo, qué capa del atlas, su luz y su cuerpo
     const n = sprites.length;
-    if (this.entData.length < n * 16) this.entData = new Float32Array(Math.max(64, n * 2) * 16);
+    if (this.entData.length < n * REC) this.entData = new Float32Array(Math.max(64, n * 2) * REC);
     if (this.contactData.length < n * 3) this.contactData = new Float32Array(Math.max(64, n * 2) * 3);
     const ed = this.entData, cd = this.contactData;
+    // Radio de cada luz, una vez por cuadro (para el tope de luces por entidad)
+    const radii = o.entityLightCap !== undefined ? state.lights.map((l) => resolveLight(l, o.time).radius) : undefined;
     // El rango de profundidad de las entidades de este cuadro, para el z-buffer (el mismo que usa la CPU)
     const range = entityDepthRange(sprites);
     for (let k = 0; k < n; k++) {
-      const d = sprites[k]!, q = k * 16;
+      const d = sprites[k]!, q = k * REC;
       const body = o.lights ? this.body(d.e.model) : null;
       ed[q] = d.offX - o.vx; ed[q + 1] = d.offY - o.vy; ed[q + 2] = this.spriteLayer(d); ed[q + 3] = d.dOff;
       ed[q + 4] = d.X + 0.5; ed[q + 5] = d.Y; ed[q + 6] = d.Z + d.bob; ed[q + 7] = (d.e.yaw * Math.PI) / 180;
@@ -458,6 +460,11 @@ export class GpuCompositor {
         ed[q + 8] = body.ax; ed[q + 9] = body.min[0]; ed[q + 10] = body.min[1]; ed[q + 11] = body.min[2];
         ed[q + 12] = body.size[0]; ed[q + 13] = body.size[1]; ed[q + 14] = body.size[2]; ed[q + 15] = 1;
       } else for (let c = 8; c < 16; c++) ed[q + c] = 0;
+      // Qué luces la alumbran: todas, o las de entityLightPick (con tope)
+      const pick = o.lights ? entityLightPick(state, d, o, radii) : null;
+      let mask = 0xffffffff;
+      if (pick) { mask = 0; for (const i of pick) if (i < 32) mask |= 1 << i; mask >>>= 0; }
+      ed[q + 16] = mask & 0xffff; ed[q + 17] = mask >>> 16;
       cd[k * 3] = d.fx - o.vx; cd[k * 3 + 1] = d.fy - o.vy; cd[k * 3 + 2] = d.sry;
     }
     this.syncBodies();
@@ -495,7 +502,7 @@ export class GpuCompositor {
     gl.uniform2f(p.u.uDepthRange, range[0], range[1]);
     gl.bindVertexArray(this.entVao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.entBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, ed.subarray(0, n * 16), gl.DYNAMIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, ed.subarray(0, n * REC), gl.DYNAMIC_DRAW);
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n);
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(this.vao);
@@ -728,6 +735,9 @@ function fillWorldY(b: Baked, out: Float32Array, x0: number, y0: number, x1: num
     out[sy * b.width + sx] = P ? P[1] : 0;
   }
 }
+
+// Floats por entidad en el búfer de instancias (aPlace, aPos, aOcc, aOccSize, aMask)
+const REC = 18;
 
 // ---- utilidades de WebGL
 

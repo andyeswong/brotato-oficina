@@ -416,14 +416,17 @@ in vec4 aPlace;                      // x, y del lienzo en la vista, capa del at
 in vec4 aPos;                        // pies + 0.5 en x, y, z + bote, giro (radianes)
 in vec4 aOcc;                        // x en el atlas de cuerpos, mínimo del cuerpo (x, y, z)
 in vec4 aOccSize;                    // tamaño del cuerpo, w = 1 si lleva luz
+in vec2 aMask;                       // qué luces la alumbran (bits 0-15 y 16-31), con tope de luces por entidad
 uniform vec2 uViewSize;
 uniform vec2 uCell;
 flat out vec4 vPlace;
 flat out vec4 vPos;
 flat out vec4 vOcc;
 flat out vec4 vOccSize;
+flat out uint vMask;
 void main() {
   vPlace = aPlace; vPos = aPos; vOcc = aOcc; vOccSize = aOccSize;
+  vMask = uint(aMask.x) | (uint(aMask.y) << 16u);
   vec2 p = aPlace.xy + aCorner * uCell;
   gl_Position = vec4(p / uViewSize * 2.0 - 1.0, 0.0, 1.0);
 }`;
@@ -445,6 +448,7 @@ flat in vec4 vPlace;
 flat in vec4 vPos;
 flat in vec4 vOcc;
 flat in vec4 vOccSize;
+flat in uint vMask;
 layout(location = 0) out vec4 oColor;
 layout(location = 1) out vec4 oLight;
 layout(location = 2) out vec4 oDepth;
@@ -459,8 +463,9 @@ bool filled(ivec3 c) {
 
 // ¿Hay un vóxel del cuerpo entre p (en el aire) y la luz? Amanatides-Woo como en light3d.ts, recortado a la caja del
 // cuerpo (fuera de ella no hay nada que tape)
-bool occluded(vec3 p0, vec3 l) {
+bool occluded(vec3 p0, vec3 l0) {
   vec3 p = p0 + vec3(1.0, 2.0, 3.0) / 1024.0;   // RAY_NUDGE de light3d.ts
+  vec3 l = l0 + vec3(3.0, 1.0, 2.0) / 1024.0;   // LIGHT_NUDGE
   vec3 d = l - p;
   vec3 mn = vOcc.yzw, mx = vOcc.yzw + vOccSize.xyz;
   float tExit = 1.0;
@@ -504,6 +509,7 @@ void main() {
     vec3 p = v + 0.5 + n * 0.5, start = v + 0.5 + n;
     float cs = cos(vPos.w), sn = sin(vPos.w);
     for (int i = 0; i < uNLights; i++) {
+      if ((vMask & (1u << uint(i))) == 0u) continue;                 // fuera del tope de luces de esta entidad
       vec4 lp = lightPos(i), lc = lightCol(i);
       float dx = lp.x - vPos.x, dy = lp.y - vPos.y;
       vec3 l = vec3(dx * cs + dy * sn + 0.5, -dx * sn + dy * cs, lp.z - vPos.z);
