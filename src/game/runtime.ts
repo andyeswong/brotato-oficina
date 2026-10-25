@@ -2,7 +2,7 @@
 // resolver colisiones -> eventos sobre el mundo -> world.step(). Determinista: la misma semilla y la misma entrada por
 // tick dan la misma partida, byte a byte (lo comprueba test/game/determinism.test.ts). Sin reloj ni Math.random:
 // el azar, si hace falta, sale de world.random().
-import { TICK, type EntityId, type WorldState } from '../world/state';
+import { TICK, type EntityId, type ShadowMode, type WorldState } from '../world/state';
 import type { VoxelSource } from '../core';
 import { DEFAULT_RULES, moveBody, restZ, WADE, waterFactor, type Body, type MoveRules } from './body';
 import { WALK_FRAME_MS } from '../anim/walk';
@@ -20,7 +20,8 @@ export interface PlayerConfig {
   radius: number;
   speed: number;        // vóxeles por segundo en seco
   model?: VoxelSource | number;   // su modelo (o su id en world.models): el runtime crea la entidad que lo dibuja
-  walk?: ReadonlyArray<VoxelSource | number>;   // los cuadros del walk, en orden del ciclo (WALK_FRAME_MS cada uno); sin ellos anda con el quieto
+  walk?: ReadonlyArray<VoxelSource | number>;
+  shadow?: ShadowMode;          // su sombra real: 'always' la reserva siempre (MAIA), true compite por cercanía   // los cuadros del walk, en orden del ciclo (WALK_FRAME_MS cada uno); sin ellos anda con el quieto
   rules?: MoveRules;
 }
 
@@ -53,7 +54,7 @@ export class Runtime {
       this.walkModels = (config.walk ?? []).map(id);
     }
     this.entityId = this.idleModel === null ? null
-      : world.entities.add({ model: this.idleModel, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0 });
+      : world.entities.add({ model: this.idleModel, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0, castsShadow: config.shadow ?? true });
   }
 
   step(input: TickInput): void {

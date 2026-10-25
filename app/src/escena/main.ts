@@ -107,7 +107,7 @@ function rebuild(): void {
     let spawn = { x: layout.spawn.x, y: world.depth - 1 - layout.spawn.y };
     const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
     if (pos && pos.length === 2 && pos.every(Number.isFinite)) spawn = { x: pos[0]!, y: pos[1]! };
-    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel, walk: WALK ? walkFrames(maiaModel) : undefined });
+    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel, walk: WALK ? walkFrames(maiaModel) : undefined, shadow: 'always' });
     maia = state.entities.get(runtime.entityId!) ?? null;
     if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
     // Hasta 10 ticks por cuadro (un tick cuesta ~0,7 ms): el modo vóxel pinta a 8-10 fps y con el tope de 5 MAIA andaba
