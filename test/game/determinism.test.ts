@@ -190,12 +190,15 @@ describe('determinismo del runtime', () => {
     expect(hand.y).toBe(Math.round(p.y + 8 * Math.sin(r) - 2 * Math.cos(r)));
     expect(hand.z).toBe(p.z + 6);
     expect(hand.yaw).toBe(yaw);
-    // La luz: un foco en la lente (emit girado desde la mano) que apunta hacia donde mira
+    // La luz: un foco en la lente (mano + emit, girados con el cuerpo) que apunta hacia donde mira, y cuyo dueño es el
+    // cuerpo, para que no la tape
+    const body = a.world.entities.get(a.entityId!)!;
     const light = a.world.lights.get(a.carryLightId!)!;
     expect(light.cone).toBe(40);
-    expect(light.x).toBeCloseTo(hand.x + 0.5 + 7 * Math.sin(r), 6);
-    expect(light.y).toBeCloseTo(hand.y - 7 * Math.cos(r), 6);
-    expect(light.z).toBe(hand.z + 1);
+    expect(light.owner).toBe(a.entityId);
+    expect(light.x).toBeCloseTo(body.x + 0.5 + 8 * Math.cos(r) + 9 * Math.sin(r), 6);
+    expect(light.y).toBeCloseTo(body.y + 8 * Math.sin(r) - 9 * Math.cos(r), 6);
+    expect(light.z).toBe(body.z + 7);
   });
 
   it('src/game (con la simulación del Brotato) y su contenido no usan reloj ni azar del navegador', () => {

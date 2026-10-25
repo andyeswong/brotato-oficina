@@ -79,10 +79,12 @@ export class Runtime {
     const carry = config.carry;
     if (carry && this.entityId !== null) {
       this.carryId = world.entities.add({ model: id(carry.model), x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0, castsShadow: false });
-      // La luz sale del agarre más emit; un foco apunta al frente y algo hacia el suelo
+      // La luz sigue al CUERPO (no al objeto) para que el núcleo lo tome por su dueño y su cuerpo no la tape; sale de
+      // la mano más emit, los dos en el marco del cuerpo. Un foco apunta al frente y algo hacia el suelo.
+      const offset = [carry.hand[0] + carry.emit[0], carry.hand[1] + carry.emit[1], carry.hand[2] + carry.emit[2]] as const;
       this.carryLightId = world.lights.add({
         kind: carry.kind, x: p.x, y: p.y, z: p.z, ...(carry.cone ? { cone: carry.cone } : {}),
-        follow: { entity: this.carryId, offset: carry.emit, ...(carry.cone ? { dir: [0, -1, -0.3] as const } : {}) },
+        follow: { entity: this.entityId, offset, ...(carry.cone ? { dir: [0, -1, -0.3] as const } : {}) },
       });
     }
     this.syncEntity();
