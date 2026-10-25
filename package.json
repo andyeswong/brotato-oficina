@@ -10,7 +10,9 @@
     "dev": "vite --config app/vite.config.ts",
     "build": "vite build --config app/vite.config.ts",
     "preview": "vite preview --config app/vite.config.ts",
-    "rigs": "tsx --tsconfig tsconfig.json scripts/rig-preview.ts"
+    "rigs": "tsx --tsconfig tsconfig.json scripts/rig-preview.ts",
+    "models": "node scripts/import-models.mjs",
+    "models:check": "node scripts/import-models.mjs --check"
   },
   "dependencies": {
     "voxpix": "github:andyeswong/voxpix#a8037ba",
