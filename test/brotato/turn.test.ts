@@ -42,40 +42,84 @@ describe('girar', () => {
 });
 
 describe('el segundo plano de los giros', () => {
-  // Un reloj falso y trabajos que gastan 1 ms por unidad hasta su plazo o hasta acabar sus `units`
+  // Un reloj falso y trabajos con etapas, como prepareViewJob: gastan 1 ms por unidad y run() no pasa de una etapa a la
+  // siguiente en la misma llamada (devuelve false al cambiar)
   const setup = () => {
     let t = 0;
     const bg = new TurnBackground(() => t);
-    const job = (units: number) => { const j = { done: 0, run(deadline: number) { do { t += 1; j.done++; } while (j.done < units && t < deadline); return j.done >= units; } }; return j; };
+    const job = (stages: Array<[string, number]>) => {
+      const left = stages.map(([n, u]) => [n, u] as [string, number]);
+      const j = {
+        done: {} as Record<string, number>,
+        stage: () => left[0]?.[0] ?? 'done',
+        run(deadline: number) {
+          const cur = left[0];
+          if (!cur) return true;
+          do { t += 1; cur[1]--; j.done[cur[0]] = (j.done[cur[0]] ?? 0) + 1; } while (cur[1] > 0 && t < deadline);
+          if (cur[1] <= 0) left.shift();
+          return left.length === 0;
+        },
+      };
+      return j;
+    };
     return { bg, job };
   };
+  const full = (): Array<[string, number]> => [['copy', 3], ['view', 1], ['alloc', 1], ['bake', 100]];
 
-  it('sin juego da 8 ms por cuadro y en la oleada 3, menos lo que ya gastó el rehorneado', () => {
+  it('sin juego da 12 ms por cuadro y encadena las etapas', () => {
     const { bg, job } = setup();
-    const a = job(100);
+    const a = job(full());
     bg.run([a], false, 0);
-    expect(a.done).toBe(BG_IDLE_MS);
-    const b = job(100);
+    expect(a.done).toEqual({ copy: 3, view: 1, alloc: 1, bake: BG_IDLE_MS - 5 });
+  });
+
+  it('en la oleada avanzan copy y bake (3 ms menos el rehorneado); view y alloc esperan a que no se juegue', () => {
+    const { bg, job } = setup();
+    const a = job(full());
+    bg.run([a], true, 0);
+    expect(a.done).toEqual({ copy: 3 });   // copia, y se para al llegar a view
+    expect(a.stage()).toBe('view');
+    bg.run([a], true, 0);
+    expect(a.done).toEqual({ copy: 3 });   // view no avanza en la oleada
+    const b = job([['bake', 100]]);
     bg.run([b], true, 1);
-    expect(b.done).toBe(BG_WAVE_MS - 1);
+    expect(b.done).toEqual({ bake: BG_WAVE_MS - 1 });
   });
 
-  it('en la oleada sin presupuesto espera, y cada 4 cuadros da un paso mínimo para no quedarse atascado', () => {
+  it('en la oleada, un trabajo que termina bake y pasaría a otra etapa se para ahí', () => {
     const { bg, job } = setup();
-    const a = job(100);
-    for (let f = 1; f < BG_STARVE_FRAMES; f++) bg.run([a], true, BG_WAVE_MS);
-    expect(a.done).toBe(0);
-    bg.run([a], true, BG_WAVE_MS);
-    expect(a.done).toBe(1);
+    const a = job([['bake', 1], ['view', 1], ['bake', 10]]);
+    bg.run([a], true, 0);
+    expect(a.done).toEqual({ bake: 1 });
+    expect(a.stage()).toBe('view');
   });
 
-  it('en orden: el siguiente empieza solo si el anterior acabó, y los acabados salen de la lista', () => {
+  it('en la oleada, los que no pueden avanzar no cortan la ronda: el siguiente en bake sí avanza', () => {
     const { bg, job } = setup();
-    const a = job(2), b = job(100), c = job(100);
+    const a = job([['view', 1], ['bake', 100]]), b = job([['bake', 100]]);
+    const left = bg.run([a, b], true, 0);
+    expect(a.done).toEqual({});
+    expect(b.done).toEqual({ bake: BG_WAVE_MS });
+    expect(left).toEqual([a, b]);
+  });
+
+  it('en la oleada sin presupuesto espera, y cada 4 cuadros da un paso mínimo (no en alloc)', () => {
+    const { bg, job } = setup();
+    const a = job([['bake', 100]]), c = job([['alloc', 1], ['bake', 100]]);
+    for (let f = 1; f < BG_STARVE_FRAMES; f++) bg.run([c, a], true, BG_WAVE_MS);
+    expect(a.done).toEqual({});
+    bg.run([c, a], true, BG_WAVE_MS);
+    expect(a.done).toEqual({ bake: 1 });
+    expect(c.done).toEqual({});
+  });
+
+  it('sin juego, en orden: el siguiente empieza solo si el anterior acabó, y los acabados salen', () => {
+    const { bg, job } = setup();
+    const a = job([['bake', 2]]), b = job([['copy', 100]]), c = job([['copy', 100]]);
     const left = bg.run([a, b, c], false, 0);
-    expect(a.done).toBe(2);
-    expect(b.done).toBe(BG_IDLE_MS - 2);
-    expect(c.done).toBe(0);
+    expect(a.done).toEqual({ bake: 2 });
+    expect(b.done).toEqual({ copy: BG_IDLE_MS - 2 });
+    expect(c.done).toEqual({});
     expect(left).toEqual([b, c]);
   });
 });

@@ -211,14 +211,14 @@ interface TurnView { view: WorldView; baked: Baked }
 let quarter: Quarter = 0;
 const views = new Map<Quarter, TurnView>();
 let cur: TurnView | null = null;
-const pending = new Map<Quarter, { prep: ReturnType<typeof prepareViewJob>; t0: number }>();
+const pending = new Map<Quarter, { prep: ReturnType<typeof prepareViewJob>; bg: BgJob; t0: number }>();
 let runStart = 0;
 // Los trabajos de esos giros, aparte del FrameBudget del rehorneado: tienen su presupuesto según la fase (ui/turn.ts)
 let bgJobs: BgJob[] = [];
 const turnBg = new TurnBackground();
 const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number; how: string }> = [];
 (window as unknown as { __giros: typeof bakeLog }).__giros = bakeLog;
-const slowLog: Array<{ at: number; frameMs: number; bgMs: number; rebakeMs: number; q: number; phase: string }> = [];
+const slowLog: Array<{ at: number; frameMs: number; bgMs: number; rebakeMs: number; q: number; phase: string; stage?: string }> = [];
 (window as unknown as { __lentos: typeof slowLog }).__lentos = slowLog;
 let ticks: FixedLoop | null = null;
 let budget = new FrameBudget(3);
@@ -262,8 +262,9 @@ function newRun(after?: () => void): void {
     // Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
     for (const k of [turnQuarter(0, 1), turnQuarter(0, -1), 2 as Quarter]) {
       const prep = prepareViewJob(game.state, k, bakeOptions(), { dress: wallDress(game.run.arena.layout) });
-      bgJobs.push(prep.job);
-      pending.set(k, { prep, t0: performance.now() });
+      const bg: BgJob = { run: (d) => prep.job.run(d), stage: () => prep.stage() };
+      bgJobs.push(bg);
+      pending.set(k, { prep, bg, t0: performance.now() });
     }
     shopMessage = null;
     effects.clear();
@@ -324,7 +325,7 @@ function turn(step: 1 | -1): void {
     if (p) {
       const t0 = performance.now();
       while (!p.prep.job.run(Infinity)) { /* el resto del trabajo, de una vez */ }
-      bgJobs = bgJobs.filter((j) => j !== p.prep.job);
+      bgJobs = bgJobs.filter((j) => j !== p.bg);
       go(keep(next, p.prep.result()!, t0, 'terminado al girar'));
     } else go(bakeView(next));
     loading.style.display = 'none';
@@ -447,11 +448,12 @@ function loop(now: number): void {
   const spent = budget.run();
   if (game && bgJobs.length) {
     // Para medir: los cuadros lentos con lo que se llevó el segundo plano y qué giro estaba trabajando
-    const first = [...pending].find(([, p]) => p.prep.job === bgJobs[0])?.[0];
+    const head = [...pending].find(([, p]) => p.bg === bgJobs[0]);
+    const first = head?.[0], stage = head?.[1].prep.stage() ?? '-';
     const t0 = performance.now();
     bgJobs = turnBg.run(bgJobs, game.phase === 'wave', spent);
     const bgMs = performance.now() - t0;
-    if (dt * 1000 > 30 || bgMs > 10) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: Math.round(bgMs), rebakeMs: Math.round(spent), q: first ?? -1, phase: game.phase });
+    if (dt * 1000 > 30 || bgMs > 10) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: Math.round(bgMs), rebakeMs: Math.round(spent), q: first ?? -1, phase: game.phase, stage });
   } else if (game && dt * 1000 > 30) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: 0, rebakeMs: Math.round(spent), q: -1, phase: game.phase });
   if (pending.size) collectViews();
   drawUi();

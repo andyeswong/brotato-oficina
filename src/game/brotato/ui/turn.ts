@@ -14,10 +14,15 @@ import type { Projector } from './fx';
 
 export const QUARTERS: readonly Quarter[] = [0, 1, 2, 3];
 // Presupuesto por cuadro del segundo plano de los giros: en la oleada, los 3 ms de siempre (compartidos con el
-// rehorneado, que va antes); sin juego (respiro, tienda, fin), 8 ms. Medido en el Flip: a 3 ms los 3 giros tardaban
-// 34 s en quedar listos (NARUTO lo propuso igual)
+// rehorneado, que va antes) y solo para las etapas por pasos: 'copy' (por trozos) y 'bake' (troceado a unos 7-9 ms
+// en Node); sin juego (respiro, tienda, fin), 12 ms y todas. 'view' (el vestido y el agua girada) y 'alloc' (los
+// búferes del horneado) son pasos grandes de una vez: medido en el Flip, ese cambio de la copia al horneado daba pasos
+// de 50-70 ms en la oleada (MAIA: en la oleada copia y horneado por pasos; el cambio de etapa, solo fuera). A 3 ms los
+// 3 giros tardaban 34 s en quedar listos
 export const BG_WAVE_MS = 3;
-export const BG_IDLE_MS = 8;
+export const BG_IDLE_MS = 12;
+// Las etapas en las que un trabajo puede avanzar durante la oleada
+export const WAVE_STAGES: ReadonlySet<string> = new Set(['copy', 'bake']);
 // Cuadros seguidos sin presupuesto en la oleada antes de dar igualmente un paso mínimo (como FrameBudget)
 export const BG_STARVE_FRAMES = 4;
 // Las alturas de build.ts para la pared de delante (la sur) y las de los lados
@@ -28,7 +33,8 @@ export function turnQuarter(q: Quarter, step: 1 | -1): Quarter {
   return (((q + step) % 4) + 4) % 4 as Quarter;
 }
 
-export interface BgJob { run(deadline: number): boolean }
+// Un trabajo de segundo plano: avanza hasta el plazo y dice si acabó, y en qué etapa está (prepareViewJob de VoxPix)
+export interface BgJob { run(deadline: number): boolean; stage(): string }
 
 // Los trabajos de segundo plano de los giros, en orden, con su propio presupuesto según la fase. spentMs: lo que ya
 // gastó este cuadro el rehorneado (en la oleada cuenta contra los mismos 3 ms). Devuelve los que siguen sin acabar.
@@ -45,13 +51,23 @@ export class TurnBackground {
       deadline = start;          // un paso mínimo: el primero hace una unidad y para
     }
     this.starved = 0;
-    // En orden: el primero siempre avanza (aunque sea un paso); el siguiente empieza solo si el anterior acabó y queda
-    // tiempo; el que no acaba corta la ronda
-    for (let i = 0; i < jobs.length; i++) {
-      if (i > 0 && this.now() >= deadline) return jobs.slice(i);
-      if (!jobs[i]!.run(deadline)) return jobs.slice(i);
+    // En orden. En la oleada solo avanzan los que están en una etapa por pasos (WAVE_STAGES); los demás esperan a que no se juegue, sin cortar la
+    // ronda. El que puede avanzar sigue mientras quede plazo (run() se para en cada cambio de etapa: sin juego se
+    // encadenan las etapas; en la oleada, si pasa a otra etapa, se para ahí). El que no acaba corta la ronda.
+    const left: BgJob[] = [];
+    let ran = false, stopped = false;
+    for (const j of jobs) {
+      const allowed = (stage: string) => !playing || WAVE_STAGES.has(stage);
+      if (stopped || !allowed(j.stage()) || (ran && this.now() >= deadline)) { left.push(j); continue; }
+      ran = true;
+      let done = false;
+      for (let k = 0; k < 64 && !done; k++) {
+        done = j.run(deadline);
+        if (done || this.now() >= deadline || !allowed(j.stage())) break;
+      }
+      if (!done) { left.push(j); stopped = true; }
     }
-    return [];
+    return left;
   }
 }
 
