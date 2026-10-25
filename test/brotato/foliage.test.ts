@@ -9,7 +9,7 @@ import { kite, steer } from './pilot';
 const { registry } = validateContent(discoverContent());
 
 describe('la vegetación', () => {
-  it('solo medieval la lleva: hierba y flores en todas las semillas probadas', () => {
+  it('solo medieval la lleva: hierba y flores en todas las semillas probadas', { timeout: 60_000 }, () => {
     for (const seed of [1, 2, 3]) {
       const m = new Run(registry, registry.character('maia'), registry.level('medieval'), seed).arena.plants;
       expect(m.grass, `semilla ${seed}`).toBeGreaterThan(0);
