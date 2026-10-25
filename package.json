@@ -13,7 +13,7 @@
     "rigs": "tsx --tsconfig tsconfig.json scripts/rig-preview.ts"
   },
   "dependencies": {
-    "voxpix": "github:andyeswong/voxpix#6e808df",
+    "voxpix": "github:andyeswong/voxpix#a8037ba",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -6,6 +6,7 @@ import type { Point } from '../api';
 import type { LevelModule } from '../registry/schemas';
 import { generateLayout, NORTH, TILE, WALL, type Layout } from '@voxpix/worldgen';
 import { buildWorldState, type World } from '@voxpix/world/build';
+import { FOLIAGE_THEMES, addFoliage } from './foliage';
 import type { WorldState } from '@voxpix/world/state';
 import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runtime/body';
 
@@ -49,10 +50,15 @@ export class Arena {
   readonly start: Point;
   readonly floorZ: number;               // altura del suelo (la cara de arriba de las losetas)
   private readonly free: Point[] = [];
+  // Las plantas que puso la vegetación, por tipo (vacío si el tema no la lleva)
+  plants: Record<string, number> = {};
 
-  constructor(level: LevelModule, seed: number) {
+  // foliage: false quita la vegetación (para las pruebas que comparan con y sin ella)
+  constructor(level: LevelModule, seed: number, opts: { foliage?: boolean } = {}) {
     this.layout = levelLayout(level, seed);
-    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme));
+    // La vegetación (solo aspecto, se atraviesa) en los temas que la llevan: entre construir el mundo y crear su estado
+    const foliage = opts.foliage !== false && FOLIAGE_THEMES.has(level.theme) ? { decorate: (w: World) => { this.plants = addFoliage(w, seed); } } : {};
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme, foliage));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte
