@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { generateLayout } from '../src/worldgen';
 import { THEMES } from '../src/content/themes';
-import { buildWorldState } from '../src/world/build';
+import { buildWorld, buildWorldState } from '../src/world/build';
+import { WaterLayer } from '../src/world/water';
 import { Model, material, box } from '../src/core';
-import type { WorldState } from '../src/world/state';
+import { WorldState } from '../src/world/state';
 
 // Una partida corta con eventos: pisotones en el agua, gotas, una entidad que se mueve
 function play(seed: number, ticks: number, variant = 0): { state: WorldState; hashes: string[] } {
@@ -59,5 +60,16 @@ describe('simulación determinista', () => {
       const code = readFileSync(f, 'utf8').replace(/\/\/.*$/gm, '');
       expect(code, f).not.toMatch(/Math\.random|performance\.now|Date\.now/);
     }
+  });
+});
+
+describe('calentar step', () => {
+  it('warmUp deja el mundo exactamente como estaba', () => {
+    const layout = generateLayout(THEMES.medieval.spec, 7);
+    const world = buildWorld(layout, 'medieval');
+    const s = new WorldState(world.model, world.lights, new WaterLayer(world, 'medieval'), { seed: layout.seed, fountain: world.fountain });
+    const before = s.hash();
+    s.warmUp();
+    expect(s.hash()).toBe(before);
   });
 });

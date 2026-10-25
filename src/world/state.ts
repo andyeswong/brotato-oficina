@@ -451,6 +451,24 @@ export class WorldState {
     this.tick++;
   }
 
+  // Calienta el JIT de step (agua, gotas, salpicaduras): sin esto el primer tick de la partida tarda ~10 ms en vez de
+  // ~0,7 (lo midió FERN). Da unos ticks con un pisotón y vuelve exactamente al estado de antes (misma huella).
+  warmUp(ticks = 6): void {
+    const s = this.snapshot();
+    const w = this.water;
+    for (let k = 0; k < ticks; k++) {
+      if (w && k === 0) for (let i = 0; i < w.gw * w.gh; i += 97) {
+        if (w.sim.depth[i]! <= 1) continue;
+        const x = (i % w.gw) * 2 + 1, y = Math.floor(i / w.gw) * 2 + 1;
+        this.events.disturb(x, y, 2.8, 3);
+        this.events.splash(x, y, w.surfaceAt(x, y), 40, 105);
+        break;
+      }
+      this.step();
+    }
+    this.restore(s);
+  }
+
   // ---- instantánea y huella
   snapshot(): WorldSnapshot {
     return {

@@ -364,5 +364,7 @@ import { WaterLayer } from './water';
 export function buildWorldState(layout: Layout, theme: WorldTheme): { world: World; state: WorldState } {
   const world = buildWorld(layout, theme);
   const water = new WaterLayer(world, theme);
-  return { world, state: new WorldState(world.model, world.lights, water, { seed: layout.seed, fountain: world.fountain }) };
+  const state = new WorldState(world.model, world.lights, water, { seed: layout.seed, fountain: world.fountain });
+  state.warmUp();
+  return { world, state };
 }
