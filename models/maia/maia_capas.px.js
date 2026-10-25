@@ -104,10 +104,22 @@ function halfDepth(row, len) {
 // no en la cara. De frente se ven igual (no hay nada delante de ellos) y de perfil asoma la cara delante del pelo.
 const isHair = (ch) => ch >= "1" && ch <= "5"
 const FACE_ROWS = [10, 16]   // de la frente a la mandíbula
-const SIDE_HAIR_FROM = -1    // y donde empiezan los mechones de los lados
+const FRINGE_ROWS = [9, 10]  // filas del flequillo que sobresale
+const SIDE_HAIR_FROM = 1     // y donde empiezan los mechones de los lados (detrás de la mejilla: de perfil asoma la cara)
 
 // Lateral de la cara (lo que solo se ve de perfil o en tres cuartos): piel por fila
 const SIDE_SKIN = { 10: "S", 11: "S", 12: "s", 13: "s", 14: "s", 15: "S", 16: "t" }
+// El ojo de perfil: en las filas del ojo, el vóxel de detrás del frente (como en el perfil 2D aprobado)
+const SIDE_EYE = { 12: "o", 13: "v" }
+
+// Mechones de los lados del pelo (solo se ven de perfil y en tres cuartos): tres mechones que caen hacia atrás,
+// cada uno con su tono, y una raya oscura entre ellos. Frente y espalda no cambian (son el arte aprobado).
+function lockTone(row, yy) {
+  const t = yy + 9 - row * 0.45            // la raya baja hacia atrás
+  const k = Math.floor(t / 5)
+  if (t - k * 5 < 0.9) return "2"          // raya entre mechones
+  return ["4", "3", "4", "3"][((k % 4) + 4) % 4]
+}
 
 // Color de un vóxel. El más delantero lleva el frente y el más trasero la espalda (así esas dos vistas quedan
 // como el arte aprobado). Los del medio solo se ven de lado: pelo y ropa toman el tono de su columna del
@@ -118,7 +130,9 @@ function colorAt(row, x, yy, d) {
   // Atrás manda la espalda, salvo en los lados del pelo: de perfil se verían más oscuros que el resto (costura)
   if (yy >= d && b !== "." && !(isHair(b) && Math.abs(x - MID) >= 6)) return b
   const faceSide = row >= FACE_ROWS[0] && row <= FACE_ROWS[1] && yy < SIDE_HAIR_FROM && !isHair(f)
+  if (faceSide && SIDE_EYE[row] && yy <= -d + 1 && Math.abs(x - MID) >= 3) return SIDE_EYE[row]
   if (faceSide && SIDE_SKIN[row]) return SIDE_SKIN[row]
+  if (isHair(f) && row >= 5) return lockTone(row, yy)
   return f
 }
 
@@ -151,6 +165,8 @@ for (let row = 0; row < ROWS; row++) {
           const yy = y - forward(row)                       // y < 0 = hacia la cámara (frente)
           c.px(x, MID - yy, colorAt(row, x, y, d))
         }
+        // El flequillo asoma un vóxel por delante de la frente (de perfil se ve por delante de la cara)
+        if (FRINGE_ROWS.includes(row) && isHair(f[x]) && Math.abs(x - MID) <= 5) c.px(x, MID + d + 1, f[x])
       }
     }
   })
