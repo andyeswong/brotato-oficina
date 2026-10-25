@@ -135,7 +135,7 @@ export class GpuCompositor {
       gl.bindVertexArray(null);
       return [vao, buf];
     };
-    [this.entVao, this.entBuf] = instanced(this.ent.prog, [['aPlace', 4], ['aPos', 4], ['aOcc', 4], ['aOccSize', 4], ['aMask', 2]]);
+    [this.entVao, this.entBuf] = instanced(this.ent.prog, [['aPlace', 4], ['aPos', 4], ['aOcc', 4], ['aOccSize', 4], ['aMask', 2], ['aTint', 4]]);
     [this.contactVao, this.contactBuf] = instanced(this.contact.prog, [['aFeet', 3]]);
     this.vao = gl.createVertexArray()!;
     this.dropsVao = gl.createVertexArray()!;
@@ -474,6 +474,8 @@ export class GpuCompositor {
       let mask = 0xffffffff;
       if (pick) { mask = 0; for (const i of pick) if (i < 32) mask |= 1 << i; mask >>>= 0; }
       ed[q + 16] = mask & 0xffff; ed[q + 17] = mask >>> 16;
+      const tint = d.e.tint;
+      if (tint) { ed[q + 18] = tint[0]; ed[q + 19] = tint[1]; ed[q + 20] = tint[2]; ed[q + 21] = 1; } else ed[q + 21] = 0;
       cd[k * 3] = d.fx - o.vx; cd[k * 3 + 1] = d.fy - o.vy; cd[k * 3 + 2] = d.sry;
     }
     this.syncBodies();
@@ -779,7 +781,7 @@ function fillWorldY(b: Baked, out: Float32Array, x0: number, y0: number, x1: num
 }
 
 // Floats por entidad en el búfer de instancias (aPlace, aPos, aOcc, aOccSize, aMask)
-const REC = 18;
+const REC = 22;
 
 // ---- utilidades de WebGL
 

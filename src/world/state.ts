@@ -143,6 +143,9 @@ export interface Entity {
   // siempre (p. ej. el personaje), y el resto de las true, por cercanía al centro de la vista
   castsShadow: ShadowMode;
   rampOffset: number;        // dónde empiezan sus rampas en la paleta del mundo
+  // Tinte plano temporal (r, g, b de 0 a 1), p. ej. el destello de un golpe: sus vóxeles se pintan de ese color, con
+  // luz propia, y el contorno se queda. Solo aspecto: no entra en la huella ni hace falta guardarlo (lo pone la vista)
+  tint?: readonly [number, number, number] | null;
 }
 
 // Las entidades del mundo: un array (se recorre y se busca como siempre) con add / move / remove
@@ -186,6 +189,12 @@ export class EntityList extends Array<Entity> {
   }
   // Cambia el modelo de una entidad (p. ej. el cuadro de su walk). Un modelo nuevo se registra; con el mismo id no
   // hace nada (ni marca la zona), así se puede llamar en cada tick
+  // El tinte plano de una entidad (null lo quita); ver Entity.tint
+  setTint(id: EntityId, color: readonly [number, number, number] | null): void {
+    const e = this.get(id);
+    if (!e) throw new Error(`no hay entidad ${id}`);
+    e.tint = color ? [Math.round(color[0] * 255) / 255, Math.round(color[1] * 255) / 255, Math.round(color[2] * 255) / 255] : null;
+  }
   setModel(id: EntityId, model: VoxelSource | number): void {
     const e = this.get(id);
     if (!e) throw new Error(`no hay entidad ${id}`);

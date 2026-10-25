@@ -417,6 +417,7 @@ in vec4 aPos;                        // pies + 0.5 en x, y, z + bote, giro (radi
 in vec4 aOcc;                        // x en el atlas de cuerpos, mínimo del cuerpo (x, y, z)
 in vec4 aOccSize;                    // tamaño del cuerpo, w = 1 si lleva luz
 in vec2 aMask;                       // qué luces la alumbran (bits 0-15 y 16-31), con tope de luces por entidad
+in vec4 aTint;                       // tinte plano (r, g, b) y w = 1 si lo lleva (Entity.tint)
 uniform vec2 uViewSize;
 uniform vec2 uCell;
 flat out vec4 vPlace;
@@ -424,8 +425,9 @@ flat out vec4 vPos;
 flat out vec4 vOcc;
 flat out vec4 vOccSize;
 flat out uint vMask;
+flat out vec4 vTint;
 void main() {
-  vPlace = aPlace; vPos = aPos; vOcc = aOcc; vOccSize = aOccSize;
+  vPlace = aPlace; vPos = aPos; vOcc = aOcc; vOccSize = aOccSize; vTint = aTint;
   vMask = uint(aMask.x) | (uint(aMask.y) << 16u);
   vec2 p = aPlace.xy + aCorner * uCell;
   gl_Position = vec4(p / uViewSize * 2.0 - 1.0, 0.0, 1.0);
@@ -449,6 +451,7 @@ flat in vec4 vPos;
 flat in vec4 vOcc;
 flat in vec4 vOccSize;
 flat in uint vMask;
+flat in vec4 vTint;
 layout(location = 0) out vec4 oColor;
 layout(location = 1) out vec4 oLight;
 layout(location = 2) out vec4 oDepth;
@@ -502,7 +505,8 @@ void main() {
   gl_FragDepth = clamp((depth - uDepthRange.x) * uDepthRange.y, 0.0, 1.0);
   vec3 total = uAmbient;
   uvec4 vx = texelFetch(uSprVox, ivec3(ij, layer), 0);
-  if (vx.a != 255u && (vx.a & 128u) != 0u) total = vec3(${EMISSIVE});    // emisivo: su propia luz (frame2d.ts)
+  if (vTint.w > 0.5 && vx.a != 255u) { c.rgb = vTint.rgb; total = vec3(${EMISSIVE}); }   // tinte plano (Entity.tint)
+  else if (vx.a != 255u && (vx.a & 128u) != 0u) total = vec3(${EMISSIVE});    // emisivo: su propia luz (frame2d.ts)
   else if (uLights && vOccSize.w != 0.0 && vx.a != 255u) {
     vec3 v = vec3(vx.rgb) - 128.0;
     vec3 n = uDirs[int(vx.a & 127u)];

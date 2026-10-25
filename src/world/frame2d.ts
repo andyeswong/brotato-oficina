@@ -110,7 +110,12 @@ export function frame2DParts(state: WorldState, b: Baked, o: Frame2DOptions): { 
     depthBuf[t] = entDepth[t]!;
     view[t * 4] = d.img.rgba[s * 4]!; view[t * 4 + 1] = d.img.rgba[s * 4 + 1]!; view[t * 4 + 2] = d.img.rgba[s * 4 + 2]!;
     const et = etotals[k], fl = feetLight[k];
-    if (total && et) { total[t * 3] = et[s * 3]!; total[t * 3 + 1] = et[s * 3 + 1]!; total[t * 3 + 2] = et[s * 3 + 2]!; }
+    const tint = d.e.tint;
+    if (tint && !Number.isNaN(d.img.pickKey?.[s] ?? NaN)) {
+      // Tinte plano (Entity.tint): el vóxel, de ese color y con luz propia; el contorno (sin vóxel) se queda
+      view[t * 4] = Math.round(tint[0] * 255); view[t * 4 + 1] = Math.round(tint[1] * 255); view[t * 4 + 2] = Math.round(tint[2] * 255);
+      if (total) total.fill(EMISSIVE_LIGHT, t * 3, t * 3 + 3);
+    } else if (total && et) { total[t * 3] = et[s * 3]!; total[t * 3 + 1] = et[s * 3 + 1]!; total[t * 3 + 2] = et[s * 3 + 2]!; }
     else if (total && fl) {
       if (emissiveMask(d)?.[s]) total.fill(EMISSIVE_LIGHT, t * 3, t * 3 + 3);
       else { total[t * 3] = fl[0]; total[t * 3 + 1] = fl[1]; total[t * 3 + 2] = fl[2]; }

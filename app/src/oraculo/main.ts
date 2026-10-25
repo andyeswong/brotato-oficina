@@ -120,6 +120,15 @@ const SCENARIOS: Scenario[] = [
   // Lo mismo con los sprites precalentados (los 8 cuadros del walk en los 8 rumbos, con su sombra): el cuadro no cambia
   { name: 'medieval multitud de 200, precalentada', theme: 'medieval', ticks: 30, setup: crowd(200), warm: () => [...walk.map((model) => ({ model, casts: true })), { model: maiaModel, casts: true }] },
   {
+    // Destellos de golpe (Entity.tint): unas entidades en blanco y otras en rojo, con antorchas
+    name: 'medieval 30 con destellos', theme: 'medieval', ticks: 30,
+    setup: (s, rt) => {
+      crowd(30)(s, rt);
+      s.entities.forEach((e, k) => { if (k && k % 3 === 0) s.entities.setTint(e.id, k % 2 ? [1, 1, 1] : [1, 0.25, 0.3]); });
+      s.entities.setTint(rt.entityId!, [1, 0.2, 0.2]);
+    },
+  },
+  {
     // Giros libres: 60 entidades x 30 cuadros = 1800 sprites distintos, más que el tope del atlas (MAX_SPRITE_LAYERS):
     // la GPU va sustituyendo capas y el cuadro final tiene que seguir siendo el de la CPU
     name: 'oficina 60 con giros libres', theme: 'oficina', ticks: 30, setup: crowd(60),

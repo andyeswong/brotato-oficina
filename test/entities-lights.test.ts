@@ -207,3 +207,25 @@ describe('caché de renders de entidad', () => {
     expect(entitySprite(b, e, o).img).toBe(last);
   });
 });
+
+describe('tinte de entidad (destello de golpe)', () => {
+  it('pinta sus vóxeles del color del tinte con luz propia, el contorno se queda, y se quita con null', () => {
+    const { state, body, bake } = world();
+    const b = bake();
+    const id = state.entities.add({ model: body, x: 40, y: 30, z: 1, facing: 0 });
+    const o = { vx: 0, vy: 0, vw: 96, vh: 64, time: 0, lights: true, ambient: [0.2, 0.2, 0.2] as const, outline: 'outer' as const, outlineColor: '#0d0c12' };
+    const plain = frame2D(state, b, o);
+    state.entities.setTint(id, [1, 1, 1]);
+    const white = frame2D(state, b, o);
+    let tinted = 0, other = 0;
+    for (let i = 0; i < 96 * 64; i++) {
+      const w = [white[i * 4]!, white[i * 4 + 1]!, white[i * 4 + 2]!];
+      if (w.every((v) => v === 255)) { tinted++; continue; }
+      if (w.some((v, c) => v !== plain[i * 4 + c])) other++;
+    }
+    expect(tinted).toBeGreaterThan(20);                     // el cuerpo, blanco puro aunque el ambiente sea 0,2
+    expect(other).toBe(0);                                  // y lo demás (el contorno, el suelo) no cambia
+    state.entities.setTint(id, null);
+    expect(frame2D(state, b, o)).toEqual(plain);
+  });
+});
