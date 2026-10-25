@@ -43,7 +43,9 @@ let VW = 384, VH = 216;
 // Lo que mide la interfaz (HUD, tienda, selección): siempre la regla 216/384, sea cual sea el zoom de la cámara
 let UW = 384, UH = 216;
 const INK = '#0d0c12';
-const DEAD_PAUSE_S = 0.7;   // lo que se ve la caída antes de la pantalla de fin
+const DEAD_PAUSE_S = 0.7;
+const WARM_MS = 150;         // cuadros de calentamiento detrás del letrero al empezar la partida (unos 9)
+let warmUntil = 0;   // lo que se ve la caída antes de la pantalla de fin
 const q = new URLSearchParams(location.search);
 // La cámara (ui/camera.ts): ?camara=id, o la última elegida en la selección (se recuerda en este navegador)
 const CAMERA_KEY = 'brotato.camara';
@@ -272,7 +274,11 @@ function newRun(after?: () => void): void {
     screen = 'game';
     after?.();
     frame(performance.now() / 1000);
-    loading.style.display = 'none';
+    // Calentar: unos cuadros del mundo detrás del letrero, sin que avance la partida (MAIA). Sin esto, el primer cuadro
+    // de la oleada cargaba con todo el arranque (en el Flip, 50-67 ms): el reloj traía el tiempo de la carga y el bucle
+    // fijo daba de golpe sus 10 ticks de tope. Mientras se calienta, el reloj sigue al día y la oleada empieza con un dt normal
+    warmUntil = performance.now() + WARM_MS;
+    setTimeout(() => { loading.style.display = 'none'; }, WARM_MS);
   }, 30);
 }
 
@@ -436,7 +442,7 @@ let last = performance.now();
 function loop(now: number): void {
   const dt = (now - last) / 1000;
   last = now;
-  if (screen === 'game' && game) {
+  if (screen === 'game' && game && now >= warmUntil) {
     ticks?.advance(dt);
     const over = game.phase === 'victory' || (game.phase === 'dead' && game.phaseTick * TICK >= DEAD_PAUSE_S);
     if (over) { screen = 'end'; endAt = now; }
