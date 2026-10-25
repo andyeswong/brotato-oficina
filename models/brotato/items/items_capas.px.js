@@ -141,9 +141,12 @@ function torso(o, mat) {
 
 icon("oficina-agenda", (o) => book(o, RED, WHITE, (o) => { for (let z = 0; z <= 9; z++) o.set(1, -2, z, "B") }))
 icon("oficina-alcance", (o) => {
-  o.cylx(0, 2, 1, -5, 3, STEEL)
-  o.box(4, 0, 2, 4, 0, 2, BLACK); o.set(5, 0, 2, "R"); o.set(6, 0, 2, "S")
-  o.set(-2, -1, 3, "R")                                   // el botón
+  // Puntero láser: un cilindro de 2 de grueso que llena la caja a lo largo, con la punta roja encendida
+  o.box(-6, -1, 1, 4, 0, 2, BLACK)
+  o.box(-6, -1, 1, -6, 0, 2, STEEL)
+  o.box(3, -1, 1, 4, 0, 2, STEEL)
+  o.box(5, -1, 1, 5, 0, 2, "R")
+  o.set(-2, -2, 2, "R")                                     // el botón
 })
 icon("oficina-auriculares", (o) => headphones(o, BLACK, BLACK))
 icon("oficina-botiquin", (o) => {
@@ -184,12 +187,13 @@ icon("oficina-prisa", (o) => {
   for (const x of [-2, 0, 2]) o.set(x, 0, 3, "f")          // los cordones
 })
 icon("oficina-silla-ergonomica", (o) => {
+  // De perfil (mira a la derecha): respaldo más alto que ancho, asiento, pata central y base de estrella con ruedas
   o.box(-4, 0, 0, 4, 0, 0, BLACK); o.box(0, -2, 0, 0, 2, 0, BLACK)
-  for (const x of [-4, 4]) o.set(x, 0, 0, "D")              // las ruedas
-  o.box(0, 0, 1, 0, 0, 2, STEEL)
-  o.box(-4, -2, 3, 4, 1, 4, BLUE)
-  o.box(-4, 1, 5, 4, 2, 9, BLUE)
-  o.box(-5, -1, 5, -5, 1, 5, BLACK); o.box(5, -1, 5, 5, 1, 5, BLACK)   // los brazos
+  for (const [x, y] of [[-4, 0], [4, 0], [0, -2], [0, 2]]) o.set(x, y, 0, "D")
+  o.box(0, 0, 1, 0, 0, 3, STEEL)
+  o.box(-3, -2, 4, 3, 1, 5, BLUE)
+  o.box(-4, -2, 6, -3, 1, 11, BLUE)
+  o.box(-2, -2, 7, -2, -2, 7, BLACK); o.box(-2, 1, 7, -2, 1, 7, BLACK)   // el brazo
 })
 icon("oficina-termo", (o) => {
   o.cyl(0, 0, 2, 0, 8, STEEL)
@@ -212,13 +216,15 @@ icon("medieval-alcance", (o) => {
   o.box(-4, -2, 3, -4, 2, 3, LEATHER)                      // la correa
 })
 icon("medieval-auriculares", (o) => {
-  // Capucha: media cúpula de paño con la cara en sombra, y la esclavina abajo
-  for (let z = 0; z <= 8; z++) {
-    const r = z < 2 ? 5 : Math.round(4 * Math.sqrt(Math.max(0, 1 - ((z - 2) / 7) ** 2)))
-    o.cyl(0, 0, r, z, z, CLOTH)
+  // Capucha parda, más alta que ancha, con la punta caída a un lado y la cara como un óvalo negro
+  for (let z = 0; z <= 10; z++) {
+    const r = z < 2 ? 4 : z < 7 ? 3 : z < 9 ? 2 : 1
+    const cx = z >= 8 ? z - 7 : 0                              // la punta se cae hacia la derecha
+    o.cyl(cx, 0, r, z, z, LEATHER)
   }
-  for (let x = -2; x <= 2; x++) for (let z = 2; z <= 5; z++) for (let y = -6; y <= -1; y++) o.del(x, y, z)
-  for (let x = -2; x <= 2; x++) for (let z = 2; z <= 5; z++) o.set(x, 0, z, "B")
+  // La cara: todo el óvalo en el negro, de delante a atrás (con hueco, las paredes del paño la partían en una cruz)
+  const face = [[0, 2], [-1, 3], [0, 3], [1, 3], [-2, 4], [-1, 4], [0, 4], [1, 4], [2, 4], [-1, 5], [0, 5], [1, 5], [-1, 6], [0, 6], [1, 6]]
+  for (const [x, z] of face) for (let y = -6; y <= 0; y++) if (o.has(x, y, z)) o.set(x, y, z, "B")
 })
 icon("medieval-botiquin", (o) => {
   for (const [x, y] of [[-2, 0], [0, -1], [2, 0], [-1, 1], [1, 1]]) o.box(x, y, 0, x, y, 7, GREEN)
@@ -260,8 +266,10 @@ icon("medieval-precision", (o) => {
 })
 icon("medieval-prisa", (o) => shoe(o, "j", LEATHER, 6))
 icon("medieval-silla-ergonomica", (o) => {
+  // Cota de malla (el aspecto medieval de la silla ergonómica): camisa de anillas con cinturón de cuero
   torso(o, STEEL)
-  o.each((x, y, z) => { if (y === -1 && (x + z) % 2 === 0) o.set(x, y, z, "a") })   // la malla
+  o.each((x, y, z) => { if (y === -1 && (x + z) % 2 === 0) o.set(x, y, z, "a") })
+  o.box(-3, -2, 2, 3, -2, 2, "k"); o.set(0, -2, 2, "q")      // el cinturón y su hebilla
 })
 icon("medieval-termo", (o) => {
   o.cyl(0, 0, 4, 0, 5, LEATHER)
@@ -324,10 +332,12 @@ icon("cyberpunk-precision", (o) => {
   o.box(4, 0, 4, 6, 0, 4, STEEL)                           // el cable
 })
 icon("cyberpunk-prisa", (o) => {
+  // Patín: bota de cromo, suela con la línea cian y dos ruedas rosas que brillan
   o.box(-5, -2, 2, 4, 1, 3, CHROME)
   o.box(-5, -2, 4, -1, 1, 8, CHROME)
-  o.box(-5, -2, 1, 4, 1, 1, PINK)
-  for (const x of [-4, 3]) o.cyly(x, 0, 0, -2, -2, "L")
+  o.box(-5, -2, 1, 4, 1, 1, BLACK)
+  for (let x = -5; x <= 4; x++) o.set(x, -3, 1, "O")
+  for (const x of [-4, 3]) o.cyly(x, 0, 0, -2, 1, "L")
 })
 icon("cyberpunk-silla-ergonomica", (o) => {
   torso(o, CHROME)
