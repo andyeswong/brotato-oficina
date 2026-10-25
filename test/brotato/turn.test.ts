@@ -7,7 +7,7 @@ import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
 import { runDigest } from '../../src/game/brotato/sim/digest';
-import { NEAR_WALL_H, QUARTERS, SIDE_WALL_H, dressWalls, inputToWorld, turnQuarter, viewProjector, wallDress, wallSides } from '../../src/game/brotato/ui/turn';
+import { BG_IDLE_MS, BG_STARVE_FRAMES, BG_WAVE_MS, TurnBackground, NEAR_WALL_H, QUARTERS, SIDE_WALL_H, dressWalls, inputToWorld, turnQuarter, viewProjector, wallDress, wallSides } from '../../src/game/brotato/ui/turn';
 
 // El giro de la cámara en el juego (src/game/brotato/ui/turn.ts), sobre la vista girada de VoxPix.
 const { registry } = validateContent(discoverContent());
@@ -38,6 +38,45 @@ describe('girar', () => {
     const up = QUARTERS.map((q) => inputToWorld(new ViewCamera(q, 640, 480), 0, 1).map((v) => Math.round(v) + 0));
     expect(up).toEqual([[0, 1], [-1, 0], [0, -1], [1, 0]]);
     for (const q of QUARTERS) expect(inputToWorld(new ViewCamera(q, 640, 480), 0, 0)).toEqual([0, 0]);
+  });
+});
+
+describe('el segundo plano de los giros', () => {
+  // Un reloj falso y trabajos que gastan 1 ms por unidad hasta su plazo o hasta acabar sus `units`
+  const setup = () => {
+    let t = 0;
+    const bg = new TurnBackground(() => t);
+    const job = (units: number) => { const j = { done: 0, run(deadline: number) { do { t += 1; j.done++; } while (j.done < units && t < deadline); return j.done >= units; } }; return j; };
+    return { bg, job };
+  };
+
+  it('sin juego da 8 ms por cuadro y en la oleada 3, menos lo que ya gastó el rehorneado', () => {
+    const { bg, job } = setup();
+    const a = job(100);
+    bg.run([a], false, 0);
+    expect(a.done).toBe(BG_IDLE_MS);
+    const b = job(100);
+    bg.run([b], true, 1);
+    expect(b.done).toBe(BG_WAVE_MS - 1);
+  });
+
+  it('en la oleada sin presupuesto espera, y cada 4 cuadros da un paso mínimo para no quedarse atascado', () => {
+    const { bg, job } = setup();
+    const a = job(100);
+    for (let f = 1; f < BG_STARVE_FRAMES; f++) bg.run([a], true, BG_WAVE_MS);
+    expect(a.done).toBe(0);
+    bg.run([a], true, BG_WAVE_MS);
+    expect(a.done).toBe(1);
+  });
+
+  it('en orden: el siguiente empieza solo si el anterior acabó, y los acabados salen de la lista', () => {
+    const { bg, job } = setup();
+    const a = job(2), b = job(100), c = job(100);
+    const left = bg.run([a, b, c], false, 0);
+    expect(a.done).toBe(2);
+    expect(b.done).toBe(BG_IDLE_MS - 2);
+    expect(c.done).toBe(0);
+    expect(left).toEqual([b, c]);
   });
 });
 

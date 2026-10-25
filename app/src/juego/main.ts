@@ -11,7 +11,7 @@ import { TILE } from '@voxpix/worldgen';
 import { THEMES } from '@voxpix/content/themes';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '@voxpix/world/bake';
 import { WorldView, prepareViewJob, type Quarter } from '@voxpix/world/view';
-import { inputToWorld, turnQuarter, viewProjector, wallDress } from '../../../src/game/brotato/ui/turn';
+import { TurnBackground, inputToWorld, turnQuarter, viewProjector, wallDress, type BgJob } from '../../../src/game/brotato/ui/turn';
 import { FrameBudget } from '@voxpix/view/budget';
 import { createCompositor } from '@voxpix/view/compositor';
 import { walkFrames, WALK_FRAME_MS } from '@voxpix/anim/walk';
@@ -213,6 +213,9 @@ const views = new Map<Quarter, TurnView>();
 let cur: TurnView | null = null;
 const pending = new Map<Quarter, { prep: ReturnType<typeof prepareViewJob>; t0: number }>();
 let runStart = 0;
+// Los trabajos de esos giros, aparte del FrameBudget del rehorneado: tienen su presupuesto según la fase (ui/turn.ts)
+let bgJobs: BgJob[] = [];
+const turnBg = new TurnBackground();
 const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number; how: string }> = [];
 (window as unknown as { __giros: typeof bakeLog }).__giros = bakeLog;
 let ticks: FixedLoop | null = null;
@@ -243,6 +246,7 @@ function newRun(after?: () => void): void {
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
     views.clear();
     pending.clear();
+    bgJobs = [];
     quarter = 0;
     runStart = performance.now();
     cur = bakeView(0);
@@ -256,7 +260,7 @@ function newRun(after?: () => void): void {
     // Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
     for (const k of [turnQuarter(0, 1), turnQuarter(0, -1), 2 as Quarter]) {
       const prep = prepareViewJob(game.state, k, bakeOptions(), { dress: wallDress(game.run.arena.layout) });
-      budget.push(prep.job);
+      bgJobs.push(prep.job);
       pending.set(k, { prep, t0: performance.now() });
     }
     shopMessage = null;
@@ -318,6 +322,7 @@ function turn(step: 1 | -1): void {
     if (p) {
       const t0 = performance.now();
       while (!p.prep.job.run(Infinity)) { /* el resto del trabajo, de una vez */ }
+      bgJobs = bgJobs.filter((j) => j !== p.prep.job);
       go(keep(next, p.prep.result()!, t0, 'terminado al girar'));
     } else go(bakeView(next));
     loading.style.display = 'none';
@@ -341,7 +346,7 @@ function toSelect(): void {
   seed = (seed * 7919 + 13) % 1000003;
   level = levelFor(seed);
   theme = level.theme;
-  game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear();
+  game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear(); bgJobs = [];
   flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
@@ -437,7 +442,8 @@ function loop(now: number): void {
   flashes.update(dt);
   if (screen !== 'select') frame(now / 1000);
   if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
-  budget.run();
+  const spent = budget.run();
+  if (game && bgJobs.length) bgJobs = turnBg.run(bgJobs, game.phase === 'wave', spent);
   if (pending.size) collectViews();
   drawUi();
   next(loop);
