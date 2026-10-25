@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { Model, material } from '@voxpix/core';
 import { bakeWorld } from '@voxpix/world/bake';
-import { WorldView, ViewCamera, type Quarter } from '@voxpix/world/view';
+import { WorldView, ViewCamera, prepareViewJob, type Quarter } from '@voxpix/world/view';
 import { WALL } from '@voxpix/worldgen';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
 import { runDigest } from '../../src/game/brotato/sim/digest';
-import { CLEARED_SETTLE_TICKS, NEAR_WALL_H, QUARTERS, SIDE_WALL_H, bakeInBackground, dressWalls, inputToWorld, turnQuarter, viewProjector, wallSides } from '../../src/game/brotato/ui/turn';
+import { NEAR_WALL_H, QUARTERS, SIDE_WALL_H, dressWalls, inputToWorld, turnQuarter, viewProjector, wallDress, wallSides } from '../../src/game/brotato/ui/turn';
 
 // El giro de la cámara en el juego (src/game/brotato/ui/turn.ts), sobre la vista girada de VoxPix.
 const { registry } = validateContent(discoverContent());
@@ -38,14 +38,6 @@ describe('girar', () => {
     const up = QUARTERS.map((q) => inputToWorld(new ViewCamera(q, 640, 480), 0, 1).map((v) => Math.round(v) + 0));
     expect(up).toEqual([[0, 1], [-1, 0], [0, -1], [1, 0]]);
     for (const q of QUARTERS) expect(inputToWorld(new ViewCamera(q, 640, 480), 0, 0)).toEqual([0, 0]);
-  });
-
-  it('cuándo se hornean los giros que faltan: nunca en la oleada; en el respiro ya pintado y en la tienda', () => {
-    expect(bakeInBackground('wave', 500)).toBe(false);
-    expect(bakeInBackground('cleared', CLEARED_SETTLE_TICKS - 1)).toBe(false);
-    expect(bakeInBackground('cleared', CLEARED_SETTLE_TICKS)).toBe(true);
-    expect(bakeInBackground('shop', 0)).toBe(true);
-    expect(bakeInBackground('dead', 100)).toBe(false);
   });
 });
 
@@ -100,12 +92,32 @@ describe('la vista girada del juego', () => {
     expect(facade.every((i) => south.get(i) === 'far')).toBe(true);
   });
 
+  it('en segundo plano (prepareViewJob con el vestido): paredes bajas, luces de la fachada escondidas y lo mismo que de golpe', { timeout: 60_000 }, () => {
+    const g = game('medieval');
+    const layout = g.run.arena.layout, depth = g.state.solid.depth, opts = { topZ: 40, incline: 0.5 };
+    const prep = prepareViewJob(g.state, 2, opts, { dress: wallDress(layout) });
+    expect(prep.result()).toBeNull();
+    let steps = 0;
+    while (!prep.job.run(performance.now() + 2)) steps++;
+    expect(steps).toBeGreaterThan(1);   // de verdad por pasos
+    const { view, baked } = prep.result()!;
+    const sides = wallSides(layout, view.camera, depth);
+    for (const [i, side] of sides) if (side === 'near') expect(cellTop(view, layout, i, depth)).toBeLessThan(NEAR_WALL_H);
+    const facadeLights = g.state.lights.filter((l) => String(l.id).startsWith('facade-'));
+    expect(facadeLights.length).toBeGreaterThan(0);
+    expect(facadeLights.every((l) => view.hideLight?.(l))).toBe(true);
+    expect(view.frame().lights.some((l) => String(l.id).startsWith('facade-'))).toBe(false);
+    const sync = new WorldView(g.state, 2, { dress: wallDress(layout) });
+    expect(Buffer.from(bakeWorld(sync.bakeable(), opts).rgba).equals(Buffer.from(baked.rgba))).toBe(true);
+    expect(g.state.solid).not.toBe(view.static);
+  });
+
   it('hornear vistas giradas no cambia la partida', { timeout: 60_000 }, () => {
     const a = game('oficina', 9), b = game('oficina', 9);
     const walk = (t: number) => ({ dx: Math.cos(t / 40), dy: Math.sin(t / 40), stomp: false });
     for (let t = 0; t < 400; t++) {
       a.step(walk(t)); b.step(walk(t));
-      if (t % 100 === 0) { const v = new WorldView(b.state, ((t / 100) % 4) as Quarter); dressWalls(v, b.run.arena.layout); bakeWorld(v.bakeable(), { topZ: 40, incline: 0.5 }); v.frame(); }
+      if (t % 100 === 0) { const v = new WorldView(b.state, ((t / 100) % 4) as Quarter, { dress: wallDress(b.run.arena.layout) }); bakeWorld(v.bakeable(), { topZ: 40, incline: 0.5 }); v.frame(); }
     }
     expect(b.state.hash()).toBe(a.state.hash());
     expect(runDigest(b.run, b.current, false)).toBe(runDigest(a.run, a.current, false));

@@ -5,20 +5,17 @@
 //   - dressWalls: las paredes según el lado de la cámara. Son CONTENIDO del juego, no del motor: el nivel del Brotato
 //     se construyó para mirar desde el sur (la pared norte alta y con fachada, las de los lados bajas, la sur más baja
 //     aún). Girado, la de delante taparía la arena; aquí se rebaja en la copia girada de la vista, nunca en el mundo.
-//   - bakeInBackground: cuándo se hornean los giros que faltan. En los momentos sin juego (el respiro tras una oleada y
-//     la tienda), nunca en mitad de una oleada: un horneado son ~0,7-0,85 s en el Flip y rompería la puerta de los
-//     16,8 ms (MAIA).
+//   - wallDress: ese vestido como gancho de la vista (ViewDress de VoxPix): el motor lo llama al copiar la vista y otra
+//     vez cuando vuelve a copiar trozos que cambiaron, así la pared rebajada no vuelve a salir alta.
+// Los giros que faltan se preparan en segundo plano con prepareViewJob (por pasos, con el presupuesto por cuadro).
 import { TILE, WALL, type Layout } from '@voxpix/worldgen';
-import type { ViewCamera, WorldView, Quarter } from '@voxpix/world/view';
-import type { Phase } from '../play';
+import type { ViewCamera, ViewDress, WorldView, Quarter } from '@voxpix/world/view';
 import type { Projector } from './fx';
 
 export const QUARTERS: readonly Quarter[] = [0, 1, 2, 3];
 // Las alturas de build.ts para la pared de delante (la sur) y las de los lados
 export const NEAR_WALL_H = 6;
 export const SIDE_WALL_H = 12;
-// En el respiro, cuántos ticks se deja ver "oleada superada" antes de hornear (el cuadro de horneado se queda quieto)
-export const CLEARED_SETTLE_TICKS = 12;
 
 export function turnQuarter(q: Quarter, step: 1 | -1): Quarter {
   return (((q + step) % 4) + 4) % 4 as Quarter;
@@ -30,11 +27,6 @@ export function inputToWorld(cam: ViewCamera, dx: number, dy: number): [number, 
 
 export function viewProjector(cam: ViewCamera, baked: Projector): Projector {
   return { project: (x, y, z) => { const [vx, vy] = cam.pointToView(x, y); return baked.project(vx, vy, z); } };
-}
-
-// ¿Se puede hornear ahora un giro que falta? Solo sin juego: el respiro (ya pintado) y la tienda
-export function bakeInBackground(phase: Phase, phaseTick: number): boolean {
-  return phase === 'shop' || (phase === 'cleared' && phaseTick >= CLEARED_SETTLE_TICKS);
 }
 
 // Las celdas de pared del nivel según el lado de la cámara: delante (entre la cámara y el suelo), a un lado o al fondo.
@@ -57,12 +49,12 @@ export function wallSides(layout: Layout, cam: ViewCamera, depth: number): Map<n
   return out;
 }
 
-// Rebaja en la vista girada las paredes de delante y de los lados, y devuelve los ids de las luces que colgaban de lo
-// rebajado (la fachada norte, cuando queda delante): sin pared, flotarían. Con el giro 0 no hace nada (la vista es el
-// mundo de verdad, sin copia).
+// Rebaja en la vista girada las paredes de delante y de los lados, y esconde (view.hideLight) las luces que colgaban de
+// lo rebajado (la fachada norte, cuando queda delante): sin pared, flotarían. Devuelve sus ids. Con el giro 0 no hace
+// nada: desde el sur las paredes ya están como deben, y sin vestido la vista es el mundo de la simulación (sin copia).
 export function dressWalls(view: WorldView, layout: Layout): Set<string | number> {
   const dropped = new Set<string | number>();
-  if (view.quarter === 0) return dropped;
+  if (view.quarter === 0 || view.static === view.state.solid) return dropped;
   const st = view.state, depth = st.solid.depth, cam = view.camera, s = view.static;
   const sides = wallSides(layout, cam, depth);
   const capOf = new Map<number, number>();
@@ -89,5 +81,12 @@ export function dressWalls(view: WorldView, layout: Layout): Set<string | number
     const cap = String(l.id).startsWith('facade-') ? facadeCap(cx) : capOf.get(cy * layout.cols + cx);
     if (cap !== undefined && l.z >= cap) dropped.add(l.id);
   }
+  view.hideLight = dropped.size ? (l) => dropped.has(l.id) : null;
   return dropped;
+}
+
+// El vestido como gancho de la vista. Se viste entero cada vez (también cuando el motor vuelve a copiar trozos que
+// cambiaron): son pocos miles de columnas de pared y en el Brotato el mundo casi no cambia
+export function wallDress(layout: Layout): ViewDress {
+  return (view) => { dressWalls(view, layout); };
 }

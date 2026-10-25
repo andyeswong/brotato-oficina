@@ -26,7 +26,7 @@ Parámetros de `juego.html`:
 - `?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no` elige el contorno.
 - `?ir=tienda|fin` simula sin entrada hasta la primera tienda o hasta el final.
 - En la partida, Q / E giran la cámara en cuartos de vuelta (VoxPix `WorldView`). Arriba es siempre lejos de la cámara.
-  El giro actual se hornea al empezar y los otros tres en el respiro y la tienda; hasta entonces, girar hornea con
+  El giro actual se hornea al empezar y los otros tres en segundo plano, por pasos; si se gira antes, se termina con
   «Girando…». `window.__giros` registra cada horneado.
 - Para medir (fase 4): `?ola=N` empieza en la oleada N, e `?inmortal` hace que MAIA no caiga. El número de enemigos
   vivos sale en `data-enemigos` del `body`.

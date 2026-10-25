@@ -10,8 +10,8 @@ import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/in
 import { TILE } from '@voxpix/worldgen';
 import { THEMES } from '@voxpix/content/themes';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '@voxpix/world/bake';
-import { WorldView, type Quarter } from '@voxpix/world/view';
-import { QUARTERS, bakeInBackground, dressWalls, inputToWorld, turnQuarter, viewProjector } from '../../../src/game/brotato/ui/turn';
+import { WorldView, prepareViewJob, type Quarter } from '@voxpix/world/view';
+import { inputToWorld, turnQuarter, viewProjector, wallDress } from '../../../src/game/brotato/ui/turn';
 import { FrameBudget } from '@voxpix/view/budget';
 import { createCompositor } from '@voxpix/view/compositor';
 import { walkFrames, WALK_FRAME_MS } from '@voxpix/anim/walk';
@@ -205,12 +205,15 @@ let level = levelFor(seed);
 let game: BrotatoGame | null = null;
 let baked: Baked | null = null;
 // El giro de la cámara (ui/turn.ts): Q / E en la partida. Cada giro es una vista girada del mundo con su horneado; se
-// guardan los 4 (unos 19 MB cada uno). El actual se hornea al empezar y los demás en los momentos sin juego
-interface TurnView { view: WorldView; baked: Baked; dropped: Set<string | number> }
+// guardan los 4 (unos 52 MB cada uno con su copia girada). El actual se hornea al empezar y los demás en segundo plano,
+// por pasos y con el presupuesto por cuadro (prepareViewJob de VoxPix)
+interface TurnView { view: WorldView; baked: Baked }
 let quarter: Quarter = 0;
 const views = new Map<Quarter, TurnView>();
 let cur: TurnView | null = null;
-const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number }> = [];
+const pending = new Map<Quarter, { prep: ReturnType<typeof prepareViewJob>; t0: number }>();
+let runStart = 0;
+const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number; how: string }> = [];
 (window as unknown as { __giros: typeof bakeLog }).__giros = bakeLog;
 let ticks: FixedLoop | null = null;
 let budget = new FrameBudget(3);
@@ -239,7 +242,9 @@ function newRun(after?: () => void): void {
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
     views.clear();
+    pending.clear();
     quarter = 0;
+    runStart = performance.now();
     cur = bakeView(0);
     baked = cur.baked;
     // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
@@ -248,6 +253,12 @@ function newRun(after?: () => void): void {
     compositor.prewarm(baked, viewOptions(0, 0, performance.now() / 1000), game.preloadModels());
     ticks = new FixedLoop(game, input, 10);
     budget = new FrameBudget(3);
+    // Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
+    for (const k of [turnQuarter(0, 1), turnQuarter(0, -1), 2 as Quarter]) {
+      const prep = prepareViewJob(game.state, k, bakeOptions(), { dress: wallDress(game.run.arena.layout) });
+      budget.push(prep.job);
+      pending.set(k, { prep, t0: performance.now() });
+    }
     shopMessage = null;
     effects.clear();
     flashes.clear();
@@ -258,20 +269,34 @@ function newRun(after?: () => void): void {
   }, 30);
 }
 
-// Hornea la vista de un giro: la vista girada, sus paredes según el lado (contenido del juego) y su horneado
+function bakeOptions() {
+  return { topZ: TOPZ, incline: camera.incline, outline: outline.scenery === false ? 'none' as const : outline.id, outlineColor: outline.color };
+}
+
+// Hornea de golpe la vista de un giro (el 0 al empezar, sin vestido: desde el sur las paredes ya están bien)
 function bakeView(q: Quarter): TurnView {
   const g = game!;
-  const view = new WorldView(g.state, q);
-  const dropped = dressWalls(view, g.run.arena.layout);
-  const src = view.bakeable();
-  const bk = dropped.size ? { ...src, lights: src.lights.filter((l) => !dropped.has(l.id)) } : src;
   const t0 = performance.now();
-  const out: TurnView = { view, dropped, baked: bakeWorld(bk, { topZ: TOPZ, incline: camera.incline, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color }) };
-  views.set(q, out);
-  // Para medir (fase 4 y el giro): cada horneado con su giro, lo que tardó y en qué fase de la partida cayó
-  bakeLog.push({ q, ms: Math.round(performance.now() - t0), phase: g.phase, wave: g.run.waveNumber });
+  const view = new WorldView(g.state, q, q === 0 ? {} : { dress: wallDress(g.run.arena.layout) });
+  return keep(q, { view, baked: bakeWorld(view.bakeable(), bakeOptions()) }, t0, 'de golpe');
+}
+
+// Guarda un giro listo. Para medir (fase 4 y el giro): cuándo quedó, cuánto tardó y en qué fase de la partida
+function keep(q: Quarter, t: TurnView, t0: number, how: string): TurnView {
+  views.set(q, t);
+  pending.delete(q);
+  const g = game!;
+  bakeLog.push({ q, ms: Math.round(performance.now() - t0), phase: g.phase, wave: g.run.waveNumber, how });
   document.body.dataset.giros = String(views.size);
-  return out;
+  return t;
+}
+
+// Recoge los giros de segundo plano que ya acabaron
+function collectViews(): void {
+  for (const [k, p] of pending) {
+    const r = p.prep.result();
+    if (r) keep(k, r, runStart, 'segundo plano (desde el empezar)');
+  }
 }
 
 // Girar: si el giro ya está horneado, al momento; si no, con el letrero «Girando…» mientras se hornea
@@ -280,6 +305,7 @@ function turn(step: 1 | -1): void {
   if (!game || !cur || turning) return;
   const next = turnQuarter(quarter, step);
   const go = (t: TurnView) => { quarter = next; cur = t; baked = t.baked; };
+  collectViews();
   const have = views.get(next);
   if (have) { go(have); return; }
   turning = true;
@@ -287,7 +313,13 @@ function turn(step: 1 | -1): void {
   loading.textContent = 'Girando…';
   loading.style.display = 'flex';
   setTimeout(() => {
-    go(bakeView(next));
+    // Si estaba a medias en segundo plano, se termina de golpe; si no, se hornea entero
+    const p = pending.get(next);
+    if (p) {
+      const t0 = performance.now();
+      while (!p.prep.job.run(Infinity)) { /* el resto del trabajo, de una vez */ }
+      go(keep(next, p.prep.result()!, t0, 'terminado al girar'));
+    } else go(bakeView(next));
     loading.style.display = 'none';
     loading.textContent = text;
     turning = false;
@@ -309,7 +341,7 @@ function toSelect(): void {
   seed = (seed * 7919 + 13) % 1000003;
   level = levelFor(seed);
   theme = level.theme;
-  game = null; baked = null; ticks = null; cur = null; views.clear();
+  game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear();
   flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
@@ -329,9 +361,8 @@ function input(): TickInput {
 function frame(time: number): void {
   if (!game || !cur) return;
   const s = game.state, b = cur.baked, cam = cur.view.camera;
-  // La vista girada al día (con el giro 0 es el mundo tal cual), sin las luces de lo que se rebajó
+  // La vista girada al día (con el giro 0 es el mundo tal cual); las luces de lo rebajado ya no vienen (hideLight)
   const rs = cur.view.frame();
-  if (cur.dropped.size) cur.view.lights = cur.view.lights.filter((l) => !cur!.dropped.has(l.id));
   const me = s.entities.get(game.playerId)!;
   const [mx, my] = cam.pointToView(me.x + 0.5, me.y);
   const feet = b.cam.project(mx, my, me.z);
@@ -406,13 +437,8 @@ function loop(now: number): void {
   flashes.update(dt);
   if (screen !== 'select') frame(now / 1000);
   if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
-  // Los giros que faltan, uno por cuadro y solo sin juego (el respiro y la tienda): nunca en mitad de una oleada
-  if (game && cur && !turning && views.size < 4 && bakeInBackground(game.phase, game.phaseTick)) {
-    const order = [turnQuarter(quarter, 1), turnQuarter(quarter, -1), turnQuarter(turnQuarter(quarter, 1), 1)];
-    const q = order.find((k) => !views.has(k)) ?? QUARTERS.find((k) => !views.has(k));
-    if (q !== undefined) bakeView(q);
-  }
   budget.run();
+  if (pending.size) collectViews();
   drawUi();
   next(loop);
 }
