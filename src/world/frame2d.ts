@@ -187,6 +187,13 @@ export function entitySprite(b: Baked, e: Entity, o: Frame2DOptions): EntitySpri
   return { e, img, key: `${mid}|${ck}`, offX, offY, dOff, fx, fy, sry, X, Y, Z, bob, ro: lo };
 }
 
+// Para precalentar (Compositor.prewarm): una entidad de paso con ese modelo y giro, en el origen. Sus campos de
+// mundo no cuentan para el sprite (solo el modelo, el giro y la proyección).
+export const HEADINGS = [0, 45, 90, 135, 180, 225, 270, 315] as const;
+export function warmEntity(model: VoxelSource, yaw: number): Entity {
+  return { id: -1, modelId: -1, model, x: 0, y: 0, z: 0, yaw, castsShadow: false, rampOffset: 0 };
+}
+
 function entityRenderOptions(b: Baked, e: Entity, o: Frame2DOptions) {
   return { width: EW, height: EH, originX: EOX, originY: EOY, pivot: [0.5, 0, 0] as [number, number, number], yaw: e.yaw,
     oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: o.outline ?? 'none', ...(o.outlineColor ? { outlineColor: o.outlineColor } : {}), pick: o.lights };

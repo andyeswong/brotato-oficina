@@ -12,13 +12,15 @@
 //     (dónde va, qué sprite) y la tabla de luces.
 import { DIR_VECTORS, unkey } from '../../core';
 import { resolveLight } from '../../world/lightutil';
-import { entitySprite, entityDepthRange, entityLightPick, emissiveMask, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
+import { entitySprite, warmEntity, HEADINGS, entityDepthRange, entityLightPick, emissiveMask, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
 import { worldPointAt, type Baked, type BakedLight } from '../../world/bake';
 import type { WorldState } from '../../world/state';
 import type { Rendered, VoxelSource } from '../../core';
 import { FRAG_CONTACT, FRAG_DROPS, FRAG_ENTITY, FRAG_SCENE, FRAG_SHADE, FRAG_WATER, MAX_BAKED, MAX_CASTERS, MAX_LIGHTS, VERT_CONTACT, VERT_DROPS, VERT_ENTITY, VERT_FULLSCREEN } from './shaders';
 
 export type GpuOutput = 'frame' | 'color' | 'multiply' | 'add';
+// Un modelo para precalentar: en qué giros (por defecto los 8 rumbos) y si da sombra de verdad
+export interface WarmItem { model: VoxelSource; yaws?: readonly number[]; casts?: boolean }
 // Tope del atlas de sprites de entidades (48x72 cada uno, ~40 KB en la GPU y ~60 KB en la CPU)
 export const MAX_SPRITE_LAYERS = 1024;
 
@@ -549,6 +551,27 @@ export class GpuCompositor {
     this.spriteUse[layer] = this.frameNo;
     this.uploadSprite(d.img, layer, this.spriteEmissive[layer] ?? null);
     return layer;
+  }
+
+  // Precalentar: renderiza y sube por adelantado los sprites de esos modelos (en esos giros; por defecto los 8
+  // rumbos), sus cuerpos para el rayo de su propia luz y, si dan sombra, sus cuerpos girados; así el primer cuadro en
+  // que aparecen no paga nada de eso. Con un presupuesto en ms se para al pasarlo y devuelve cuántos sprites quedan
+  // (se vuelve a llamar en otro cuadro: lo ya subido se salta).
+  prewarm(b: Baked, o: Frame2DOptions, list: readonly WarmItem[], budgetMs = Infinity): number {
+    const t0 = performance.now();
+    let left = 0;
+    const occs: Array<ReturnType<typeof occupancy>> = [];
+    for (const it of list) {
+      for (const yaw of it.yaws ?? HEADINGS) {
+        if (performance.now() - t0 > budgetMs) { left++; continue; }
+        this.spriteLayer(entitySprite(b, warmEntity(it.model, yaw), o));
+        if (it.casts) occs.push(occupancy(it.model, yaw));
+      }
+      if (o.lights) this.body(it.model);
+    }
+    this.syncBodies();
+    if (occs.length) { const place = this.occPlace; this.syncOcc(occs); this.occPlace = place; }
+    return left;
   }
 
   // Cuántos sprites hay en el atlas (para medir)

@@ -4,10 +4,11 @@
 // Si la GPU pierde el contexto (en el móvil pasa al ir a segundo plano), mientras tanto pinta la CPU en un lienzo 2D
 // que ocupa el sitio del de WebGL; cuando el contexto vuelve, la GPU se rehace, lo sube todo de nuevo desde el Baked
 // y su lienzo vuelve a su sitio. Si no vuelve, se queda la CPU.
-import { frame2D, type Frame2DOptions } from '../world/frame2d';
+import { frame2D, entitySprite, warmEntity, HEADINGS, type Frame2DOptions } from '../world/frame2d';
 import type { Baked } from '../world/bake';
 import type { WorldState } from '../world/state';
-import { GpuCompositor } from './gpu/compositor';
+import { GpuCompositor, type WarmItem } from './gpu/compositor';
+export type { WarmItem };
 
 export interface CompositorStats {
   frameMs: number;             // lo que tardó frame() en el hilo principal (en la GPU: preparar y subir, no dibujar)
@@ -21,6 +22,10 @@ export interface Compositor {
   readonly canvas: HTMLCanvasElement;
   readonly stats: CompositorStats;
   frame(state: WorldState, b: Baked, o: Frame2DOptions): void;
+  // Prepara por adelantado los sprites de esos modelos (en la GPU, también subidos con sus cuerpos), para que el
+  // primer cuadro en que aparecen no pague su render. `o` como en frame (cuentan el contorno y si hay luces). Con
+  // budgetMs se para al pasarlo y devuelve cuántos quedan; se vuelve a llamar en el cuadro siguiente.
+  prewarm(b: Baked, o: Frame2DOptions, list: readonly WarmItem[], budgetMs?: number): number;
 }
 
 export function createCompositor(canvas: HTMLCanvasElement, opts: { prefer?: 'gpu' | 'cpu' } = {}): Compositor {
@@ -58,6 +63,17 @@ class CpuPath implements Compositor {
     // Por CPU, detalle bajo salvo que se pida otro: es la de reserva y no llega con una multitud (MAIA)
     this.g.putImageData(new ImageData(frame2D(s, b, { ...o, detail: o.detail ?? 'bajo' }) as Uint8ClampedArray<ArrayBuffer>, o.vw, o.vh), 0, 0);
     this.stats.frameMs = performance.now() - t0;
+  }
+
+  // En la CPU basta con dejar el render de cada sprite en la caché de frame2d
+  prewarm(b: Baked, o: Frame2DOptions, list: readonly WarmItem[], budgetMs = Infinity): number {
+    const t0 = performance.now();
+    let left = 0;
+    for (const it of list) for (const yaw of it.yaws ?? HEADINGS) {
+      if (performance.now() - t0 > budgetMs) { left++; continue; }
+      entitySprite(b, warmEntity(it.model, yaw), o);
+    }
+    return left;
   }
 }
 
@@ -97,6 +113,11 @@ class GpuPath implements Compositor {
 
   get kind(): 'gpu' | 'cpu' { return this.gpu ? 'gpu' : 'cpu'; }
   get canvas(): HTMLCanvasElement { return this.cpu?.canvas ?? this.glCanvas; }
+
+  prewarm(b: Baked, o: Frame2DOptions, list: readonly WarmItem[], budgetMs?: number): number {
+    if (this.gpu) return this.gpu.prewarm(b, o, list, budgetMs);
+    return this.cpu ? this.cpu.prewarm(b, o, list, budgetMs) : 0;
+  }
 
   frame(s: WorldState, b: Baked, o: Frame2DOptions): void {
     if (this.gpu) {

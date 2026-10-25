@@ -42,6 +42,20 @@ const vx = Math.max(0, Math.min(baked.width - VW, Math.floor(feet[0]) - VW / 2))
 const top = Math.floor(baked.cam.project(0, state.depth - 1 - 2 * TILE, 32)[1]);
 const vy = Math.max(top, Math.min(baked.height - VH, Math.floor(feet[1]) - VH / 2));
 
+// ?precalentar=1: los sprites del walk (8 cuadros x 8 rumbos, con su sombra) se suben antes del primer cuadro
+// (Compositor.prewarm); =2, además, un primer cuadro tapado (sube el horneado y compila los shaders)
+const warm = Number(q.get('precalentar') ?? 0);
+let warmMs = 0;
+const frameOpts = (t: number) => ({ vx, vy, vw: VW, vh: VH, time: t, lights: true, ambient: THEMES[theme].ambient, ...(q.get('luces') ? { entityLightCap: Number(q.get('luces')) } : {}) });
+if (warm) {
+  const w0 = performance.now();
+  compositor.prewarm(baked, frameOpts(0), walk.map((model) => ({ model, casts: q.get('sombras') !== '0' })));
+  if (warm >= 2) compositor.frame(state, baked, frameOpts(0));
+  warmMs = performance.now() - w0;
+}
+// El primer cuadro y el peor (lo que se nota como tirón)
+let first = -1, worst = 0, frames = 0;
+
 let acc = 0, n = 0, avg = 0, upAvg = 0, upAcc = 0, simAcc = 0, simAvg = 0;
 const pAcc = { baked: 0, entities: 0, casters: 0, water: 0, drops: 0 }, pAvg = { ...pAcc };
 function loop(now: number): void {
@@ -59,8 +73,12 @@ function loop(now: number): void {
   state.step();
   const t0 = performance.now();
   simAcc += t0 - s0;
-  compositor.frame(state, baked, { vx, vy, vw: VW, vh: VH, time: t, lights: true, ambient: THEMES[theme].ambient, ...(q.get('luces') ? { entityLightCap: Number(q.get('luces')) } : {}) });
-  acc += performance.now() - t0; upAcc += compositor.stats.uploadMs; n++;
+  compositor.frame(state, baked, frameOpts(t));
+  const ms = performance.now() - t0;
+  if (first < 0) first = ms;
+  if (++frames > 1) worst = Math.max(worst, ms);
+  (window as unknown as { __multitud: unknown }).__multitud = { first, worst, warmMs, frames };
+  acc += ms; upAcc += compositor.stats.uploadMs; n++;
   const pr = compositor.stats.parts;
   if (pr) for (const k of Object.keys(pAcc) as Array<keyof typeof pAcc>) pAcc[k] += pr[k];
   if (n === 30) {
@@ -69,7 +87,8 @@ function loop(now: number): void {
     acc = upAcc = simAcc = n = 0;
   }
   hud.textContent = `multitud: ${N} entidades · ${torches} antorchas${q.get('linterna') === '1' ? ' · linterna' : ''}${q.get('luces') ? ` · tope ${q.get('luces')} luces` : ''} · ${theme} · ruta ${compositor.kind}\ncuadro (CPU) ${avg.toFixed(1)} ms · de eso, preparar y subir ${upAvg.toFixed(1)} ms` +
-    ` (horneado ${pAvg.baked.toFixed(1)}, entidades ${pAvg.entities.toFixed(1)}, sombras ${pAvg.casters.toFixed(1)}, agua ${pAvg.water.toFixed(1)}, gotas ${pAvg.drops.toFixed(1)})\nmover ${N} y step del mundo ${simAvg.toFixed(1)} ms`;
+    ` (horneado ${pAvg.baked.toFixed(1)}, entidades ${pAvg.entities.toFixed(1)}, sombras ${pAvg.casters.toFixed(1)}, agua ${pAvg.water.toFixed(1)}, gotas ${pAvg.drops.toFixed(1)})\nmover ${N} y step del mundo ${simAvg.toFixed(1)} ms` +
+    `\nprimer cuadro ${first.toFixed(1)} ms · peor de los demás ${worst.toFixed(1)} ms${warm ? ` · precalentado ${warmMs.toFixed(0)} ms antes de empezar` : ''}`;
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
