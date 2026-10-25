@@ -34,9 +34,11 @@ export default defineCharacter({
   // cyberpunk (cian, como sus lentes), antorcha de luz puntual en el medieval.
   carryLight: {
     // La mano derecha de MAIA, a un lado y a la altura de las manos de su modelo; la luz sale de la lente o la llama
-    oficina: { model: 'luces/linterna', kind: 'lantern', cone: 40, hand: [8, -2, 6], emit: [0, -7, 1] },
+    // Intensidad por mundo (NARUTO): con el ambiente de la oficina (0,7) a la luz le queda 0,3 hasta 1, la mitad que
+    // en el medieval; la de cyberpunk, en el cian de su paleta, que con el ambiente azulado se lee más que el blanco
+    oficina: { model: 'luces/linterna', kind: 'lantern', cone: 40, intensity: 3, radius: 100, hand: [8, -2, 6], emit: [0, -7, 1] },
     medieval: { model: 'luces/antorcha', kind: 'torch', hand: [8, -1, 5], emit: [0, 0, 8] },
-    cyberpunk: { model: 'luces/linterna-neon', kind: 'lantern', cone: 40, hand: [8, -2, 6], emit: [0, -7, 1] },
+    cyberpunk: { model: 'luces/linterna-neon', kind: 'lantern', cone: 40, intensity: 1.8, color: [0.18, 0.9, 1], hand: [8, -2, 6], emit: [0, -7, 1] },
   },
 
 

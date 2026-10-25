@@ -33,6 +33,9 @@ export interface CarryConfig {
   model: VoxelSource | number;
   kind: SourceKind;
   cone?: number;                                  // foco: apertura en grados; sin él, luz puntual
+  intensity?: number;                             // ajustes sobre el preset de kind
+  radius?: number;
+  color?: readonly [number, number, number];
   hand: readonly [number, number, number];        // el agarre, desde los pies, mirando al frente (y negativo)
   emit: readonly [number, number, number];        // de dónde sale la luz, desde el agarre
 }
@@ -84,6 +87,8 @@ export class Runtime {
       const offset = [carry.hand[0] + carry.emit[0], carry.hand[1] + carry.emit[1], carry.hand[2] + carry.emit[2]] as const;
       this.carryLightId = world.lights.add({
         kind: carry.kind, x: p.x, y: p.y, z: p.z, ...(carry.cone ? { cone: carry.cone } : {}),
+        ...(carry.intensity ? { intensity: carry.intensity } : {}), ...(carry.radius ? { radius: carry.radius } : {}),
+        ...(carry.color ? { color: carry.color } : {}),
         follow: { entity: this.entityId, offset, ...(carry.cone ? { dir: [0, -1, -0.3] as const } : {}) },
       });
     }

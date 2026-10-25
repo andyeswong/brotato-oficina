@@ -25,7 +25,7 @@ function carryFor(t: WorldTheme): CarryConfig | undefined {
   const c = maiaContent.carryLight?.[t] ?? maiaContent.carryLight?.oficina;
   const file = c && LIGHT_MODELS[`../../../models/brotato/${c.model}.json`];
   if (!c || !file) return undefined;
-  return { model: Model.fromJSON(file), kind: c.kind, cone: c.cone, hand: c.hand, emit: c.emit };
+  return { model: Model.fromJSON(file), kind: c.kind, cone: c.cone, intensity: c.intensity, radius: c.radius, color: c.color, hand: c.hand, emit: c.emit };
 }
 
 const VW = 384, VH = 216;

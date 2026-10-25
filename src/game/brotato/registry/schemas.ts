@@ -62,6 +62,11 @@ const carryLightSchema = z.strictObject({
   model: modelRef,
   kind: z.enum(Object.keys(SOURCE_PRESETS) as [SourceKind, ...SourceKind[]]),
   cone: z.number().min(1).max(180).optional(),
+  // Ajustes sobre el preset, por mundo (NARUTO: no en el preset, que también usan las luces fijas del mapa). Con un
+  // ambiente alto a la luz le queda poco margen hasta 1, y hay que compensarlo con la intensidad.
+  intensity: z.number().positive().optional(),
+  radius: z.number().positive().optional(),
+  color: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1), z.number().min(0).max(1)]).optional(),
   hand: z.tuple([z.number(), z.number(), z.number()]),       // dónde va el agarre, desde los pies del personaje (mirando al frente, y negativo)
   emit: z.tuple([z.number(), z.number(), z.number()]),       // de dónde sale la luz, desde el agarre del modelo (la lente, la llama)
 });
