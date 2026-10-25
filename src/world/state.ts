@@ -200,14 +200,21 @@ export class LightList extends Array<WorldLight> {
 export class ModelRegistry {
   private list: VoxelSource[] = [];
   private offsets: number[] = [];
+  // Los modelos que comparten paleta (p. ej. los cuadros de una animación) comparten sus rampas en la del mundo
+  private paletteOffset = new Map<object, number>();
   constructor(private owner: WorldState) {}
   register(model: VoxelSource): number {
     const i = this.list.indexOf(model);
     if (i >= 0) return i;
     const w = this.owner;
-    this.offsets.push(w.palette.ramps.length);
-    w.palette = { ...w.palette, ramps: [...w.palette.ramps, ...model.palette.ramps] };
-    w.solid.palette = w.palette;
+    let off = this.paletteOffset.get(model.palette);
+    if (off === undefined) {
+      off = w.palette.ramps.length;
+      this.paletteOffset.set(model.palette, off);
+      w.palette = { ...w.palette, ramps: [...w.palette.ramps, ...model.palette.ramps] };
+      w.solid.palette = w.palette;
+    }
+    this.offsets.push(off);
     this.list.push(model);
     return this.list.length - 1;
   }
