@@ -27,25 +27,31 @@ export class WaterLayer {
   private fountainIn: number[] = [];              // celdas donde cae el agua del cuenco
   private fountainOut: number[] = [];             // desagüe
 
-  constructor(private world: World, isSolid: (px: number, py: number) => boolean, theme: Parameters<typeof worldPalette>[0]) {
+  // Rejilla de celdas de CELL x CELL vóxeles en ejes del modelo: la celda (gx, gy) cubre x en [gx*CELL, gx*CELL+CELL)
+  // e y en [gy*CELL, gy*CELL+CELL) (gy crece hacia el norte). El fondo de cada celda sale de la rejilla de alturas
+  // de los vóxeles del mundo; lo que sube más de WALL_Z (paredes, columnas, el fuste) o no tiene suelo, no deja pasar el agua.
+  constructor(private world: World, theme: Parameters<typeof worldPalette>[0]) {
     this.gw = Math.ceil(world.width / CELL);
     this.gh = Math.ceil(world.depth / CELL);
     this.sim = new ShallowWater(this.gw, this.gh, { cell: CELL, damping: 0.9 });
     this.basin = new Uint8Array(this.gw * this.gh);
-    const { ground, wet, waterTop, width: W } = world;
+    const { wet, waterTop, width: W } = world;
+    const height = world.model.height, zMin = world.model.zMin;
+    const WALL_Z = 8;
     for (let gy = 0; gy < this.gh; gy++) for (let gx = 0; gx < this.gw; gx++) {
       const i = gy * this.gw + gx;
       // El fondo de la celda: el más alto de sus vóxeles (así el agua no se cuela por un borde)
-      let g = -128, top = -128, anyWet = false;
+      let g = -128, top = -128, anyWet = false, hole = false;
       for (let dy = 0; dy < CELL; dy++) for (let dx = 0; dx < CELL; dx++) {
-        const px = gx * CELL + dx, py = gy * CELL + dy;
-        if (px >= W || py >= world.depth) continue;
-        const j = py * W + px;
-        g = Math.max(g, ground[j]!);
+        const x = gx * CELL + dx, y = gy * CELL + dy;
+        if (x >= W || y >= world.depth) continue;
+        const j = y * W + x;
+        if (height[j]! <= zMin) hole = true;
+        g = Math.max(g, height[j]!);
         if (wet[j]) { anyWet = true; top = Math.max(top, waterTop[j]!); }
       }
       this.sim.ground[i] = g;
-      if (isSolid(gx * CELL + 1, gy * CELL + 1)) this.sim.solid[i] = 1;
+      if (hole || g > WALL_Z) this.sim.solid[i] = 1;
       else if (anyWet) { this.basin[i] = 1; if (top > g) this.sim.depth[i] = top - g; }
     }
     this.sim.wakeAll();
@@ -63,30 +69,29 @@ export class WaterLayer {
     this.tones = worldPalette(theme).ramps[M.water]!.colors.map(rgbOf);
   }
 
-  private cellOf(px: number, py: number): number {
-    const gx = Math.floor(px / CELL), gy = Math.floor(py / CELL);
+  private cellOf(x: number, y: number): number {
+    const gx = Math.floor(x / CELL), gy = Math.floor(y / CELL);
     return gx < 0 || gy < 0 || gx >= this.gw || gy >= this.gh ? -1 : gy * this.gw + gx;
   }
 
-  // Profundidad del agua bajo un punto del juego (píxeles)
-  depthAt(px: number, py: number): number { const i = this.cellOf(px, py); return i < 0 ? 0 : this.sim.depth[i]!; }
-  groundAt(px: number, py: number): number { const i = this.cellOf(px, py); return i < 0 ? 0 : this.sim.ground[i]!; }
-  surfaceAt(px: number, py: number): number { const i = this.cellOf(px, py); return i < 0 ? 0 : this.sim.surface(i); }
+  // Todo en ejes del modelo (x este, y norte)
+  depthAt(x: number, y: number): number { const i = this.cellOf(x, y); return i < 0 ? 0 : this.sim.depth[i]!; }
+  surfaceAt(x: number, y: number): number { const i = this.cellOf(x, y); return i < 0 ? 0 : this.sim.surface(i); }
 
   // Algo que se mueve dentro del agua la empuja (ondas). Con fuerza, el agua salta el borde y moja el suelo.
-  disturb(px: number, py: number, amount: number, radius = 1.5): void {
-    this.sim.disturb(px / CELL, py / CELL, radius, amount);
+  disturb(x: number, y: number, amount: number, radius = 1.5): void {
+    this.sim.disturb(x / CELL, y / CELL, radius, amount);
   }
 
   // Añade agua en un punto (las gotas que caen)
-  pour(px: number, py: number, amount: number): void {
-    const i = this.cellOf(px, py);
+  pour(x: number, y: number, amount: number): void {
+    const i = this.cellOf(x, y);
     if (i < 0 || this.sim.solid[i]) return;
     this.sim.depth[i] = this.sim.depth[i]! + amount;
     this.sim.wake(i % this.gw, Math.floor(i / this.gw), 3);
   }
 
-  // Centros (en píxeles del juego) de las celdas donde cae el agua del cuenco de la fuente
+  // Centros (ejes del modelo) de las celdas donde cae el agua del cuenco de la fuente
   fountainLanding(k: number): [number, number] | null {
     if (!this.fountainIn.length) return null;
     const i = this.fountainIn[k % this.fountainIn.length]!;
@@ -121,7 +126,6 @@ export class WaterLayer {
     const f1 = b.cam.fwd[1], f2 = b.cam.fwd[2];
     // El rayo reflejado sube por la misma columna de pantalla: por píxel avanza tPerPx, y su profundidad crece dPerT por t
     const tPerPx = 1 / (a * f1 - f2), dPerT = f1 * f1 - f2 * f2;
-    const D = world.depth;
     const lights = b.lights.map((bl) => {
       const l = bl.light, p = SOURCE_PRESETS[l.kind];
       return { x: l.x, y: l.y, z: l.z, r: p.radius, c: p.color, k: lightIntensity(lightOf({ id: l.id, kind: l.kind, x: 0, y: 0 }), time) };
@@ -135,27 +139,28 @@ export class WaterLayer {
     const sAt = (j: number, own: number) => (sim.solid[j] || sim.depth[j]! <= 0.01 ? own : sim.ground[j]! + sim.depth[j]!);
 
     const gx0 = Math.max(0, Math.floor(vx / CELL) - 1), gx1 = Math.min(gw - 1, Math.ceil((vx + vw) / CELL) + 1);
-    const pyOf = (sy: number) => (D - (originY - sy) / a);
-    const gy0 = Math.max(0, Math.floor(pyOf(vy) / CELL) - 8), gy1 = Math.min(gh - 1, Math.ceil(pyOf(vy + vh) / CELL) + 8);
+    // Filas de celdas que pueden caer en la vista (la superficie va de z = -12 a 12)
+    const yOf = (sy: number, z: number) => (originY - sy - z) / a;
+    const gy0 = Math.max(0, Math.floor(yOf(vy + vh, -12) / CELL) - 2), gy1 = Math.min(gh - 1, Math.ceil(yOf(vy, 12) / CELL) + 2);
     for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
       const i = gy * gw + gx;
       const d = sim.depth[i]!;
       if (sim.solid[i] || d < 0.04) continue;
       const zs = sim.ground[i]! + d;
-      const north = D - gy * CELL, south = D - gy * CELL - CELL;
+      const north = gy * CELL + CELL, south = gy * CELL;
       const sy0 = Math.round(originY - a * north - zs), sy1 = Math.max(sy0 + 1, Math.round(originY - a * south - zs));
       const ymid = (north + south) / 2;
       const depthHere = ymid * f1 + zs * f2;
-      // Normal y curvatura de la superficie (y del modelo = -y del juego)
+      // Normal y curvatura de la superficie
       const sE = gx < gw - 1 ? sAt(i + 1, zs) : zs, sW = gx > 0 ? sAt(i - 1, zs) : zs;
-      const sS = gy < gh - 1 ? sAt(i + gw, zs) : zs, sN = gy > 0 ? sAt(i - gw, zs) : zs;
-      const sx = (sE - sW) / (2 * CELL), syGame = (sS - sN) / (2 * CELL);
+      const sN = gy < gh - 1 ? sAt(i + gw, zs) : zs, sS = gy > 0 ? sAt(i - gw, zs) : zs;
+      const sx = (sE - sW) / (2 * CELL), sy = (sN - sS) / (2 * CELL);
       const lap = (sE + sW + sS + sN - 4 * zs) / (CELL * CELL);
-      const nx = -sx, ny = syGame, nz = 1, nl = Math.hypot(nx, ny, nz);
+      const nx = -sx, ny = -sy, nz = 1, nl = Math.hypot(nx, ny, nz);
       const key = (nx * -0.5 + ny * 0.5 + nz * 0.7) / nl - 0.7;
       let tone = d > 4.5 ? 2 : 3;
       if (key > 0.04) tone += 1; else if (key < -0.04) tone -= 1;
-      const steep = Math.hypot(sx, syGame);
+      const steep = Math.hypot(sx, sy);
       if (steep > 0.45) tone = 4;                                         // espuma en las crestas
       if (d < 0.6 && !this.basin[i]) tone = 3;                            // suelo mojado: una película clara
       tone = Math.max(0, Math.min(4, tone));
@@ -166,7 +171,7 @@ export class WaterLayer {
       let lr = ambient[0] * 1.25, lg = ambient[1] * 1.25, lb = ambient[2] * 1.3, spec = 0, sr = 0, sg = 0, sb = 0;
       const caustic = 1 + Math.max(-0.6, Math.min(2.5, -lap * 6));
       if (total) for (const l of lights) {
-        const cx = gx * CELL + 1, cy = D - 1 - (gy * CELL + 1);
+        const cx = gx * CELL + 1, cy = gy * CELL + 1;
         const dx = l.x - cx, dy = l.y - cy, dz = l.z - zs;
         if (dx > l.r || dx < -l.r || dy > l.r || dy < -l.r) continue;
         const dist = Math.hypot(dx, dy, dz);

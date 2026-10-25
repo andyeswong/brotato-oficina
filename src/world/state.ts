@@ -12,7 +12,7 @@ import type { WorldLight } from './build';
 import type { WaterLayer } from './water';
 import { Drops } from './particles';
 
-export const CHUNK = 32;
+export const CHUNK = 16;
 
 // Vóxeles estáticos en trozos: una matriz tipada por trozo con la columna entera de zMin a zMax
 export class StaticVoxels implements VoxelSource {
@@ -21,6 +21,8 @@ export class StaticVoxels implements VoxelSource {
   readonly zh: number;
   private chunks: Array<Uint16Array | null>;
   readonly versions: Uint32Array;
+  // Altura de la cara de arriba del vóxel sólido más alto de cada columna (índice y * width + x); zMin si no hay
+  readonly height: Int16Array;
 
   constructor(public palette: Palette, readonly width: number, readonly depth: number, readonly zMin: number, readonly zMax: number) {
     this.cols = Math.ceil(width / CHUNK);
@@ -28,6 +30,7 @@ export class StaticVoxels implements VoxelSource {
     this.zh = zMax - zMin + 1;
     this.chunks = new Array(this.cols * this.rows).fill(null);
     this.versions = new Uint32Array(this.cols * this.rows);
+    this.height = new Int16Array(width * depth).fill(zMin);
   }
 
   private where(x: number, y: number, z: number): [Uint16Array | null, number, number] {
@@ -48,6 +51,19 @@ export class StaticVoxels implements VoxelSource {
     if (data[i] === value) return;
     data[i] = value;
     this.versions[c] = this.versions[c]! + 1;
+    // Rejilla de alturas: subir es directo; si se vacía el de arriba del todo, se busca el siguiente hacia abajo
+    const h = y * this.width + x;
+    if (value && z + 1 > this.height[h]!) this.height[h] = z + 1;
+    else if (!value && z + 1 === this.height[h]) {
+      let t = z - 1;
+      while (t >= this.zMin && !this.get(x, y, t)) t--;
+      this.height[h] = t >= this.zMin ? t + 1 : this.zMin;
+    }
+  }
+
+  // ¿Hay algún sólido en la columna?
+  hasColumn(x: number, y: number): boolean {
+    return x >= 0 && y >= 0 && x < this.width && y < this.depth && this.height[y * this.width + x]! > this.zMin;
   }
 
   // Vóxeles llenos de una región (en orden fijo: trozo, z, y, x)
@@ -98,7 +114,6 @@ export class WorldState {
 
   get width(): number { return this.solid.width; }
   get depth(): number { return this.solid.depth; }
-  toModelY(py: number): number { return this.depth - 1 - py; }
 
   // Añade una entidad: sus rampas se suman a la paleta del mundo (una vez por modelo)
   addEntity(id: string, model: VoxelSource, x: number, y: number, z = 0, yaw = 0): Entity {
@@ -170,33 +185,82 @@ export class WorldState {
     if (!w) return out;
     const waterRamp = this.palette.ramps.findIndex((r) => r.name === 'agua');
     if (waterRamp < 0) return out;
-    const sim = w.sim, D = this.depth;
+    const sim = w.sim;
     const gx0 = Math.max(0, Math.floor(region.x0 / 2) - 1), gx1 = Math.min(w.gw - 1, Math.ceil(region.x1 / 2) + 1);
-    const gy0 = Math.max(0, Math.floor((D - 1 - region.y1) / 2) - 1), gy1 = Math.min(w.gh - 1, Math.ceil((D - 1 - region.y0) / 2) + 1);
+    const gy0 = Math.max(0, Math.floor(region.y0 / 2) - 1), gy1 = Math.min(w.gh - 1, Math.ceil(region.y1 / 2) + 1);
     for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
       const i = gy * w.gw + gx;
       const d = sim.depth[i]!;
       if (d < 0.05 || sim.solid[i]) continue;
-      const x0 = gx * 2, y0 = D - 1 - gy * 2;
-      if (x0 + 1 < region.x0 || x0 > region.x1 || y0 < region.y0 || y0 - 1 > region.y1) continue;
+      const x0 = gx * 2, y0 = gy * 2;
+      if (x0 + 1 < region.x0 || x0 > region.x1 || y0 + 1 < region.y0 || y0 > region.y1) continue;
       const g = sim.ground[i]!, top = Math.round(g + d) - 1;
       for (let z = g + 1; z <= top; z++) {
         const tone = z === top ? 3 : top - z > 3 ? 1 : 2;
         const v = waterRamp * 16 + tone + 1;
-        for (const [dx, dy] of [[0, 0], [1, 0], [0, -1], [1, -1]] as const) out.set(key(x0 + dx, y0 + dy, z), v);
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) out.set(key(x0 + dx, y0 + dy, z), v);
       }
     }
     return out;
   }
 
-  // ---- consultas del juego (posiciones del juego: px, py con y hacia abajo)
-  waterDepthAt(px: number, py: number): number { return this.water ? this.water.depthAt(px, py) : 0; }
-  waterSurfaceAt(px: number, py: number): number { return this.water ? this.water.surfaceAt(px, py) : 0; }
-  // Alto del suelo que pisa algo en (px, py): el fondo del agua si la hay
-  floorAt(px: number, py: number): number { return this.water ? Math.min(0, this.water.groundAt(px, py)) : 0; }
+  // ---- consultas del juego (WorldQuery, acordada con FERN). Todo en ejes del modelo: x este, y norte, z arriba.
+
+  // ¿Vóxel sólido estático? (paredes, columnas, muebles, el pilón de la fuente)
+  solidAt(x: number, y: number, z: number): boolean {
+    return this.solid.get(Math.floor(x), Math.floor(y), Math.floor(z)) !== 0;
+  }
+
+  // Altura (entera) de la cara de arriba del sólido más alto de la columna: donde se apoya el pie. El agua no
+  // cuenta: sus alturas fraccionarias solo salen por waterAt.
+  groundAt(x: number, y: number): number {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    if (xi < 0 || yi < 0 || xi >= this.width || yi >= this.depth) return this.solid.zMin;
+    return this.solid.height[yi * this.width + xi]!;
+  }
+
+  // Agua en la columna: profundidad y altura de la superficie (null si está seca)
+  waterAt(x: number, y: number): { depth: number; surface: number } | null {
+    const w = this.water;
+    if (!w) return null;
+    const depth = w.depthAt(x, y);
+    return depth > 0.01 ? { depth, surface: w.surfaceAt(x, y) } : null;
+  }
+
+  // ¿Cabe un pie en (x, y) viniendo de la altura feetZ? Sube como mucho `step`; bajar, lo que sea (sin vacío).
+  // El agua más honda que `maxWater` no se puede pisar.
+  standable(x: number, y: number, feetZ: number, step: number, maxWater = 4.5): boolean {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    if (!this.solid.hasColumn(xi, yi)) return false;
+    if (this.groundAt(xi, yi) - feetZ > step) return false;
+    const w = this.waterAt(xi, yi);
+    return !(w && w.depth > maxWater);
+  }
+
+  // Primer vóxel sólido estático en el segmento de `from` a `to` (DDA): el punto de entrada y la normal de la cara
+  raycast(from: [number, number, number], to: [number, number, number]): { hit: [number, number, number]; normal: [number, number, number] } | null {
+    const [px, py, pz] = from;
+    const dx = to[0] - px, dy = to[1] - py, dz = to[2] - pz;
+    let x = Math.floor(px), y = Math.floor(py), z = Math.floor(pz);
+    const sx = Math.sign(dx), sy = Math.sign(dy), sz = Math.sign(dz);
+    const ddx = sx ? Math.abs(1 / dx) : Infinity, ddy = sy ? Math.abs(1 / dy) : Infinity, ddz = sz ? Math.abs(1 / dz) : Infinity;
+    let mx = sx ? (sx > 0 ? x + 1 - px : px - x) * ddx : Infinity;
+    let my = sy ? (sy > 0 ? y + 1 - py : py - y) * ddy : Infinity;
+    let mz = sz ? (sz > 0 ? z + 1 - pz : pz - z) * ddz : Infinity;
+    if (this.solid.get(x, y, z)) return { hit: [px, py, pz], normal: [0, 0, 0] };
+    for (let i = 0; i < 4096; i++) {
+      let t: number, normal: [number, number, number];
+      if (mx <= my && mx <= mz) { t = mx; x += sx; mx += ddx; normal = [-sx, 0, 0]; }
+      else if (my <= mz) { t = my; y += sy; my += ddy; normal = [0, -sy, 0]; }
+      else { t = mz; z += sz; mz += ddz; normal = [0, 0, -sz]; }
+      if (t > 1) return null;
+      if (this.solid.get(x, y, z)) return { hit: [px + dx * t, py + dy * t, pz + dz * t], normal };
+    }
+    return null;
+  }
 
   step(dt: number): void {
     this.water?.step(dt);
-    this.drops.step(dt, this.water);
+    this.drops.step(dt, this.water, (x, y) => this.groundAt(x, y));
   }
 }

@@ -38,7 +38,7 @@ export function frame2D(state: WorldState, b: Baked, o: Frame2DOptions): Uint8Cl
   // El agua (tapa lo sumergido) y las gotas
   state.water?.draw(b, view, depthBuf, total, vx, vy, vw, vh, ambient, o.time);
   const wr = state.palette.ramps.find((r) => r.name === 'agua');
-  if (wr) state.drops.draw(b, state.depth, view, depthBuf, total, vx, vy, vw, vh, rgbOf(wr.colors[4] ?? wr.colors[0]!), [ambient[0] * 1.7, ambient[1] * 1.7, ambient[2] * 1.8]);
+  if (wr) state.drops.draw(b, view, depthBuf, total, vx, vy, vw, vh, rgbOf(wr.colors[4] ?? wr.colors[0]!), [ambient[0] * 1.7, ambient[1] * 1.7, ambient[2] * 1.8]);
 
   return total
     ? applyLayers(view, buildLayers({ cell: 1, cols: vw, rows: vh, ambient, total }, { x: 0, y: 0, width: vw, height: vh }, { steps: 8, softGlow: true }))

@@ -14,11 +14,12 @@ for (const theme of ['medieval', 'cyberpunk', 'oficina'] as const) {
   const { world, state } = buildWorldState(layout, theme);
   const b = bakeWorld(world, { topZ: 40, incline: 0.5 });
   const tb = performance.now() - t0;
-  const e = state.addEntity('maia', maia, 172, state.toModelY(170), state.floorAt(172, 170), 45);
+  const ex = 172, ey = world.depth - 1 - 170;
+  const e = state.addEntity('maia', maia, ex, ey, state.groundAt(ex, ey), 45);
   const amb = THEMES[theme].ambient;
   let t2 = 0, t3 = 0;
   for (let f = 0; f < 60; f++) {
-    if (f % 10 === 0) { state.water!.disturb(172, 170, 1.5, 3); state.drops.splash(172, 170, 0, 20, 80); }
+    if (f % 10 === 0) { state.water!.disturb(ex, ey, 1.5, 3); state.drops.splash(ex, ey, 1, 20, 80); }
     state.step(1 / 60);
     let t = performance.now();
     frame2D(state, b, { vx: 0, vy: 60, vw: 384, vh: 216, time: f / 60, lights: true, ambient: amb });

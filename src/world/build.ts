@@ -81,20 +81,16 @@ export interface World {
   lights: WorldLight[];
   width: number;     // en vóxeles (x)
   depth: number;     // en vóxeles (y)
-  // Píxel del mundo (x hacia la derecha, y hacia abajo como en el juego) -> coordenadas del modelo
-  toModelY(py: number): number;
-  // Alto del fondo por píxel del juego (índice py * width + px): 0 en el suelo seco, negativo en las cuencas del
-  // agua. El agua es un fluido que se simula aparte y se llena hasta z = 0.
-  ground: Int8Array;
-  wet: Uint8Array;   // 1 donde empieza habiendo agua
-  waterTop: Int8Array;          // altura de la superficie inicial del agua (0, o más en la fuente)
-  blocked: Uint8Array;          // 1 donde no se puede pisar además de paredes y columnas (el pilón de la fuente)
+  // Agua inicial, en ejes del modelo (índice y * width + x). El agua es un fluido que se simula aparte; el fondo
+  // de cada columna es la rejilla de alturas de los vóxeles (model.height).
+  wet: Uint8Array;              // 1 donde empieza habiendo agua
+  waterTop: Int8Array;          // altura de su superficie inicial (1 = a ras del suelo; más en la fuente)
   fountain: Fountain | null;
 }
 
 // Fuente: pilón redondo con agua por encima del suelo, fuste central y un cuenco con fuego arriba
 export interface Fountain {
-  x: number; y: number;         // centro, en píxeles del juego
+  x: number; y: number;         // centro, en ejes del modelo
   radius: number;               // radio interior del pilón (vóxeles)
   rim: number;                  // alto del borde
   level: number;                // nivel del agua dentro
@@ -113,8 +109,9 @@ export function buildWorld(layout: Layout, theme: WorldTheme): World {
   const lights: WorldLight[] = [];
   const cell = (cx: number, cy: number) => cy * layout.cols + cx;
 
-  // ---- cuencas del agua: el fondo baja con la distancia a la orilla, hasta el máximo de su tipo
-  const ground = new Int8Array(W * D), wet = new Uint8Array(W * D);
+  // ---- cuencas del agua: el fondo baja con la distancia a la orilla, hasta el máximo de su tipo.
+  // (Aquí, y solo aquí, se trabaja en filas del worldgen, con y hacia abajo; lo que sale va en ejes del modelo.)
+  const ground = new Int8Array(W * D), wet = new Uint8Array(W * D), waterTop = new Int8Array(W * D);
   {
     const dist = new Int32Array(W * D).fill(-1);
     const queue: number[] = [];
@@ -135,6 +132,7 @@ export function buildWorld(layout: Layout, theme: WorldTheme): World {
       const px = i % W, py = (i - px) / W;
       const max = BASIN_MAX[layout.masses.kind[cell(px >> 4, py >> 4)] ?? 1] ?? 2;
       ground[i] = -Math.min(max, 1 + Math.floor((dist[i]! - 1) / 6));   // pendiente suave desde la orilla
+      waterTop[i] = 1;                                                    // lleno hasta la cara de arriba del suelo
     }
   }
 
@@ -250,8 +248,6 @@ export function buildWorld(layout: Layout, theme: WorldTheme): World {
   }
 
   // ---- fuente: en el sitio libre (3x3 losetas sin pared, columna, mueble ni agua) más cercano a la salida
-  const waterTop = new Int8Array(W * D);
-  const blockedMask = new Uint8Array(W * D);
   let fountain: Fountain | null = null;
   {
     let best: [number, number] | null = null, bd = Infinity;
@@ -272,28 +268,26 @@ export function buildWorld(layout: Layout, theme: WorldTheme): World {
     if (best) {
       const [fx, fy] = best;
       const R = 17, RIM = 5, LEVEL = 3;
-      fountain = { x: fx, y: fy, radius: R - 2, rim: RIM, level: LEVEL, bowl: { z: 20, radius: 6 } };
       const cxm = fx, cym = my(fy);
+      fountain = { x: cxm + 0.5, y: cym + 0.5, radius: R - 2, rim: RIM, level: LEVEL, bowl: { z: 20, radius: 6 } };
       for (let y = cym - R - 1; y <= cym + R + 1; y++) for (let x = cxm - R - 1; x <= cxm + R + 1; x++) {
         const d = Math.hypot(x + 0.5 - cxm, y + 0.5 - cym);
         if (d > R) continue;
         const px = x, py = D - 1 - y, i = py * W + px;
-        blockedMask[i] = 1;
         if (d > R - 2) {
           // borde de piedra (con la piedra de las columnas), la tapa más clara
           for (let z = 0; z < RIM; z++) model.set(x, y, z, material(M.column, z === RIM - 1 ? 3 : z === 0 ? 1 : 2));
-          ground[i] = RIM;
         } else {
           // fondo del pilón: piedra oscura; el agua llega a LEVEL
           model.set(x, y, 0, material(M.column, d < 4 ? 1 : 0));
-          wet[i] = 1; waterTop[i] = LEVEL; ground[i] = 1;
+          wet[i] = 1; waterTop[i] = LEVEL;
         }
       }
       // fuste y cuenco
       for (let z = 1; z < 20; z++) for (let y = cym - 3; y <= cym + 3; y++) for (let x = cxm - 3; x <= cxm + 3; x++) {
         if (Math.hypot(x + 0.5 - cxm, y + 0.5 - cym) > 2.6) continue;
         model.set(x, y, z, material(M.column, z % 6 === 0 ? 1 : 2));
-        const i = (D - 1 - y) * W + x; ground[i] = 20; wet[i] = 0;
+        wet[(D - 1 - y) * W + x] = 0;
       }
       for (let z = 20; z <= 22; z++) for (let y = cym - 7; y <= cym + 7; y++) for (let x = cxm - 7; x <= cxm + 7; x++) {
         const d = Math.hypot(x + 0.5 - cxm, y + 0.5 - cym);
@@ -351,7 +345,10 @@ export function buildWorld(layout: Layout, theme: WorldTheme): World {
     if (p.anim.includes('escritorio')) lights.push({ id: `prop-${p.x}-${p.y}`, kind: 'screen', x: mx + 0.5, y: yN - 7, z: 17 });
   }
 
-  return { model, lights, width: W, depth: D, toModelY: my, ground, wet, waterTop, blocked: blockedMask, fountain };
+  // Lo que sale, en ejes del modelo
+  const wetM = new Uint8Array(W * D), topM = new Int8Array(W * D);
+  for (let py = 0; py < D; py++) for (let px = 0; px < W; px++) { const a = py * W + px, b = my(py) * W + px; wetM[b] = wet[a]!; topM[b] = waterTop[a]!; }
+  return { model, lights, width: W, depth: D, wet: wetM, waterTop: topM, fountain };
 }
 
 // El estado del mundo completo de un nivel: lo estático, el agua (fluido), las luces y las gotas
@@ -360,9 +357,6 @@ import { WaterLayer } from './water';
 
 export function buildWorldState(layout: Layout, theme: WorldTheme): { world: World; state: WorldState } {
   const world = buildWorld(layout, theme);
-  const water = new WaterLayer(world, (px, py) => {
-    const i = Math.floor(py / TILE) * layout.cols + Math.floor(px / TILE);
-    return layout.wall[i] !== WALL.none || layout.pillar[i] === 1;
-  }, theme);
+  const water = new WaterLayer(world, theme);
   return { world, state: new WorldState(world.model, world.lights, water) };
 }

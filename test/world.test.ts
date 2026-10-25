@@ -81,15 +81,14 @@ describe('un solo mundo', () => {
     for (let i = 0; i < w.sim.depth.length && !found; i++) {
       if (w.sim.solid[i] || w.sim.depth[i]! < 2) continue;
       const gx = i % w.gw, gy = Math.floor(i / w.gw);
-      const px = gx * 2, py = gy * 2;
-      const x = px, y = state.toModelY(py);
+      const x = gx * 2, y = gy * 2;                         // ejes del modelo, como todo el mundo
       const v = state.view({ x0: x - 1, y0: y - 1, x1: x + 1, y1: y + 1 });
-      const top = Math.round(state.waterSurfaceAt(px, py)) - 1;
+      const top = Math.round(state.waterAt(x, y)!.surface) - 1;
       expect(v.get(x, y, top)).not.toBe(0);
       expect(v.get(x, y, top + 1)).toBe(0);
       // Y si el agua se mueve, las dos cosas cambian juntas
-      w.pour(px, py, 3);
-      const top2 = Math.round(state.waterSurfaceAt(px, py)) - 1;
+      w.pour(x, y, 3);
+      const top2 = Math.round(state.waterAt(x, y)!.surface) - 1;
       expect(top2).toBeGreaterThan(top);
       expect(state.view({ x0: x - 1, y0: y - 1, x1: x + 1, y1: y + 1 }).get(x, y, top2)).not.toBe(0);
       found = true;

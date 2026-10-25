@@ -7,7 +7,7 @@ const MAX = 1200;
 const GRAVITY = 260;          // vóxeles/s²
 
 export class Drops {
-  // x, y (del juego, píxeles), z (vóxeles), vx, vy, vz, vida, agua que lleva
+  // x, y, z (ejes del modelo), vx, vy, vz, vida, agua que lleva
   private d = new Float32Array(MAX * 8);
   private n = 0;
   private seed = 1;
@@ -33,14 +33,16 @@ export class Drops {
     }
   }
 
-  step(dt: number, water: WaterLayer | null): void {
+  // `groundAt`: la altura del suelo del mundo (la gota se para en el suelo o en la superficie del agua, lo que esté más alto)
+  step(dt: number, water: WaterLayer | null, groundAt: (x: number, y: number) => number): void {
     const d = this.d;
     for (let k = 0; k < this.n; k++) {
       const o = k * 8;
       d[o + 5] = d[o + 5]! - GRAVITY * dt;
       d[o] = d[o]! + d[o + 3]! * dt; d[o + 1] = d[o + 1]! + d[o + 4]! * dt; d[o + 2] = d[o + 2]! + d[o + 5]! * dt;
       d[o + 6] = d[o + 6]! - dt;
-      const floor = water ? Math.max(water.surfaceAt(d[o]!, d[o + 1]!), water.groundAt(d[o]!, d[o + 1]!)) : 0;
+      const g = groundAt(d[o]!, d[o + 1]!);
+      const floor = water && water.depthAt(d[o]!, d[o + 1]!) > 0.01 ? Math.max(g, water.surfaceAt(d[o]!, d[o + 1]!)) : g;
       if (d[o + 2]! <= floor || d[o + 6]! <= 0) {
         if (water && d[o + 2]! <= floor) {
           if (d[o + 7]! > 0) water.pour(d[o]!, d[o + 1]!, d[o + 7]!);
@@ -55,12 +57,12 @@ export class Drops {
   }
 
   // Dibuja las gotas en la vista con prueba de profundidad. `color` es el tono claro del agua.
-  draw(b: Baked, worldDepth: number, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, vx: number, vy: number, vw: number, vh: number,
+  draw(b: Baked, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, vx: number, vy: number, vw: number, vh: number,
     color: readonly [number, number, number], light: readonly [number, number, number]): void {
     const d = this.d;
     for (let k = 0; k < this.n; k++) {
       const o = k * 8;
-      const [sx, sy, depth] = b.cam.project(d[o]!, worldDepth - 1 - d[o + 1]!, d[o + 2]!);
+      const [sx, sy, depth] = b.cam.project(d[o]!, d[o + 1]!, d[o + 2]!);
       const tx = Math.floor(sx) - vx, ty = Math.floor(sy) - vy;
       if (tx < 0 || ty < 0 || tx >= vw || ty >= vh) continue;
       const t = ty * vw + tx;

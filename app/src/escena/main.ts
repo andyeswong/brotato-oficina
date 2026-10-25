@@ -1,7 +1,7 @@
 // Demo: el escenario generado del juego, en UN SOLO MUNDO de vóxeles (src/world/state.ts). Este fichero solo hace
 // entrada, bucle e interfaz: el mundo guarda lo estático, el agua, las entidades (MAIA), las luces y las gotas; el
 // modo 2D (frame2D) y el modo vóxel (frame3D) leen ese mismo estado, y la lógica (colisión, agua) le pregunta a él.
-import { generateLayout, WALL, TILE, type Layout } from '../../../../escenario-motor/src/engine/worldgen';
+import { generateLayout, TILE, type Layout } from '../../../../escenario-motor/src/engine/worldgen';
 import { THEMES } from '../../../../escenario-motor/demo/src/themes';
 import { Model, type ModelFile } from '@core/index';
 import { buildWorldState, type WorldTheme, type World } from '../../../src/world/build';
@@ -55,8 +55,9 @@ function rebuild(): void {
     layout = generateLayout(THEMES[theme].spec, seed);
     ({ world, state } = buildWorldState(layout, theme));
     baked = bakeWorld(world, { topZ: TOPZ, incline: INCLINE });
-    player.x = layout.spawn.x; player.y = layout.spawn.y;
-    const pos = q.get('pos')?.split(',').map(Number);
+    // La salida viene del worldgen (filas hacia abajo): se pasa a ejes del modelo una vez, aquí
+    player.x = layout.spawn.x; player.y = world.depth - 1 - layout.spawn.y;
+    const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
     if (pos && pos.length === 2 && pos.every(Number.isFinite)) { player.x = pos[0]!; player.y = pos[1]!; }
     if (q.get('dir')) player.dir = Number(q.get('dir')) % 8;
     maia = state.addEntity('maia', maiaModel, 0, 0);
@@ -67,26 +68,19 @@ function rebuild(): void {
   }, 30);
 }
 
-// La entidad MAIA del mundo sigue al jugador (posición del juego -> ejes del mundo; de pie en el fondo del agua)
+// La entidad MAIA del mundo sigue al jugador, de pie en el suelo (o en el fondo del agua)
 function syncPlayer(): void {
   if (!state || !maia) return;
   maia.x = Math.round(player.x);
-  maia.y = state.toModelY(Math.round(player.y));
-  maia.z = state.floorAt(player.x, player.y);
+  maia.y = Math.round(player.y);
+  maia.z = state.groundAt(player.x, player.y);
   maia.yaw = player.dir * 45;
 }
 
-function blocked(px: number, py: number): boolean {
-  if (!state || !world) return true;
-  for (const [dx, dy] of [[-4, -2], [4, -2], [-4, 2], [4, 2]] as const) {
-    const x = px + dx, y = py + dy;
-    const cx = Math.floor(x / TILE), cy = Math.floor(y / TILE);
-    if (cx < 0 || cy < 0 || cx >= layout.cols || cy >= layout.rows) return true;
-    const i = cy * layout.cols + cx;
-    if (layout.wall[i] !== WALL.none || layout.pillar[i]) return true;
-    if (state.waterDepthAt(x, y) > 4.5) return true;                      // agua muy honda (océano)
-    if (world.blocked[Math.floor(y) * world.width + Math.floor(x)]) return true;   // el pilón de la fuente
-  }
+// Colisión: las cuatro esquinas del pie tienen que ser pisables (subir 2 como mucho; sin agua de más de 4,5)
+function blocked(x: number, y: number): boolean {
+  if (!state || !maia) return true;
+  for (const [dx, dy] of [[-4, -2], [4, -2], [-4, 2], [4, 2]] as const) if (!state.standable(x + dx, y + dy, maia.z, 2)) return true;
   return false;
 }
 
@@ -95,26 +89,26 @@ function step(dt: number): void {
   let dx = 0, dy = 0;
   if (keys.has('a') || keys.has('arrowleft')) dx--;
   if (keys.has('d') || keys.has('arrowright')) dx++;
-  if (keys.has('w') || keys.has('arrowup')) dy--;
-  if (keys.has('s') || keys.has('arrowdown')) dy++;
+  if (keys.has('w') || keys.has('arrowup')) dy++;                 // arriba = norte = +y
+  if (keys.has('s') || keys.has('arrowdown')) dy--;
   player.moving = !!(dx || dy);
   const water = state.water;
-  const wd = state.waterDepthAt(player.x, player.y);
+  const wd = state.waterAt(player.x, player.y)?.depth ?? 0;
   if (player.moving) {
     // En el agua se va más despacio, y al moverse se hacen ondas y salpica
     const len = Math.hypot(dx, dy), speed = 70 * dt * (wd < 0.3 ? 1 : wd < 2.5 ? 0.8 : 0.55);
     if (water && wd > 0.3 && Math.floor((player.t + dt) * 12) !== Math.floor(player.t * 12)) {
       water.disturb(player.x, player.y, 0.35);
-      state.drops.splash(player.x, player.y, state.waterSurfaceAt(player.x, player.y), 3, 38);
+      state.drops.splash(player.x, player.y, state.waterAt(player.x, player.y)?.surface ?? 0, 3, 38);
     }
     const nx = player.x + (dx / len) * speed, ny = player.y + (dy / len) * speed;
     if (!blocked(nx, player.y)) player.x = nx;
     if (!blocked(player.x, ny)) player.y = ny;
-    player.dir = ((Math.round((Math.atan2(dx, dy) * 180) / Math.PI / 45) % 8) + 8) % 8;   // sur = 0, este = 2...
+    player.dir = ((Math.round((Math.atan2(dx, -dy) * 180) / Math.PI / 45) % 8) + 8) % 8;   // sur = 0, este = 2, norte = 4
     player.t += dt;
   }
   if (water) {
-    const inWater = state.waterDepthAt(player.x, player.y) > 0.3, zs = state.waterSurfaceAt(player.x, player.y);
+    const wa = state.waterAt(player.x, player.y), inWater = (wa?.depth ?? 0) > 0.3, zs = wa?.surface ?? 0;
     if (inWater && !player.wasInWater) { water.disturb(player.x, player.y, 0.7, 2); state.drops.splash(player.x, player.y, zs, 14, 70); }
     player.wasInWater = inWater;
     if (player.stomp && inWater) { water.disturb(player.x, player.y, 2.8, 3); state.drops.splash(player.x, player.y, zs, 40, 105); }
@@ -151,7 +145,7 @@ function frame(time: number): void {
   const feet = b.cam.project(maia.x + 0.5, maia.y, maia.z);
   const fx = Math.floor(feet[0]), fy = Math.floor(feet[1]);
   const vx = Math.max(0, Math.min(b.width - VW, fx - VW / 2));
-  const top = Math.floor(b.cam.project(0, state.toModelY(2 * TILE), 32)[1]);
+  const top = Math.floor(b.cam.project(0, state.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
   const vy = Math.max(top, Math.min(b.height - VH, fy - VH / 2 - 12));
   const out = frame2D(state, b, {
     vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient,
