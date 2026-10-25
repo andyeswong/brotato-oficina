@@ -54,3 +54,9 @@ Dos casos que el oráculo encontró en un solo píxel y que se arreglaron en la 
 |---|---|---|---|---|
 | GPU de la Alienware | 7 de 7 | 0,04-0,16 % | 1 | 0 |
 | SwiftShader | 7 de 7 | 0-0,04 % | 1 | 0 |
+
+## Pérdida del contexto
+
+`ctxloss.ps1 -Url 'http://<host>:5190/escena.html?tema=medieval&seed=7' -Dir 'C:\...' -Gpu` pierde el contexto a
+los 6 s y lo recupera 2 s después. Guarda `ctx0/1/2.png`. Resultado: mientras no hay contexto pinta la CPU (la misma
+imagen, HUD `(cpu)`); al volver, la GPU lo sube todo y el HUD dice `(gpu)`.
