@@ -53,13 +53,14 @@ const BASIN_DEPTH = 10;   // las cuencas del agua bajan hasta z = -8: la imagen 
 // Proyección oblicua 3/4: la altura sube 1:1 y el suelo se acorta por `incline` (1 = sin acortar, como los tiles
 // del juego; 0.5 = losetas de 16x8, que deja ver a los personajes de frente con un poco de cabeza). Personajes y
 // escenario usan la MISMA proyección. La imagen tiene el norte arriba.
-export function bakeWorld(world: Bakeable, opts: { topZ?: number; incline?: number } = {}): Baked {
+// outline: el contorno del render ('both' marca también los saltos de profundidad: paredes, columnas)
+export function bakeWorld(world: Bakeable, opts: { topZ?: number; incline?: number; outline?: 'none' | 'outer' | 'both' } = {}): Baked {
   const topZ = opts.topZ ?? 40;
   const incline = opts.incline ?? 0.5;
   const originY = Math.ceil(world.depth * incline) + topZ;
   const options: RenderOptions = {
     width: world.width + 2, height: originY + 2 + BASIN_DEPTH, originX: 0, originY,
-    yaw: 0, oblique: { y: incline, z: 1 }, pivot: [0, 0, 0], smooth: 0, shadows: false, ao: true, outline: 'none', pick: true,
+    yaw: 0, oblique: { y: incline, z: 1 }, pivot: [0, 0, 0], smooth: 0, shadows: false, ao: true, outline: opts.outline ?? 'none', pick: true,
   };
   const t0 = performance.now();
   const img = render(world.model, options);

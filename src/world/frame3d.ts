@@ -15,6 +15,7 @@ export interface Frame3DOptions {
   lights: boolean;
   ambient: readonly [number, number, number];
   edges?: boolean;                        // marcar las aristas entre vóxeles
+  outline?: 'none' | 'outer' | 'both';    // contorno del render (por defecto, ninguno)
 }
 
 export function frame3D(state: WorldState, o: Frame3DOptions): Uint8ClampedArray {
@@ -22,7 +23,7 @@ export function frame3D(state: WorldState, o: Frame3DOptions): Uint8ClampedArray
   const src = state.view({ x0: cx - o.radius, y0: cy - Math.round(o.radius * 0.75), x1: cx + o.radius, y1: cy + Math.round(o.radius * 0.75) });
   const ro: RenderOptions = {
     width: o.width, height: o.height, originX: o.width / 2, originY: Math.round(o.height * 0.62), pivot: [cx + 0.5, cy + 0.5, 0],
-    yaw: o.yaw, elevation: o.elevation, ppu: o.zoom, smooth: 0, shadows: false, ao: true, outline: 'none', pick: true,
+    yaw: o.yaw, elevation: o.elevation, ppu: o.zoom, smooth: 0, shadows: false, ao: true, outline: o.outline ?? 'none', pick: true,
   };
   const img = render(src, ro);
   const { width: W, height: H } = o;
@@ -30,8 +31,8 @@ export function frame3D(state: WorldState, o: Frame3DOptions): Uint8ClampedArray
   const pk = img.pickKey!;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
-    if (Number.isNaN(pk[i]!)) { rgba[i * 4] = 13; rgba[i * 4 + 1] = 12; rgba[i * 4 + 2] = 18; rgba[i * 4 + 3] = 255; continue; }
-    if (!(o.edges ?? o.zoom >= 3)) continue;
+    if (!rgba[i * 4 + 3]) { rgba[i * 4] = 13; rgba[i * 4 + 1] = 12; rgba[i * 4 + 2] = 18; rgba[i * 4 + 3] = 255; continue; }
+    if (Number.isNaN(pk[i]!) || !(o.edges ?? o.zoom >= 3)) continue;   // el contorno no lleva aristas
     const r = x + 1 < W ? pk[i + 1]! : NaN, d = y + 1 < H ? pk[i + W]! : NaN;
     if ((!Number.isNaN(r) && r !== pk[i]) || (!Number.isNaN(d) && d !== pk[i])) for (let ch = 0; ch < 3; ch++) rgba[i * 4 + ch] = rgba[i * 4 + ch]! * 0.75;
   }
