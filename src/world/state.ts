@@ -164,6 +164,19 @@ export class EntityList extends Array<Entity> {
     if (facing !== undefined) e.yaw = facing;
     this.owner.touchArea(x, y, ENTITY_REACH);
   }
+  // Cambia el modelo de una entidad (p. ej. el cuadro de su walk). Un modelo nuevo se registra; con el mismo id no
+  // hace nada (ni marca la zona), así se puede llamar en cada tick
+  setModel(id: EntityId, model: VoxelSource | number): void {
+    const e = this.get(id);
+    if (!e) throw new Error(`no hay entidad ${id}`);
+    const w = this.owner;
+    const modelId = typeof model === 'number' ? model : w.models.register(model);
+    if (modelId === e.modelId) return;
+    e.modelId = modelId;
+    e.model = w.models.get(modelId);
+    e.rampOffset = w.models.rampOffset(modelId);
+    w.touchArea(e.x, e.y, ENTITY_REACH);
+  }
   remove(id: EntityId): void {
     const i = this.findIndex((e) => e.id === id);
     if (i >= 0) { this.owner.touchArea(this[i]!.x, this[i]!.y, ENTITY_REACH); this.splice(i, 1); }

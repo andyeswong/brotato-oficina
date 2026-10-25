@@ -46,6 +46,30 @@ describe('entidades con id', () => {
     state.entities.add({ model: body, x: 20, y: 10, z: 1 });
     expect(state.palette.ramps.length).toBe(n0 + 1);
   });
+
+  it('setModel cambia el modelo (los cuadros de un walk comparten rampas), entra en la huella y marca la zona', () => {
+    const { state, body } = world();
+    const step = new Model(body.palette);                 // otro cuadro: la misma paleta
+    box(step, -2, -2, 0, 2, 2, 11, material(0, 2));
+    const n0 = state.palette.ramps.length;
+    const id = state.entities.add({ model: body, x: 40, y: 30, z: 1 });
+    const snap = state.snapshot();
+    const h0 = state.hash();
+    const v0 = state.solid.clock;
+    state.entities.setModel(id, step);
+    const e = state.entities.get(id)!;
+    expect(e.model).toBe(step);
+    expect(state.palette.ramps.length).toBe(n0 + 1);
+    expect(state.hash()).not.toBe(h0);
+    expect(state.changedSince(v0, 'all').length).toBeGreaterThan(0);
+    // el mismo modelo otra vez (por id): no cambia nada ni marca
+    const v1 = state.solid.clock;
+    state.entities.setModel(id, e.modelId);
+    expect(state.changedSince(v1, 'all')).toEqual([]);
+    state.restore(snap);
+    expect(state.entities.get(id)!.model).toBe(body);
+    expect(state.hash()).toBe(h0);
+  });
 });
 
 describe('luces con id', () => {
