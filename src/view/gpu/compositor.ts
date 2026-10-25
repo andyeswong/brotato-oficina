@@ -12,7 +12,7 @@
 //     (dónde va, qué sprite) y la tabla de luces.
 import { DIR_VECTORS, unkey } from '../../core';
 import { resolveLight } from '../../world/lightutil';
-import { entitySprite, entityDepthRange, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
+import { entitySprite, entityDepthRange, emissiveMask, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
 import { worldPointAt, type Baked, type BakedLight } from '../../world/bake';
 import type { WorldState } from '../../world/state';
 import type { Rendered, VoxelSource } from '../../core';
@@ -66,6 +66,7 @@ export class GpuCompositor {
   // propia luz) y los cuerpos girados de las que dan sombra de verdad
   private sprites = new Map<string, number>();
   private spriteImgs: Rendered[] = [];
+  private spriteEmissive: Array<Uint8Array | null> = [];
   private spriteCap = 0;
   private tSprColor: WebGLTexture | null = null;
   private tSprDepth: WebGLTexture | null = null;
@@ -510,30 +511,32 @@ export class GpuCompositor {
       const max = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
       if (layer >= max) {
         warnOnce(`el atlas de sprites pasa de ${max} capas: se vacía`);
-        this.sprites.clear(); this.spriteImgs = []; layer = 0;
+        this.sprites.clear(); this.spriteImgs = []; this.spriteEmissive = []; layer = 0;
       }
       this.spriteCap = Math.min(max, Math.max(64, this.spriteCap * 2));
       for (const t of [this.tSprColor, this.tSprDepth, this.tSprVox]) if (t) gl.deleteTexture(t);
       this.tSprColor = texArray(gl, gl.RGBA8, EW, EH, this.spriteCap);
       this.tSprDepth = texArray(gl, gl.R32F, EW, EH, this.spriteCap);
       this.tSprVox = texArray(gl, gl.RGBA8UI, EW, EH, this.spriteCap);
-      this.spriteImgs.forEach((img, i) => this.uploadSprite(img, i));
+      this.spriteImgs.forEach((img, i) => this.uploadSprite(img, i, this.spriteEmissive[i] ?? null));
     }
     this.sprites.set(d.key, layer);
     this.spriteImgs.push(d.img);
-    this.uploadSprite(d.img, layer);
+    this.spriteEmissive.push(emissiveMask(d));
+    this.uploadSprite(d.img, layer, emissiveMask(d));
     return layer;
   }
 
-  private uploadSprite(img: Rendered, layer: number): void {
+  private uploadSprite(img: Rendered, layer: number, emissive: Uint8Array | null): void {
     const gl = this.gl;
-    // Vóxel y cara de cada píxel (para su luz por cara): x, y, z + 128 y la cara (255 = ninguna, p. ej. el contorno)
+    // Vóxel y cara de cada píxel (para su luz por cara): x, y, z + 128 y la cara (255 = ninguna, p. ej. el contorno),
+    // con el bit 128 si el vóxel es de una rampa emisiva
     const vox = new Uint8Array(EW * EH * 4).fill(255);
     if (img.pickKey && img.pickFace) for (let i = 0; i < EW * EH; i++) {
       const k = img.pickKey[i]!;
       if (Number.isNaN(k)) continue;
       const [x, y, z] = unkey(k);
-      vox.set([x + 128, y + 128, z + 128, img.pickFace[i]!], i * 4);
+      vox.set([x + 128, y + 128, z + 128, img.pickFace[i]! | (emissive?.[i] ? 128 : 0)], i * 4);
     }
     uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tSprColor!);
     gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, EW, EH, 1, gl.RGBA, gl.UNSIGNED_BYTE, img.rgba);

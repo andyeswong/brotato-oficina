@@ -108,3 +108,27 @@ describe('pxl: pila de capas', () => {
 });
 
 const TEST_PAL = { ramps: [{ name: 'r', colors: ['#ff0000'] }] };
+
+describe('directivas de VoxPix en el .px.js (contorno y rampas emisivas)', () => {
+  it('se leen, se aplican y hacen la ida y vuelta por capas', async () => {
+    const { pxlDirectives, applyDirectives, toPxlStack, stackFromPxl } = await import('../src/pxl/bridge');
+    const { box, material } = await import('../src/core');
+    const pal = { ramps: [{ name: 'metal', colors: ['#1c1a2e', '#353650', '#8f99ab'] }, { name: 'plasma', colors: ['#1f6f8a', '#6ff2ff'], emissive: true }], outline: '#12101c' };
+    const m = new Model(pal, 'arma');
+    box(m, -1, -1, 0, 1, 1, 2, material(0, 1));
+    box(m, 0, -3, 1, 0, -2, 1, material(1, 1));
+    const src = toPxlStack(m, 'arma');
+    expect(src).toContain('// voxpix: outline #12101c');
+    const d = pxlDirectives(src);
+    expect(d.outline).toBe('#12101c');
+    expect(d.emissive).toHaveLength(1);
+    const p = loadPxl(src, 'arma.px.js');
+    const back = new Model(applyDirectives(paletteFromPxl(p, 'arma_z00'), d), 'arma');
+    stackFromPxl(p, 'arma', back);
+    expect(back.palette.outline).toBe('#12101c');
+    expect(back.palette.ramps.filter((r) => r.emissive).map((r) => r.colors)).toEqual([['#1f6f8a', '#6ff2ff']]);
+    expect(back.size).toBe(m.size);
+    // Un contorno explícito (el flag --outline del CLI) gana a la directiva
+    expect(applyDirectives(paletteFromPxl(p, 'arma_z00'), d, '#000000').outline).toBe('#000000');
+  });
+});

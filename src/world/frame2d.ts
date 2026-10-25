@@ -4,7 +4,7 @@ import { render, camera, lightField3D, rgbOf, type PointLight3D, type Rendered }
 import { resolveLight } from './lightutil';
 import { buildLayers, applyLayers, type LightLayers } from '../lighting/shade';
 import { lightView, worldPointAt, type Baked } from './bake';
-import { key, DIR_VECTORS, type VoxelSource } from '../core';
+import { key, unkey, DIR_VECTORS, type VoxelSource } from '../core';
 import type { WorldLight } from './build';
 import type { WorldState, Entity } from './state';
 
@@ -95,7 +95,10 @@ export function frame2DParts(state: WorldState, b: Baked, o: Frame2DOptions): { 
     view[t * 4] = d.img.rgba[s * 4]!; view[t * 4 + 1] = d.img.rgba[s * 4 + 1]!; view[t * 4 + 2] = d.img.rgba[s * 4 + 2]!;
     const et = etotals[k], fl = feetLight[k];
     if (total && et) { total[t * 3] = et[s * 3]!; total[t * 3 + 1] = et[s * 3 + 1]!; total[t * 3 + 2] = et[s * 3 + 2]!; }
-    else if (total && fl) { total[t * 3] = fl[0]; total[t * 3 + 1] = fl[1]; total[t * 3 + 2] = fl[2]; }
+    else if (total && fl) {
+      if (emissiveMask(d)?.[s]) total.fill(EMISSIVE_LIGHT, t * 3, t * 3 + 3);
+      else { total[t * 3] = fl[0]; total[t * 3 + 1] = fl[1]; total[t * 3 + 2] = fl[2]; }
+    }
   }
 
   // El agua (tapa lo sumergido) y las gotas
@@ -186,7 +189,32 @@ export function entityLight(state: WorldState, d: EntitySprite, o: Frame2DOption
     const dx = l.x - (X + 0.5), dy = l.y - Y;
     return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity };
   }).filter((l) => Math.hypot(l.x, l.y) < l.radius + 20);
-  return lightField3D(e.model, d.img, camera(d.ro), lights, o.ambient, { floor: false });
+  const total = lightField3D(e.model, d.img, camera(d.ro), lights, o.ambient, { floor: false });
+  // Lo emisivo lleva su propia luz: se ve con su color, sin que la luz del mundo lo oscurezca
+  const em = emissiveMask(d);
+  if (em) for (let i = 0; i < em.length; i++) if (em[i]) total.fill(EMISSIVE_LIGHT, i * 3, i * 3 + 3);
+  return total;
+}
+
+// Qué píxeles del render de una entidad son de una rampa emisiva (null si no tiene ninguna). Lo usa también la GPU.
+export const EMISSIVE_LIGHT = 1;
+const emissiveCache = new WeakMap<Rendered, Uint8Array | null>();
+export function emissiveMask(d: EntitySprite): Uint8Array | null {
+  const { img } = d, m = d.e.model;
+  if (emissiveCache.has(img)) return emissiveCache.get(img)!;
+  let mask: Uint8Array | null = null;
+  if (img.pickKey && m.palette.ramps.some((r) => r.emissive)) {
+    mask = new Uint8Array(img.width * img.height);
+    for (let i = 0; i < mask.length; i++) {
+      const k = img.pickKey[i]!;
+      if (Number.isNaN(k)) continue;
+      const [x, y, z] = unkey(k);
+      const v = m.get(x, y, z);
+      if (v && m.palette.ramps[Math.floor((v - 1) / 16)]?.emissive) mask[i] = 1;
+    }
+  }
+  emissiveCache.set(img, mask);
+  return mask;
 }
 
 export function entityDraw(state: WorldState, b: Baked, e: Entity, o: Frame2DOptions): EntityDraw {

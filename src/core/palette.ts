@@ -6,6 +6,7 @@
 export interface Ramp {
   name: string;
   colors: string[];          // '#rrggbb', de oscuro a claro
+  emissive?: boolean;        // da luz propia: la luz del mundo no la oscurece (neones, plasma, hojas de energía)
 }
 
 export interface Palette {

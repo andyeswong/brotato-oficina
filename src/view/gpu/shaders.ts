@@ -7,7 +7,8 @@
 
 export const MAX_LIGHTS = 32;      // luces del mundo por cuadro
 export const MAX_BAKED = 32;       // luces fijas horneadas
-export const MAX_CASTERS = 8;      // entidades con sombra de verdad por cuadro (frame2d.ts: MAX_CASTERS)
+export const MAX_CASTERS = 8;
+const EMISSIVE = '1.0';            // luz de lo emisivo (frame2d.ts: EMISSIVE_LIGHT)      // entidades con sombra de verdad por cuadro (frame2d.ts: MAX_CASTERS)
 
 // Las luces del mundo de este cuadro, en una textura RGBA32F de 3 x MAX_LIGHTS (en uniforms se pasaría del mínimo
 // de vectores que WebGL2 garantiza en un móvil): por fila, posición y radio; color e intensidad con parpadeo; y
@@ -480,9 +481,10 @@ void main() {
   gl_FragDepth = clamp((depth - uDepthRange.x) * uDepthRange.y, 0.0, 1.0);
   vec3 total = uAmbient;
   uvec4 vx = texelFetch(uSprVox, ivec3(ij, layer), 0);
-  if (uLights && vOccSize.w != 0.0 && vx.a != 255u) {
+  if (vx.a != 255u && (vx.a & 128u) != 0u) total = vec3(${EMISSIVE});    // emisivo: su propia luz (frame2d.ts)
+  else if (uLights && vOccSize.w != 0.0 && vx.a != 255u) {
     vec3 v = vec3(vx.rgb) - 128.0;
-    vec3 n = uDirs[int(vx.a)];
+    vec3 n = uDirs[int(vx.a & 127u)];
     vec3 p = v + 0.5 + n * 0.5, start = v + 0.5 + n;
     float cs = cos(vPos.w), sn = sin(vPos.w);
     for (int i = 0; i < uNLights; i++) {

@@ -28,6 +28,25 @@ export function pxlAssets(p: Project): string[] {
 // Paleta de VoxPix desde la de pxl (la del sprite dado, o la última activa): cada rampa de pxl es una rampa.
 // Los colores sueltos (fuera de rampas) entran como rampas de un tono, pero solo los que tienen nombre en
 // pal() o que usa algún sprite: pal() extiende la paleta por defecto (pico8) y esos colores no son del arte.
+// Directivas de VoxPix dentro de un .px.js (pxl solo admite claves de una letra en la paleta, así que lo que pxl no
+// sabe guardar va en un comentario, y así la ida y vuelta es simétrica):
+//   // voxpix: outline #12101c        color fijo del contorno (palette.outline)
+//   // voxpix: emissive Cc Bb         rampas con luz propia (por sus teclas, como en ramps())
+export interface PxlDirectives { outline?: string; emissive: string[] }
+export function pxlDirectives(source: string): PxlDirectives {
+  const out: PxlDirectives = { emissive: [] };
+  for (const m of source.matchAll(/^\s*\/\/\s*voxpix:\s*(\w+)\s+(.+?)\s*$/gm)) {
+    if (m[1] === 'outline' && /^#[0-9a-fA-F]{6}$/.test(m[2]!)) out.outline = m[2]!.toLowerCase();
+    if (m[1] === 'emissive') out.emissive.push(...m[2]!.split(/\s+/));
+  }
+  return out;
+}
+// La paleta con las directivas aplicadas (y un contorno explícito, si se pasa, por encima de la directiva)
+export function applyDirectives(pal: Palette, d: PxlDirectives, outline?: string): Palette {
+  const o = outline ?? d.outline;
+  return { ...pal, ...(o ? { outline: o } : {}), ramps: pal.ramps.map((r) => (d.emissive.includes(r.name) ? { ...r, emissive: true } : r)) };
+}
+
 export function paletteFromPxl(p: Project, asset?: string): Palette {
   const pal = asset ? (p.assets.get(asset)?.pal ?? p.pal) : p.pal;
   const ramps: Ramp[] = [];
@@ -121,7 +140,12 @@ function paletteSource(model: Model): { keyOf: Map<string, string>; lines: strin
     if (ks.length > 1) rampLines.push(JSON.stringify(ks));
   }
   if (model.palette.outline) assign(model.palette.outline);
-  return { keyOf, lines: ['pal({', ...pal, '})', ...(rampLines.length ? [`ramps(${rampLines.join(', ')})`] : [])] };
+  // Lo que pxl no guarda, como directivas (pxlDirectives las lee de vuelta)
+  const directives: string[] = [];
+  if (model.palette.outline) directives.push(`// voxpix: outline ${model.palette.outline.toLowerCase()}`);
+  const emissive = model.palette.ramps.filter((r) => r.emissive).map((r) => r.colors.map((c) => keyOf.get(c.toLowerCase())!).join(''));
+  if (emissive.length) directives.push(`// voxpix: emissive ${emissive.join(' ')}`);
+  return { keyOf, lines: [...directives, 'pal({', ...pal, '})', ...(rampLines.length ? [`ramps(${rampLines.join(', ')})`] : [])] };
 }
 
 // Escribe renders de VoxPix como un .px.js. Todos los colores deben ser de la paleta (el render ya lo garantiza).

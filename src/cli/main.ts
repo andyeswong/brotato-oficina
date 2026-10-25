@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { Model, render, assertClosedPalette, type RenderOptions } from '../core';
 import { encodePNG, onBackground } from '../core/png';
 import { sampleScene } from '../samples/basic';
-import { loadPxl, paletteFromPxl, spriteToVoxels, toPxlSource, pxlAssets, stackFromPxl, toPxlStack } from '../pxl/bridge';
+import { loadPxl, paletteFromPxl, spriteToVoxels, toPxlSource, pxlAssets, stackFromPxl, toPxlStack, pxlDirectives, applyDirectives } from '../pxl/bridge';
 
 // CLI de VoxPix.
 //   voxpix render <modelo.json|sample> <salida.png> [--yaw 0] [--elev 30] [--scale 8] [--size 64x48] [--origin 32,40]
@@ -12,6 +12,7 @@ import { loadPxl, paletteFromPxl, spriteToVoxels, toPxlSource, pxlAssets, stackF
 //   voxpix import-pxl <arte.px.js> <sprite|-> <salida.json> [--plane front|top] [--z n]
 //                (sprite "-": solo la paleta; el modelo sale vacío con esas rampas)
 //   voxpix import-pxl <arte.px.js> --stack <prefijo> <salida.json>   capas <prefijo>_zNN vistas desde arriba
+//                [--outline #rrggbb]   color fijo del contorno (si no, el de la directiva // voxpix: outline del .px.js)
 //   voxpix export-pxl <modelo.json> <salida.px.js> --stack <prefijo>    el modelo como esas capas
 
 function arg(name: string, def: string): string {
@@ -29,8 +30,9 @@ function importPxl(): void {
   if (stack) {
     const [, art, , , out] = process.argv.slice(2);
     if (!art || !out) { console.error('uso: voxpix import-pxl <arte.px.js> --stack <prefijo> <salida.json>'); process.exit(1); }
-    const p = loadPxl(readFileSync(art, 'utf8'), art);
-    const m = new Model(paletteFromPxl(p, `${stack}_z00`), stack);
+    const src = readFileSync(art, 'utf8');
+    const p = loadPxl(src, art);
+    const m = new Model(applyDirectives(paletteFromPxl(p, `${stack}_z00`), pxlDirectives(src), arg('outline', '') || undefined), stack);
     const n = stackFromPxl(p, stack, m);
     writeFileSync(out, JSON.stringify(m.toJSON()) + '\n');
     console.log(`${out}: ${n} vóxeles desde las capas ${stack}_zNN`);
@@ -38,10 +40,11 @@ function importPxl(): void {
   }
   const [, art, sprite, out] = process.argv.slice(2);
   if (!art || !sprite || !out) { console.error('uso: voxpix import-pxl <arte.px.js> <sprite|-> <salida.json>'); process.exit(1); }
-  const p = loadPxl(readFileSync(art, 'utf8'), art);
+  const src = readFileSync(art, 'utf8');
+  const p = loadPxl(src, art);
   const names = pxlAssets(p);
   if (sprite !== '-' && !names.includes(sprite)) { console.error(`no hay sprite "${sprite}"; hay: ${names.join(', ')}`); process.exit(1); }
-  const m = new Model(paletteFromPxl(p, sprite === '-' ? undefined : sprite), sprite === '-' ? 'importado' : sprite);
+  const m = new Model(applyDirectives(paletteFromPxl(p, sprite === '-' ? undefined : sprite), pxlDirectives(src), arg('outline', '') || undefined), sprite === '-' ? 'importado' : sprite);
   const n = sprite === '-' ? 0 : spriteToVoxels(p, sprite, m, { plane: arg('plane', 'front') as 'front' | 'top', z: Number(arg('z', '0')) });
   writeFileSync(out, JSON.stringify(m.toJSON()) + '\n');
   console.log(`${out}: ${m.palette.ramps.length} rampas, ${n} vóxeles`);

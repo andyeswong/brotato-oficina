@@ -11,7 +11,7 @@ import type { LightKind, Tool } from './store';
 import { sampleScene } from '../../src/samples/basic';
 import { Model, render, assertClosedPalette } from '@core/index';
 import { fluidState, settleNow, startPour, stopPour } from './fluidTool';
-import { loadPxl, pxlAssets, paletteFromPxl, spriteToVoxels, toPxlSource, stackPrefixes, stackFromPxl, toPxlStack } from '../../src/pxl/bridge';
+import { loadPxl, pxlAssets, paletteFromPxl, spriteToVoxels, toPxlSource, stackPrefixes, stackFromPxl, toPxlStack, pxlDirectives, applyDirectives } from '../../src/pxl/bridge';
 
 const LIGHT_KINDS: Array<[LightKind, string]> = [['torch', 'antorcha'], ['lamp', 'lámpara'], ['brazier', 'brasero'], ['neon-pink', 'neón rosa'], ['neon-cyan', 'neón cian'], ['screen', 'pantalla']];
 const TOOLS: Array<[Tool, string, string, string, string]> = [
@@ -72,7 +72,7 @@ function importPxl(e: Event): void {
 function pxlAsNew(withSprite: boolean): void {
   const d = pxl.value!;
   const p = loadPxl(d.source, d.name);
-  const m = new Model(paletteFromPxl(p, withSprite ? d.sprite : undefined), withSprite ? d.sprite : d.name.replace(/\.px\.[jt]s$/, ''));
+  const m = new Model(applyDirectives(paletteFromPxl(p, withSprite ? d.sprite : undefined), pxlDirectives(d.source)), withSprite ? d.sprite : d.name.replace(/\.px\.[jt]s$/, ''));
   if (withSprite) spriteToVoxels(p, d.sprite, m, { plane: d.plane, z: editor.z });
   replaceModel(m);
   pxl.value = null;
@@ -95,7 +95,7 @@ function pxlIntoCurrent(): void {
 function pxlStack(prefix: string): void {
   const d = pxl.value!;
   const p = loadPxl(d.source, d.name);
-  const m = new Model(paletteFromPxl(p, `${prefix}_z00`), prefix);
+  const m = new Model(applyDirectives(paletteFromPxl(p, `${prefix}_z00`), pxlDirectives(d.source)), prefix);
   try { stackFromPxl(p, prefix, m); } catch (err) { d.error = String(err); return; }
   replaceModel(m);
   pxl.value = null;

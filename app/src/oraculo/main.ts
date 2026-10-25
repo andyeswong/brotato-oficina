@@ -10,7 +10,7 @@
 // más de un nivel de luz o en más de ±2 de color.
 import { generateLayout, TILE } from '../../../src/worldgen';
 import { THEMES } from '../../../src/content/themes';
-import { Model, type ModelFile } from '@core/index';
+import { Model, box, material, type ModelFile } from '@core/index';
 import { buildWorldState, type WorldTheme } from '../../../src/world/build';
 import { bakeWorld, rebakeChanged, type Baked } from '../../../src/world/bake';
 import { frame2DParts, shadeLayers, type Frame2DOptions } from '../../../src/world/frame2d';
@@ -24,6 +24,15 @@ import { walkFrames } from '../../../src/anim/walk';
 const VW = 384, VH = 216, TOPZ = 40, INCLINE = 0.5;
 const TOL_SHARE = 0.005;
 const maiaModel = Model.fromJSON(maiaFile as unknown as ModelFile);
+
+// Un arma de prueba: cuerpo de metal y una bobina de una rampa emisiva
+function plasmaGun(): Model {
+  const m = new Model({ ramps: [{ name: 'metal', colors: ['#1c1a2e', '#353650', '#8f99ab'] }, { name: 'plasma', colors: ['#1f6f8a', '#6ff2ff'], emissive: true }] }, 'pistola');
+  box(m, -1, -6, 0, 1, 2, 3, material(0, 1));
+  box(m, -1, -5, 4, 1, -1, 4, material(1, 1));
+  box(m, 0, 1, -0, 0, 2, 0, material(0, 0));
+  return m;
+}
 const walk = walkFrames(maiaModel);
 
 // Una multitud determinista alrededor de MAIA: n entidades con cuadros del walk y giros variados, solapadas
@@ -72,6 +81,8 @@ const SCENARIOS: Scenario[] = [
       const p = rt.player;
       for (const [dx, dy, f] of [[-14, 6, 2], [16, -4, 5], [4, 18, 7]] as const) s.entities.add({ model: maiaModel, x: Math.round(p.x + dx), y: Math.round(p.y + dy), z: p.z, facing: f * 45, castsShadow: true });
       s.lights.add({ kind: 'lantern', x: p.x + 8, y: p.y - 10, z: 14 });
+      // Un arma con una bobina emisiva: la luz del mundo no la oscurece
+      s.entities.add({ model: plasmaGun(), x: Math.round(p.x - 6), y: Math.round(p.y - 8), z: p.z, facing: 90, castsShadow: true });
     },
   },
   { name: 'oficina multitud de 60', theme: 'oficina', ticks: 30, setup: crowd(60) },
