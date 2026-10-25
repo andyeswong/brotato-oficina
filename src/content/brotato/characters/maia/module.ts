@@ -1,7 +1,7 @@
 import { defineCharacter } from '../../../../game/brotato/api';
 // Su dibujo es el modelo de vóxeles de NARUTO (models/maia, con el walk aprobado por Andrés): lo pone la vista.
 
-// Ficha: ~/Sync/brotato-oficina/motor/FICHA-MAIA.md (la valida Andrés). Los números se ajustan jugando.
+// Ficha de diseño: la valida Andrés. Los números se ajustan jugando.
 const WAVE_LINES = ['Equipo, a lo suyo', 'Lo verifico yo', 'Eso no es mío, es de ECHO', 'Busca primero'];
 
 export default defineCharacter({
