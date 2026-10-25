@@ -85,6 +85,15 @@ const SCENARIOS: Scenario[] = [
       s.entities.add({ model: plasmaGun(), x: Math.round(p.x - 6), y: Math.round(p.y - 8), z: p.z, facing: 90, castsShadow: true });
     },
   },
+  {
+    // Una linterna (foco) que lleva MAIA, apuntando delante y abajo, con MAIAs dentro y fuera del cono, junto al agua
+    name: 'medieval linterna', theme: 'medieval', ticks: 60,
+    setup: (s, rt) => {
+      const p = rt.player;
+      for (const [dx, dy] of [[0, -16], [-10, -24], [14, -20], [0, 18], [-22, 0]] as const) s.entities.add({ model: walk[(dx + dy + 64) % 8]!, x: Math.round(p.x + dx), y: Math.round(p.y + dy), z: p.z, facing: 0, castsShadow: true });
+      s.lights.add({ kind: 'lamp', x: p.x + 0.5, y: p.y - 9, z: p.z + 14, dir: [0, -1, -0.45], cone: 55, intensity: 1.4, radius: 70, owner: rt.entityId! });
+    },
+  },
   { name: 'oficina multitud de 60', theme: 'oficina', ticks: 30, setup: crowd(60) },
   { name: 'medieval multitud de 200', theme: 'medieval', ticks: 30, setup: crowd(200) },
 ];

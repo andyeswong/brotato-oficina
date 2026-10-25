@@ -177,6 +177,7 @@ function loop(now: number): void {
   last = now;
   if (q.has('agitar') && Math.floor(now / 700) !== Math.floor((now - dt * 1000) / 700)) stomp = true;   // pruebas sin teclado
   ticks?.advance(dt);              // ticks fijos de 1/60: el runtime del juego
+  updateFlashlight();
   const t0 = performance.now();
   frame(now / 1000);
   if (state && baked && romper?.length === 2 && !roto && runtime && runtime.tick > 180) {
@@ -191,7 +192,7 @@ function loop(now: number): void {
   showRoute();
   hud.textContent = `VoxPix · un solo mundo en vóxeles · ${theme} · semilla ${seed}\n` +
     `horneado ${bakeMs} ms${baked ? ` (render ${baked.ms.render}, luces ${baked.ms.light})` : ''} · cuadro ${avg.toFixed(1)} ms (${compositor.kind}) · luces ${lightsOn ? 'sí' : 'no'} · gotas ${state?.drops.count ?? 0}\n` +
-    (mode === '2d' ? `WASD/flechas mover · Espacio pisotón · R otra semilla · T otro tema · L luz · C contorno · V modo vóxel`
+    (mode === '2d' ? `WASD/flechas mover · Espacio pisotón · F linterna · R otra semilla · T otro tema · L luz · C contorno · V modo vóxel`
       : `MODO VÓXEL · WASD andar · arrastrar = girar · rueda = zoom · C contorno · V vuelve al modo 2D`);
   next(loop);
 }
@@ -233,9 +234,27 @@ outlineBtn.addEventListener('click', () => { cycleOutline(); outlineBtn.blur(); 
 showOutline();
 if (mode === 'voxel') { mode = '2d'; toggleMode(); }
 
+// Linterna (F o ?linterna=1): un foco que lleva MAIA a la altura del pecho y apunta hacia donde mira, algo hacia el
+// suelo. Es de la demo: se mueve y se apunta cada cuadro con lights.move y lights.aim.
+let flashlight: number | string | null = null;
+let flashlightWanted = q.get('linterna') === '1';
+function updateFlashlight(): void {
+  if (!state || !runtime) return;
+  if (flashlightWanted && (flashlight === null || !state.lights.get(flashlight))) {
+    flashlight = state.lights.add({ kind: 'lamp', x: 0, y: 0, z: 0, dir: [0, -1, -0.3], cone: 50, intensity: 1.6, radius: 90, owner: maia?.id });
+  }
+  if (!flashlightWanted && flashlight !== null) { if (state.lights.get(flashlight)) state.lights.remove(flashlight); flashlight = null; }
+  if (flashlight === null) return;
+  const p = runtime.player, a = (p.facing * Math.PI) / 4;
+  const dx = Math.sin(a), dy = -Math.cos(a);
+  state.lights.move(flashlight, p.x + 0.5 + dx * 9, p.y + dy * 9, p.z + 14);   // justo delante de su cuerpo
+  state.lights.aim(flashlight, [dx, dy, -0.3]);
+}
+
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys.add(k);
+  if (k === 'f') { flashlightWanted = !flashlightWanted; vox.dirty = true; }
   if (k === 'r') { seed = (seed * 7919 + 13) % 100000; rebuild(); }
   if (k === 't') { theme = THEME_IDS[(THEME_IDS.indexOf(theme) + 1) % THEME_IDS.length]!; rebuild(); }
   if (k === 'l') { lightsOn = !lightsOn; vox.dirty = true; }

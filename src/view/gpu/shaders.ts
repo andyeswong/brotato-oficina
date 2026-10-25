@@ -10,13 +10,28 @@ export const MAX_BAKED = 32;       // luces fijas horneadas
 export const MAX_CASTERS = 8;
 const EMISSIVE = '1.0';            // luz de lo emisivo (frame2d.ts: EMISSIVE_LIGHT)      // entidades con sombra de verdad por cuadro (frame2d.ts: MAX_CASTERS)
 
-// Las luces del mundo de este cuadro, en una textura RGBA32F de 3 x MAX_LIGHTS (en uniforms se pasaría del mínimo
-// de vectores que WebGL2 garantiza en un móvil): por fila, posición y radio; color e intensidad con parpadeo; y
-// capa de pesos horneados (-1 si no), intensidad con parpadeo / horneada, y 1 si es dinámica.
+// Las luces del mundo de este cuadro, en una textura RGBA32F de 4 x MAX_LIGHTS (en uniforms se pasaría del mínimo
+// de vectores que WebGL2 garantiza en un móvil): por fila, posición y radio; color e intensidad con parpadeo;
+// capa de pesos horneados (-1 si no), intensidad con parpadeo / horneada, 1 si es dinámica y el coseno del cono de
+// dentro; y si es un foco, su dirección y el coseno del cono de fuera (-2 si no es foco).
 const LIGHT_TABLE = `uniform sampler2D uLightTab;
 vec4 lightPos(int i) { return texelFetch(uLightTab, ivec2(0, i), 0); }
 vec4 lightCol(int i) { return texelFetch(uLightTab, ivec2(1, i), 0); }
-vec4 lightMeta(int i) { return texelFetch(uLightTab, ivec2(2, i), 0); }`;
+vec4 lightMeta(int i) { return texelFetch(uLightTab, ivec2(2, i), 0); }
+vec4 lightSpot(int i) { return texelFetch(uLightTab, ivec2(3, i), 0); }
+// El cono de un foco (spotFactor de src/core/light3d.ts): v va de la luz al punto, dir en los mismos ejes
+float spotOf(int i, vec3 v, vec3 dir) {
+  vec4 sd = lightSpot(i);
+  if (sd.w < -1.5) return 1.0;
+  float d = length(v);
+  if (d < 1e-6) return 1.0;
+  float c = dot(v, dir) / d, ci = lightMeta(i).w;
+  if (c <= sd.w) return 0.0;
+  if (c >= ci) return 1.0;
+  float t = (c - sd.w) / (ci - sd.w);
+  return t * t * (3.0 - 2.0 * t);
+}
+float spot(int i, vec3 v) { return spotOf(i, v, lightSpot(i).xyz); }`;
 
 const HEADER = `#version 300 es
 precision highp float;
@@ -85,7 +100,7 @@ float contribution(int i, vec3 P, vec3 n) {
   float d = length(dd);
   if (d >= lp.w) return 0.0;
   float k = 1.0 - d / lp.w;
-  return k * k * lightCol(i).w * (d < 1e-6 ? 1.0 : facing(dot(n, dd) / d));
+  return k * k * lightCol(i).w * (d < 1e-6 ? 1.0 : facing(dot(n, dd) / d)) * spot(i, -dd);
 }
 
 bool blockedByBody(int e, vec3 P, vec3 L) {
@@ -277,7 +292,8 @@ void main() {
     float dist = length(vec3(dx, dy, dz));
     if (dist >= lp.w) continue;
     float q = 1.0 - dist / lp.w;
-    float kk = q * q * lightCol(i).w;
+    float kk = q * q * lightCol(i).w * spot(i, -vec3(dx, dy, dz));
+    if (kk <= 0.0) continue;
     vec3 L = vec3(dx, dy, dz) / dist;
     float ndl = max(0.0, dot(vec3(nx, ny, nz), L) / nl);
     lt += lightCol(i).rgb * kk * (0.4 + 0.6 * ndl);
@@ -498,7 +514,8 @@ void main() {
       float f = d < 1e-6 ? 1.0 : facing(dot(n, w) / d);
       if (f <= 0.0) continue;
       float k = 1.0 - d / lp.w;
-      float att = k * k * lc.w * f;
+      vec3 sd = lightSpot(i).xyz;                                     // el cono, girado a los ejes del modelo
+      float att = k * k * lc.w * f * spotOf(i, p - l, vec3(sd.x * cs + sd.y * sn, -sd.x * sn + sd.y * cs, sd.z));
       if (att < 0.002) continue;
       if (occluded(start, l)) continue;
       total += lc.rgb * att;

@@ -40,7 +40,7 @@ export function frame3D(state: WorldState, o: Frame3DOptions): Uint8ClampedArray
   if (!o.lights) return rgba;
   const lights: PointLight3D[] = state.lights
     .filter((l) => Math.abs(l.x - cx) < o.radius + 70 && Math.abs(l.y - cy) < o.radius + 70)
-    .map((l) => { const p = resolveLight(l, o.time); return { x: l.x, y: l.y, z: l.z, radius: p.radius, color: p.color, intensity: p.intensity }; });
+    .map((l) => { const p = resolveLight(l, o.time); return { x: l.x, y: l.y, z: l.z, radius: p.radius, color: p.color, intensity: p.intensity, spot: p.spot }; });
   const total = lightField3D(src, img, camera(ro), lights, o.ambient, { floor: false });
   return applyLayers(rgba, buildLayers({ cell: 1, cols: W, rows: H, ambient: o.ambient, total }, { x: 0, y: 0, width: W, height: H }, { steps: 8, softGlow: true }));
 }

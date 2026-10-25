@@ -223,6 +223,14 @@ export class LightList extends Array<WorldLight> {
     if (l.baked) throw new Error(`la luz ${id} está horneada: las fijas no se mueven`);
     l.x = x; l.y = y; l.z = z;
   }
+  // Apunta un foco (o lo vuelve foco): dirección en ejes del modelo y, si se da, la apertura del cono en grados
+  aim(id: LightId, dir: readonly [number, number, number], cone?: number): void {
+    const l = this.get(id);
+    if (!l) throw new Error(`no hay luz ${id}`);
+    if (l.baked) throw new Error(`la luz ${id} está horneada: las fijas no se apuntan`);
+    l.dir = [dir[0], dir[1], dir[2]];
+    if (cone !== undefined) l.cone = cone;
+  }
   remove(id: LightId): void {
     const i = this.findIndex((l) => l.id === id);
     if (i >= 0) this.splice(i, 1);
@@ -550,7 +558,7 @@ export class WorldState {
     if (s.water) for (const k of ['depth', 'fl', 'fr', 'ft', 'fb', 'awake'] as const) h.bytes(s.water[k]);
     h.num(s.drops.n); h.bytes(s.drops.data);
     for (const e of s.entities) { h.str(String(e.id)); h.num(e.modelId); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); h.num(e.castsShadow === 'always' ? 2 : e.castsShadow ? 1 : 0); }
-    for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); }
+    for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); h.f64(l.dir?.[0] ?? 9); h.f64(l.dir?.[1] ?? 9); h.f64(l.dir?.[2] ?? 9); h.f64(l.cone ?? -1); h.str(String(l.owner ?? '')); }
     h.num(s.next.entity); h.num(s.next.light);
     h.num(s.clock); h.bytes(s.dynamicVersions);
     return h.hex();

@@ -80,6 +80,12 @@ export interface WorldLight {
   x: number; y: number; z: number;
   intensity?: number; radius?: number; color?: readonly [number, number, number];   // ajustes sobre el preset
   baked?: boolean;           // fija (se hornea); si no, dinámica (se suma cada cuadro)
+  // Foco (linterna): alumbra solo dentro de un cono hacia `dir` (ejes del modelo), de `cone` grados de apertura. Sin
+  // `dir`, alumbra en todas direcciones. Los focos son siempre dinámicos.
+  dir?: readonly [number, number, number];
+  cone?: number;
+  // La entidad que la lleva (una linterna, un farol): su cuerpo no le hace sombra a esta luz
+  owner?: number | string;
 }
 
 export interface World {

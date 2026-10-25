@@ -77,7 +77,7 @@ export class GpuCompositor {
   private entTarget: EntTarget | null = null;
   private tOcc: WebGLTexture;
   private tLights: WebGLTexture;
-  private lightTab = new Float32Array(3 * MAX_LIGHTS * 4);
+  private lightTab = new Float32Array(4 * MAX_LIGHTS * 4);
   private occPlace: Array<{ min: [number, number, number]; size: [number, number, number]; ax: number }> = [];
   // Agua
   private tWDepth: WebGLTexture | null = null;
@@ -144,7 +144,7 @@ export class GpuCompositor {
     uploadTo(gl, gl.TEXTURE_3D, this.tBody);
     nearest(gl, gl.TEXTURE_3D);
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, 1, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(1));
-    this.tLights = tex2D(gl, gl.RGBA32F, 3, MAX_LIGHTS, gl.RGBA, gl.FLOAT, null);
+    this.tLights = tex2D(gl, gl.RGBA32F, 4, MAX_LIGHTS, gl.RGBA, gl.FLOAT, null);
     this.tOcc = gl.createTexture()!;
     uploadTo(gl, gl.TEXTURE_3D, this.tOcc);
     nearest(gl, gl.TEXTURE_3D);
@@ -205,12 +205,13 @@ export class GpuCompositor {
     lights.forEach(({ l, p }, i) => {
       const layer = layerOf.get(l.id);
       const baked = layer !== undefined && layer < nb;
-      tab.set([l.x, l.y, l.z, p.radius], (i * 3) * 4);
-      tab.set([p.color[0], p.color[1], p.color[2], p.intensity], (i * 3 + 1) * 4);
-      tab.set([baked ? layer : -1, baked ? p.intensity / b.lights[layer]!.intensity : 0, l.baked === false ? 1 : 0, 0], (i * 3 + 2) * 4);
+      tab.set([l.x, l.y, l.z, p.radius], (i * 4) * 4);
+      tab.set([p.color[0], p.color[1], p.color[2], p.intensity], (i * 4 + 1) * 4);
+      tab.set([baked ? layer : -1, baked ? p.intensity / b.lights[layer]!.intensity : 0, l.baked === false ? 1 : 0, p.spot?.cosInner ?? 1], (i * 4 + 2) * 4);
+      tab.set(p.spot ? [...p.spot.dir, p.spot.cosOuter] : [0, 0, 0, -2], (i * 4 + 3) * 4);
     });
     uploadTo(gl, gl.TEXTURE_2D, this.tLights);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 3, MAX_LIGHTS, gl.RGBA, gl.FLOAT, tab);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 4, MAX_LIGHTS, gl.RGBA, gl.FLOAT, tab);
 
     // 0) las entidades y sus sombras de contacto
     up = performance.now();
@@ -415,7 +416,7 @@ export class GpuCompositor {
       const op = this.occPlace[i]!;
       omin.set([op.min[0], op.min[1], op.min[2], op.ax], i * 4); osize.set(op.size, i * 3);
       let mask = 0;
-      lights.forEach((l, j) => { if (Math.hypot(l.x - ex, l.y - ey) < resolveLight(l, 0).radius + SHADOW_REACH) mask |= 1 << j; });
+      lights.forEach((l, j) => { if (l.owner !== e.id && Math.hypot(l.x - ex, l.y - ey) < resolveLight(l, 0).radius + SHADOW_REACH) mask |= 1 << j; });
       near[i] = mask >>> 0;
     });
     gl.uniform1i(u.uNEnt, ents.length);

@@ -6,7 +6,7 @@
 //   - cáusticas: el fondo que se ve a través del agua recibe la luz que las ondas enfocan;
 //   - refracción: el fondo se ve desplazado según la inclinación de la superficie.
 import { ShallowWater } from '../fluid/shallow';
-import { rgbOf } from '../core';
+import { rgbOf, spotFactor } from '../core';
 import { resolveLight } from './lightutil';
 import type { World, WorldLight } from './build';
 import type { Baked } from './bake';
@@ -132,7 +132,7 @@ export class WaterLayer {
     const tPerPx = 1 / (a * f1 - f2), dPerT = f1 * f1 - f2 * f2;
     const lights = worldLights.map((l) => {
       const p = resolveLight(l, time);
-      return { x: l.x, y: l.y, z: l.z, r: p.radius, c: p.color, k: p.intensity };
+      return { x: l.x, y: l.y, z: l.z, r: p.radius, c: p.color, k: p.intensity, spot: p.spot };
     });
     // Hacia la cámara (para el brillo especular)
     const vlen = Math.hypot(f1, f2), Vy = -f1 / vlen, Vz = -f2 / vlen;
@@ -180,7 +180,8 @@ export class WaterLayer {
         if (dx > l.r || dx < -l.r || dy > l.r || dy < -l.r) continue;
         const dist = Math.hypot(dx, dy, dz);
         if (dist >= l.r) continue;
-        const kk = (1 - dist / l.r) ** 2 * l.k;
+        const kk = (1 - dist / l.r) ** 2 * l.k * spotFactor(l.spot, -dx, -dy, -dz);
+        if (kk <= 0) continue;
         const Lx = dx / dist, Ly = dy / dist, Lz = dz / dist;
         const ndl = Math.max(0, (nx * Lx + ny * Ly + nz * Lz) / nl);
         lr += l.c[0] * kk * (0.4 + 0.6 * ndl); lg += l.c[1] * kk * (0.4 + 0.6 * ndl); lb += l.c[2] * kk * (0.4 + 0.6 * ndl);

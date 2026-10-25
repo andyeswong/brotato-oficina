@@ -1,6 +1,6 @@
 // Un cuadro del modo 2D del juego a partir del ESTADO DEL MUNDO: lo estático horneado (una vez por nivel), y
 // encima, con la misma cámara, prueba de profundidad y luz: las entidades, el agua y las gotas.
-import { render, camera, lightField3D, rgbOf, type PointLight3D, type Rendered } from '../core';
+import { render, camera, lightField3D, rgbOf, spotFactor, type PointLight3D, type Rendered, type Spot } from '../core';
 import { resolveLight } from './lightutil';
 import { buildLayers, applyLayers, type LightLayers } from '../lighting/shade';
 import { lightView, worldPointAt, type Baked } from './bake';
@@ -187,7 +187,9 @@ export function entityLight(state: WorldState, d: EntitySprite, o: Frame2DOption
   const lights: PointLight3D[] = state.lights.map((l) => {
     const p = resolveLight(l, o.time);
     const dx = l.x - (X + 0.5), dy = l.y - Y;
-    return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity };
+    // el cono del foco, girado a los ejes del modelo igual que la posición
+    const spot = p.spot && { ...p.spot, dir: [p.spot.dir[0] * c + p.spot.dir[1] * sn, -p.spot.dir[0] * sn + p.spot.dir[1] * c, p.spot.dir[2]] as [number, number, number] };
+    return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity, spot };
   }).filter((l) => Math.hypot(l.x, l.y) < l.radius + 20);
   const total = lightField3D(e.model, d.img, camera(d.ro), lights, o.ambient, { floor: false });
   // Lo emisivo lleva su propia luz: se ve con su color, sin que la luz del mundo lo oscurezca
@@ -282,12 +284,12 @@ function contactShadow(d: EntitySprite, total: Float32Array, o: Frame2DOptions):
 const facing = (ndl: number) => (ndl > 0 ? 0.35 + 0.65 * ndl : 0);
 
 // Aportación (color * peso) de una luz en el punto P con normal n, sin sombras. La misma fórmula que el horneado.
-function contribution(l: { x: number; y: number; z: number; radius: number; intensity: number }, P: [number, number, number], n: readonly number[]): number {
+function contribution(l: { x: number; y: number; z: number; radius: number; intensity: number; spot: Spot | null }, P: [number, number, number], n: readonly number[]): number {
   const dx = l.x - P[0], dy = l.y - P[1], dz = l.z - P[2];
   const d = Math.hypot(dx, dy, dz);
   if (d >= l.radius) return 0;
   const k = 1 - d / l.radius;
-  return k * k * l.intensity * (d < 1e-6 ? 1 : facing((n[0]! * dx + n[1]! * dy + n[2]! * dz) / d));
+  return k * k * l.intensity * (d < 1e-6 ? 1 : facing((n[0]! * dx + n[1]! * dy + n[2]! * dz) / d)) * spotFactor(l.spot, -dx, -dy, -dz);
 }
 
 // Recuadro de la vista que puede tocar una esfera de radio r alrededor de (x, y, z)
@@ -374,7 +376,8 @@ function castShadow(state: WorldState, b: Baked, e: Entity, total: Float32Array,
   const occ = occupancy(e.model, e.yaw);
   const ex = Math.round(e.x), ey = Math.round(e.y), ez = e.z;
   // Las luces que llegan a la zona de la entidad
-  const near = state.lights.filter((l) => Math.hypot(l.x - ex, l.y - ey) < resolveLight(l, 0).radius + SHADOW_REACH);
+  // Las luces que llegan a la zona de la entidad, menos las que lleva ella (su cuerpo no les hace sombra)
+  const near = state.lights.filter((l) => l.owner !== e.id && Math.hypot(l.x - ex, l.y - ey) < resolveLight(l, 0).radius + SHADOW_REACH);
   if (!near.length) return;
   const box = screenBox(b, ex, ey, ez, SHADOW_REACH, o);
   if (!box) return;

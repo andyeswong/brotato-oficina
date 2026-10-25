@@ -10,6 +10,23 @@ import { DIR_VECTORS, type Camera, type Rendered } from './render';
 // Misma caída que el motor del juego: (1 - d/r)^2 * intensidad. La intensidad ya viene con el parpadeo
 // resuelto (quien llama decide el instante).
 
+// El cono de un foco: dirección (unitaria) y los cosenos del borde de fuera (0) y de dentro (1), con transición suave
+export interface Spot { dir: [number, number, number]; cosOuter: number; cosInner: number }
+export const SPOT_SOFT = 0.7;          // el cono de dentro (luz plena) es este tanto del de fuera
+
+// Cuánto llega de un foco a un punto según el ángulo (1 dentro del cono, 0 fuera, suave en el borde). (vx, vy, vz)
+// va de la luz al punto. La GPU hace la misma cuenta (src/view/gpu/shaders.ts, spot()).
+export function spotFactor(s: Spot | null, vx: number, vy: number, vz: number): number {
+  if (!s) return 1;
+  const d = Math.hypot(vx, vy, vz);
+  if (d < 1e-6) return 1;
+  const c = (vx * s.dir[0] + vy * s.dir[1] + vz * s.dir[2]) / d;
+  if (c <= s.cosOuter) return 0;
+  if (c >= s.cosInner) return 1;
+  const t = (c - s.cosOuter) / (s.cosInner - s.cosOuter);
+  return t * t * (3 - 2 * t);
+}
+
 export interface PointLight3D {
   x: number;
   y: number;
@@ -17,6 +34,7 @@ export interface PointLight3D {
   radius: number;                           // en vóxeles (= píxeles del juego)
   color: readonly [number, number, number];  // 0..1
   intensity: number;
+  spot?: Spot | null;                       // si es un foco: su cono (en los mismos ejes que la luz)
 }
 
 export const RAY_NUDGE = [1 / 1024, 2 / 1024, 3 / 1024] as const;
@@ -71,7 +89,7 @@ export function lightField3D(
       const f = d < 1e-6 ? 1 : facing((n[0] * vx + n[1] * vy + n[2] * vz) / d);
       if (f <= 0) continue;
       const k = 1 - d / l.radius;
-      const att = k * k * l.intensity * f;
+      const att = k * k * l.intensity * f * spotFactor(l.spot ?? null, p[0] - l.x, p[1] - l.y, p[2] - l.z);
       if (att < 0.002) continue;
       if (occluded(start[0], start[1], start[2], l)) continue;
       out[0] += l.color[0] * att; out[1] += l.color[1] * att; out[2] += l.color[2] * att;
