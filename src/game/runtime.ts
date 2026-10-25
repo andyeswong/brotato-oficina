@@ -43,7 +43,7 @@ export class Runtime {
     this.rules = config.rules ?? DEFAULT_RULES;
     const r = config.radius;
     this.player = { x: spawn.x, y: spawn.y, z: restZ(world, spawn.x, spawn.y, r), r, facing: 0, inWater: false, walked: 0 };
-    this.sync();
+    this.syncEntity();
   }
 
   step(input: TickInput): void {
@@ -69,14 +69,14 @@ export class Runtime {
     if (wa && inWater && !p.inWater) { w.events.disturb(p.x, p.y, 0.7, 2); w.events.splash(p.x, p.y, wa.surface, 14, 70); }
     if (wa && inWater && input.stomp) { w.events.disturb(p.x, p.y, 2.8, 3); w.events.splash(p.x, p.y, wa.surface, 40, 105); }
     p.inWater = inWater;
-    this.sync();
+    this.syncEntity();
     // 3. El mundo
     w.step();
     this.tick++;
   }
 
-  // La entidad que lo dibuja va donde el cuerpo
-  private sync(): void {
+  // La entidad que lo dibuja va donde el cuerpo (público para colocarlo a mano fuera de un tick, p. ej. ?pos y ?dir)
+  syncEntity(): void {
     const id = this.config.entity;
     const e = id ? this.world.entities.find((en) => en.id === id) : undefined;
     if (!e) return;

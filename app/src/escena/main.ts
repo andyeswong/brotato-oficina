@@ -1,6 +1,7 @@
 // Demo: el escenario generado del juego, en UN SOLO MUNDO de vóxeles (src/world/state.ts). Este fichero solo hace
-// entrada, bucle e interfaz: el mundo guarda lo estático, el agua, las entidades (MAIA), las luces y las gotas; el
-// modo 2D (frame2D) y el modo vóxel (frame3D) leen ese mismo estado, y la lógica (colisión, agua) le pregunta a él.
+// la vista: cámara, frame2D o frame3D e interfaz. El tick (entrada -> mover y colisión -> eventos -> world.step()) es
+// el runtime del juego (src/game/runtime.ts, de FERN); el mundo guarda lo estático, el agua, las entidades (MAIA),
+// las luces y las gotas, y los dos modos leen ese mismo estado.
 import { generateLayout, TILE, type Layout } from '../../../src/worldgen';
 import { THEMES } from '../../../src/content/themes';
 import { Model, type ModelFile } from '@core/index';
@@ -8,7 +9,8 @@ import { buildWorldState, type WorldTheme, type World } from '../../../src/world
 import { bakeWorld, type Baked } from '../../../src/world/bake';
 import { frame2D } from '../../../src/world/frame2d';
 import { frame3D } from '../../../src/world/frame3d';
-import { TICK, type WorldState, type Entity } from '../../../src/world/state';
+import type { WorldState, Entity } from '../../../src/world/state';
+import { FixedLoop, NO_INPUT, Runtime, type TickInput } from '../../../src/game/runtime';
 import maiaFile from '../../../models/maia/maia.json';
 
 const VW = 384, VH = 216;
@@ -44,7 +46,10 @@ let baked: Baked | null = null;
 let maia: Entity | null = null;
 let mode: '2d' | 'voxel' = q.get('modo') === 'voxel' ? 'voxel' : '2d';
 const vox = { yaw: -30, elevation: 35, zoom: 3, dirty: true };
-const player = { x: 0, y: 0, dir: 0, moving: false, t: 0, wasInWater: false, stomp: false };
+let runtime: Runtime | null = null;
+let ticks: FixedLoop | null = null;
+let moving = false;            // para el bote al andar (vista)
+let stomp = false;             // Espacio: se gasta en el siguiente tick
 const keys = new Set<string>();
 let bakeMs = 0;
 
@@ -56,65 +61,31 @@ function rebuild(): void {
     ({ world, state } = buildWorldState(layout, theme));
     baked = bakeWorld(world, { topZ: TOPZ, incline: INCLINE });
     // La salida viene del worldgen (filas hacia abajo): se pasa a ejes del modelo una vez, aquí
-    player.x = layout.spawn.x; player.y = world.depth - 1 - layout.spawn.y;
+    let spawn = { x: layout.spawn.x, y: world.depth - 1 - layout.spawn.y };
     const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
-    if (pos && pos.length === 2 && pos.every(Number.isFinite)) { player.x = pos[0]!; player.y = pos[1]!; }
-    if (q.get('dir')) player.dir = Number(q.get('dir')) % 8;
+    if (pos && pos.length === 2 && pos.every(Number.isFinite)) spawn = { x: pos[0]!, y: pos[1]! };
     maia = state.addEntity('maia', maiaModel, 0, 0);
-    syncPlayer();
+    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, entity: 'maia' });
+    if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
+    ticks = new FixedLoop(runtime, input);
     bakeMs = Math.round(performance.now() - t0);
     vox.dirty = true;
     loading.style.display = 'none';
   }, 30);
 }
 
-// La entidad MAIA del mundo sigue al jugador, de pie en el suelo (o en el fondo del agua)
-function syncPlayer(): void {
-  if (!state || !maia) return;
-  maia.x = Math.round(player.x);
-  maia.y = Math.round(player.y);
-  maia.z = state.groundAt(player.x, player.y);
-  maia.yaw = player.dir * 45;
-}
-
-// Colisión: las cuatro esquinas del pie tienen que ser pisables (subir 2 como mucho; sin agua de más de 4,5)
-function blocked(x: number, y: number): boolean {
-  if (!state || !maia) return true;
-  for (const [dx, dy] of [[-4, -2], [4, -2], [-4, 2], [4, 2]] as const) if (!state.standable(x + dx, y + dy, maia.z, 2)) return true;
-  return false;
-}
-
-function step(dt: number): void {
-  if (!state) return;
+// La entrada de un tick, leída del teclado (en modo vóxel no se mueve nadie, pero el mundo sigue)
+function input(): TickInput {
+  if (mode !== '2d') return NO_INPUT;
   let dx = 0, dy = 0;
   if (keys.has('a') || keys.has('arrowleft')) dx--;
   if (keys.has('d') || keys.has('arrowright')) dx++;
   if (keys.has('w') || keys.has('arrowup')) dy++;                 // arriba = norte = +y
   if (keys.has('s') || keys.has('arrowdown')) dy--;
-  player.moving = !!(dx || dy);
-  const water = state.water;
-  const wd = state.waterAt(player.x, player.y)?.depth ?? 0;
-  if (player.moving) {
-    // En el agua se va más despacio, y al moverse se hacen ondas y salpica
-    const len = Math.hypot(dx, dy), speed = 70 * dt * (wd < 0.3 ? 1 : wd < 2.5 ? 0.8 : 0.55);
-    if (water && wd > 0.3 && Math.floor((player.t + dt) * 12) !== Math.floor(player.t * 12)) {
-      state.events.disturb(player.x, player.y, 0.35);
-      state.events.splash(player.x, player.y, state.waterAt(player.x, player.y)?.surface ?? 0, 3, 38);
-    }
-    const nx = player.x + (dx / len) * speed, ny = player.y + (dy / len) * speed;
-    if (!blocked(nx, player.y)) player.x = nx;
-    if (!blocked(player.x, ny)) player.y = ny;
-    player.dir = ((Math.round((Math.atan2(dx, -dy) * 180) / Math.PI / 45) % 8) + 8) % 8;   // sur = 0, este = 2, norte = 4
-    player.t += dt;
-  }
-  if (water) {
-    const wa = state.waterAt(player.x, player.y), inWater = (wa?.depth ?? 0) > 0.3, zs = wa?.surface ?? 0;
-    if (inWater && !player.wasInWater) { state.events.disturb(player.x, player.y, 0.7, 2); state.events.splash(player.x, player.y, zs, 14, 70); }
-    player.wasInWater = inWater;
-    if (player.stomp && inWater) { state.events.disturb(player.x, player.y, 2.8, 3); state.events.splash(player.x, player.y, zs, 40, 105); }
-  }
-  player.stomp = false;
-  syncPlayer();
+  moving = !!(dx || dy);
+  const t = { dx, dy, stomp };
+  stomp = false;
+  return t;
 }
 
 let lastVoxelDraw = 0;
@@ -138,23 +109,17 @@ function frame(time: number): void {
   const vy = Math.max(top, Math.min(b.height - VH, fy - VH / 2 - 12));
   const out = frame2D(state, b, {
     vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient,
-    bob: (e) => (e === maia && player.moving && Math.floor(player.t * 8) % 2 ? 1 : 0),
+    bob: (e) => (e === maia && moving && runtime && Math.floor(runtime.player.walked * 8) % 2 ? 1 : 0),
   });
   g.putImageData(new ImageData(out as Uint8ClampedArray<ArrayBuffer>, VW, VH), 0, 0);
 }
 
-let last = performance.now(), avg = 0, acc = 0, n = 0, tickAcc = 0;
+let last = performance.now(), avg = 0, acc = 0, n = 0;
 function loop(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = (now - last) / 1000;
   last = now;
-  // Ticks fijos de 1/60 (como el runtime de FERN): entrada y entidades -> eventos -> world.step()
-  if (q.has('agitar') && Math.floor(now / 700) !== Math.floor((now - dt * 1000) / 700)) player.stomp = true;   // pruebas sin teclado
-  tickAcc += dt;
-  while (state && tickAcc >= TICK) {
-    if (mode === '2d') step(TICK);
-    state.step();
-    tickAcc -= TICK;
-  }
+  if (q.has('agitar') && Math.floor(now / 700) !== Math.floor((now - dt * 1000) / 700)) stomp = true;   // pruebas sin teclado
+  ticks?.advance(dt);              // ticks fijos de 1/60: el runtime del juego
   const t0 = performance.now();
   frame(now / 1000);
   acc += performance.now() - t0; n++;
@@ -184,7 +149,7 @@ addEventListener('keydown', (e) => {
   if (k === 't') { theme = THEME_IDS[(THEME_IDS.indexOf(theme) + 1) % THEME_IDS.length]!; rebuild(); }
   if (k === 'l') { lightsOn = !lightsOn; vox.dirty = true; }
   if (k === 'v') toggleMode();
-  if (k === ' ') { player.stomp = true; e.preventDefault(); }
+  if (k === ' ') { stomp = true; e.preventDefault(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
