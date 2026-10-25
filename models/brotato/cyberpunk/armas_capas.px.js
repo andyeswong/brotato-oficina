@@ -57,12 +57,12 @@ const WEAPONS = {
     ".P.",
   ] },
   // ---- Catálogo 2 (borrador, 2026-10-25): abanico 15, perforador 22, barrido 16 del agarre a la punta
-  // Escopeta de neón: cuerpo corto de cromo, franjas rosas y boca ancha cian
-  abanico: { grip: [3, 4], half: { default: 1, C: 2, I: 2 }, rows: [
-    "...DLLLLLLLLLLLLLLC",
-    "..DMMPPMMPPMMMMMMCI",
-    "..DMMMMMMMMMMMMMMLC",
-    "..DDMMMMDD.........",
+  // Escopeta de neón: doble cañón de cromo (hueco en medio) y corredera con los neones rosas (revisión de NARUTO)
+  abanico: { grip: [3, 4], half: { default: 1 }, lat: { H: [-2, -1, 1, 2] }, rows: [
+    "...DLLLLLLHHHHHHHHH",
+    "..DMMPPMMMHHHHHHHHH",
+    "..DMMMMMMLLLLLLLLL.",
+    "..DDMMMMDD.PPQPPQ..",
     "...DMD.............",
     "..DMMD.............",
     "..DMD..............",
@@ -99,8 +99,10 @@ function layers(id) {
   const vox = new Map()
   def.rows.forEach((row, r) => [...row].forEach((k, c) => {
     if (k === ".") return
+    // lat: columnas laterales por tecla (un doble cañón deja el hueco del medio); si no, de -half a half
     const half = def.half[k] ?? def.half.default
-    for (let u = -half; u <= half; u++) vox.set(`${u},${-(c - gx)},${gy - r}`, k)
+    const lat = def.lat?.[k] ?? Array.from({ length: 2 * half + 1 }, (_, i) => i - half)
+    for (const u of lat) vox.set(`${u},${-(c - gx)},${gy - r}`, k)
   }))
   const zs = [...vox.keys()].map((s) => Number(s.split(",")[2]))
   return { vox, z0: Math.min(...zs), z1: Math.max(...zs) }

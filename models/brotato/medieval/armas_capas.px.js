@@ -59,11 +59,12 @@ const WEAPONS = {
     ".G.",
   ] },
   // ---- Catálogo 2 (borrador, 2026-10-25): abanico 15, perforador 22, barrido 16 del agarre a la punta
-  // Trabuco: caja de madera y boca de latón acampanada
-  abanico: { grip: [3, 4], half: { default: 1, B: 2, N: 2 }, rows: [
-    "....TTTTTTTTTTTTNNN",
-    "..kWWSSSSSSSSSSSBBN",
-    "..kwwwwwwwwwwwwwBBN",
+  // Trabuco: caja de madera, cañón fino de acero y la boca acampanada de latón, que abre a 3x3 en los 2 últimos
+  // vóxeles: es lo que hace leer "trabuco" (revisión de NARUTO)
+  abanico: { grip: [3, 4], half: { default: 1, S: 0, B: 1, N: 1 }, rows: [
+    ".................NN",
+    "..kWWWWWSSSSSSSSBNN",
+    "..kwwwwww........NN",
     "...wwk.............",
     "..www..............",
     "..ww...............",
@@ -79,13 +80,15 @@ const WEAPONS = {
     "......ww......................",
     ".....kk.......................",
   ] },
-  // Hacha de batalla: mango de madera, hoja de acero con el filo de runas ámbar
-  barrido: { grip: [1, 2], half: { default: 1, s: 1, S: 1, A: 1 }, rows: [
-    "............sSSSA.",
-    "............sSSSSA",
-    "kwwwwwwwwwwwBBBBBB",
-    "............sSSSSA",
-    "............sSSSA.",
+  // Hacha de batalla: mango de madera y una cabeza de acero en media luna de 6 de alto, con el filo de runas ámbar
+  // a lo largo (revisión de NARUTO: la de antes era pequeña)
+  barrido: { grip: [1, 2], half: { default: 1 }, rows: [
+    "..............sSA.",
+    ".............sSSSA",
+    "kwwwwwwwwwwwBBSSSA",
+    ".............sSSSA",
+    "..............sSA.",
+    "...............A..",
   ] },
   metralla: { grip: [0, 0], half: { default: 0 }, rows: ["BN"] },
   arpon: { grip: [0, 0], half: { default: 0 }, rows: ["gGGV"] },
@@ -99,8 +102,10 @@ function layers(id) {
   const vox = new Map()
   def.rows.forEach((row, r) => [...row].forEach((k, c) => {
     if (k === ".") return
+    // lat: columnas laterales por tecla (un doble cañón deja el hueco del medio); si no, de -half a half
     const half = def.half[k] ?? def.half.default
-    for (let u = -half; u <= half; u++) vox.set(`${u},${-(c - gx)},${gy - r}`, k)
+    const lat = def.lat?.[k] ?? Array.from({ length: 2 * half + 1 }, (_, i) => i - half)
+    for (const u of lat) vox.set(`${u},${-(c - gx)},${gy - r}`, k)
   }))
   const zs = [...vox.keys()].map((s) => Number(s.split(",")[2]))
   return { vox, z0: Math.min(...zs), z1: Math.max(...zs) }
