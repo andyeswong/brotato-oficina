@@ -64,6 +64,9 @@ export class ShallowWater {
     this.depth.set(s.depth); this.fl.set(s.fl); this.fr.set(s.fr); this.ft.set(s.ft); this.fb.set(s.fb); this.awake.set(s.awake);
   }
 
+  // Las celdas que se calcularon en el último paso (las despiertas y sus vecinas)
+  activeCells(): Int32Array { return this.list.subarray(0, this.count); }
+
   // Cuántas celdas se están calculando (para medir)
   get activeCount(): number { return this.count; }
 

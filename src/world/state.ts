@@ -24,7 +24,10 @@ export class StaticVoxels implements VoxelSource {
   readonly rows: number;
   readonly zh: number;
   private chunks: Array<Uint16Array | null>;
+  // Sello (valor del reloj) del último cambio de VÓXELES de cada trozo. El reloj lo comparten los cambios de agua y
+  // entidades (WorldState.changedSince), así una versión dice "todo lo anterior a este momento"
   readonly versions: Uint32Array;
+  clock = 0;
   // Altura de la cara de arriba del vóxel sólido más alto de cada columna (índice y * width + x); zMin si no hay
   readonly height: Int16Array;
 
@@ -54,7 +57,7 @@ export class StaticVoxels implements VoxelSource {
     if (!data) { if (!value) return; data = this.chunks[c] = new Uint16Array(CHUNK * CHUNK * this.zh); }
     if (data[i] === value) return;
     data[i] = value;
-    this.versions[c] = this.versions[c]! + 1;
+    this.versions[c] = ++this.clock;
     // Rejilla de alturas: subir es directo; si se vacía el de arriba del todo, se busca el siguiente hacia abajo
     const h = y * this.width + x;
     if (value && z + 1 > this.height[h]!) this.height[h] = z + 1;
@@ -74,6 +77,18 @@ export class StaticVoxels implements VoxelSource {
     cs.forEach((c, i) => { this.chunks[i] = c.data ? c.data.slice() : null; this.versions[i] = c.version; });
     this.height.fill(this.zMin);
     for (const [x, y, z] of this.entries()) { const h = y * this.width + x; if (z + 1 > this.height[h]!) this.height[h] = z + 1; }
+  }
+
+  chunkOf(x: number, y: number): number {
+    if (x < 0 || y < 0 || x >= this.width || y >= this.depth) return -1;
+    return Math.floor(y / CHUNK) * this.cols + Math.floor(x / CHUNK);
+  }
+
+  // Trozos (índices) cuyos vóxeles cambiaron después de la versión v
+  changedSince(v: number): number[] {
+    const out: number[] = [];
+    for (let c = 0; c < this.versions.length; c++) if (this.versions[c]! > v) out.push(c);
+    return out;
   }
 
   // ¿Hay algún sólido en la columna?
@@ -128,6 +143,7 @@ export class EntityList extends Array<Entity> {
   next = 1;
   add(o: { model: VoxelSource | number; x: number; y: number; z: number; facing?: number; castsShadow?: boolean; id?: EntityId }): EntityId {
     const w = this.owner;
+    w.touchArea(o.x, o.y, ENTITY_REACH);
     const modelId = typeof o.model === 'number' ? o.model : w.models.register(o.model);
     const model = w.models.get(modelId);
     const id = o.id ?? this.next++;
@@ -138,14 +154,19 @@ export class EntityList extends Array<Entity> {
   move(id: EntityId, x: number, y: number, z: number, facing?: number): void {
     const e = this.get(id);
     if (!e) throw new Error(`no hay entidad ${id}`);
+    this.owner.touchArea(e.x, e.y, ENTITY_REACH);
     e.x = x; e.y = y; e.z = z;
     if (facing !== undefined) e.yaw = facing;
+    this.owner.touchArea(x, y, ENTITY_REACH);
   }
   remove(id: EntityId): void {
     const i = this.findIndex((e) => e.id === id);
-    if (i >= 0) this.splice(i, 1);
+    if (i >= 0) { this.owner.touchArea(this[i]!.x, this[i]!.y, ENTITY_REACH); this.splice(i, 1); }
   }
 }
+
+// Zona (en planta) que marca una entidad al moverse: su cuerpo y su sombra cercana
+const ENTITY_REACH = 24;
 
 // Las luces del mundo: las fijas del worldgen (baked: se hornean) y las que se añaden en partida (dinámicas: se suman
 // cada cuadro en su radio). Un array con add / move / remove.
@@ -198,6 +219,8 @@ export interface ViewRegion { x0: number; y0: number; x1: number; y1: number }
 export class WorldState {
   palette: Palette;
   readonly entities = new EntityList();
+  // Sello del último cambio de AGUA o ENTIDADES de cada trozo (mismo reloj que los vóxeles)
+  readonly dynamicVersions: Uint32Array;
   readonly lights = new LightList();
   readonly models: ModelRegistry;
   readonly drops: Drops;
@@ -208,6 +231,7 @@ export class WorldState {
     opts: { seed?: number; fountain?: Fountain | null } = {}) {
     this.palette = solid.palette;
     this.models = new ModelRegistry(this);
+    this.dynamicVersions = new Uint32Array(solid.versions.length);
     this.entities.owner = this;
     // Las del worldgen son fijas: se hornean
     for (const l of lights) this.lights.push({ ...l, baked: l.baked ?? true });
@@ -375,6 +399,28 @@ export class WorldState {
     return null;
   }
 
+  // ---- qué ha cambiado (para rehornear y subir a la GPU solo eso)
+
+  // Versión actual del mundo: guardarla y después preguntar changedSince(esa versión)
+  get version(): number { return this.solid.clock; }
+
+  // Marca como cambiados (agua o entidades) los trozos que toca un círculo en planta
+  touchArea(x: number, y: number, r: number): void {
+    const s = this.solid;
+    const stamp = ++s.clock;
+    for (let cy = Math.max(0, Math.floor((y - r) / CHUNK)); cy <= Math.min(s.rows - 1, Math.floor((y + r) / CHUNK)); cy++)
+      for (let cx = Math.max(0, Math.floor((x - r) / CHUNK)); cx <= Math.min(s.cols - 1, Math.floor((x + r) / CHUNK)); cx++)
+        this.dynamicVersions[cy * s.cols + cx] = stamp;
+  }
+
+  // Trozos que cambiaron después de la versión v: vóxeles, agua o entidades (o solo vóxeles, para el horneado)
+  changedSince(v: number, what: 'all' | 'voxels' = 'all'): number[] {
+    const out: number[] = [];
+    for (let c = 0; c < this.solid.versions.length; c++)
+      if (this.solid.versions[c]! > v || (what === 'all' && this.dynamicVersions[c]! > v)) out.push(c);
+    return out;
+  }
+
   // Un tick de simulación: 1/60 s fijo
   step(): void {
     const dt = TICK;
@@ -385,6 +431,17 @@ export class WorldState {
       this.drops.emit(f.x + Math.cos(ang) * 6.5, f.y + Math.sin(ang) * 6.5, f.bowl.z + 2, Math.cos(ang) * sp, Math.sin(ang) * sp, 8 + this.random() * 10, 0.012);
     }
     this.water?.step(dt);
+    if (this.water) {
+      // Las celdas de agua que se movieron marcan su trozo
+      const w = this.water, s = this.solid;
+      let stamp = 0;
+      for (const i of w.sim.activeCells()) {
+        const c = s.chunkOf((i % w.gw) * 2, Math.floor(i / w.gw) * 2);
+        if (c < 0) continue;
+        if (!stamp) stamp = ++s.clock;
+        this.dynamicVersions[c] = stamp;
+      }
+    }
     this.drops.step(dt, this.water, (x, y) => this.groundAt(x, y));
     this.tick++;
   }
@@ -399,6 +456,7 @@ export class WorldState {
       entities: [...this.entities].sort((a, b) => byId(a.id, b.id)).map((e) => ({ id: e.id, modelId: e.modelId, x: e.x, y: e.y, z: e.z, yaw: e.yaw, castsShadow: e.castsShadow })),
       lights: [...this.lights].sort((a, b) => byId(a.id, b.id)).map((l) => ({ ...l })),
       next: { entity: this.entities.next, light: this.lights.next },
+      clock: this.solid.clock, dynamicVersions: this.dynamicVersions.slice(),
     };
   }
 
@@ -416,6 +474,7 @@ export class WorldState {
     this.lights.length = 0;
     this.lights.push(...s.lights.map((l) => ({ ...l })));
     this.entities.next = s.next.entity; this.lights.next = s.next.light;
+    this.solid.clock = s.clock; this.dynamicVersions.set(s.dynamicVersions);
   }
 
   // Huella (FNV-1a de 32 bits) de todo el estado, en un orden fijo
@@ -429,6 +488,7 @@ export class WorldState {
     for (const e of s.entities) { h.str(String(e.id)); h.num(e.modelId); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); h.num(e.castsShadow ? 1 : 0); }
     for (const l of s.lights) { h.str(String(l.id)); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); h.num(l.baked ? 1 : 0); h.f64(l.intensity ?? -1); h.f64(l.radius ?? -1); }
     h.num(s.next.entity); h.num(s.next.light);
+    h.num(s.clock); h.bytes(s.dynamicVersions);
     return h.hex();
   }
 }
@@ -444,6 +504,8 @@ export interface WorldSnapshot {
   entities: Array<{ id: EntityId; modelId: number; x: number; y: number; z: number; yaw: number; castsShadow: boolean }>;
   lights: WorldLight[];
   next: { entity: number; light: number };
+  clock: number;
+  dynamicVersions: Uint32Array;
 }
 
 // FNV-1a de 32 bits sobre los bytes, en orden

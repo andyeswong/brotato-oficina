@@ -1,9 +1,14 @@
-// Horneado de un mundo de vóxeles para jugarlo en 2D: se renderiza UNA vez (imagen + profundidad + qué vóxel hay
-// en cada píxel) y, por cada luz, su peso en cada píxel de su zona, con la caída del juego, el ángulo con la
+// Horneado de un mundo de vóxeles para jugarlo en 2D: se renderiza (imagen + profundidad + qué vóxel y qué cara hay
+// en cada píxel) y, por cada luz fija, su peso en cada píxel de su zona, con la caída del juego, el ángulo con la
 // cara y la sombra de los propios vóxeles. Por cuadro solo queda sumar las luces con su parpadeo (lightView).
-import { render, camera, unkey, DIR_VECTORS, type RenderOptions, type Camera } from '../core';
+//
+// Si cambian vóxeles a mitad de partida, rebake() rehace SOLO lo afectado: el recuadro de pantalla de los trozos
+// cambiados, la rejilla de sombras de esas columnas y los pesos de las luces que los alcanzan. El resultado es el
+// mismo, byte a byte, que hornear el mundo entero de nuevo (hay prueba).
+import { render, camera, unkey, DIR_VECTORS, type RenderOptions, type Camera, type VoxelSource } from '../core';
 import { resolveLight } from './lightutil';
-import type { World, WorldLight } from './build';
+import { CHUNK, type StaticVoxels } from './state';
+import type { WorldLight } from './build';
 
 export interface BakedLight {
   light: WorldLight;
@@ -18,11 +23,25 @@ export interface Baked {
   height: number;
   rgba: Uint8ClampedArray<ArrayBuffer>;
   depth: Float32Array;
-  face: Int8Array;              // qué cara se ve en cada píxel (índice en DIR_VECTORS; -1 = nada): para las luces dinámicas
+  face: Int8Array;              // qué cara se ve en cada píxel (índice en DIR_VECTORS; -1 = nada)
+  pick: Float64Array;           // qué vóxel se ve en cada píxel (clave; NaN = nada)
   options: RenderOptions;
   cam: Camera;
   lights: BakedLight[];
+  version: number;              // versión del mundo horneada (para rebakeChanged)
   ms: { render: number; light: number };
+  // Para rehornear: el mundo, su rejilla de sombras y el alto máximo
+  source: StaticVoxels;
+  occ: Uint8Array;
+  topZ: number;
+}
+
+// Lo mínimo que necesita el horneado de un mundo
+export interface Bakeable {
+  model: StaticVoxels;
+  lights: readonly WorldLight[];
+  width: number;
+  depth: number;
 }
 
 const facing = (ndl: number) => (ndl > 0 ? 0.35 + 0.65 * ndl : 0);
@@ -31,7 +50,7 @@ const BASIN_DEPTH = 10;   // las cuencas del agua bajan hasta z = -8: la imagen 
 // Proyección oblicua 3/4: la altura sube 1:1 y el suelo se acorta por `incline` (1 = sin acortar, como los tiles
 // del juego; 0.5 = losetas de 16x8, que deja ver a los personajes de frente con un poco de cabeza). Personajes y
 // escenario usan la MISMA proyección. La imagen tiene el norte arriba.
-export function bakeWorld(world: World, opts: { topZ?: number; incline?: number } = {}): Baked {
+export function bakeWorld(world: Bakeable, opts: { topZ?: number; incline?: number } = {}): Baked {
   const topZ = opts.topZ ?? 40;
   const incline = opts.incline ?? 0.5;
   const originY = Math.ceil(world.depth * incline) + topZ;
@@ -42,77 +61,149 @@ export function bakeWorld(world: World, opts: { topZ?: number; incline?: number 
   const t0 = performance.now();
   const img = render(world.model, options);
   const t1 = performance.now();
-  const cam = camera(options);
-
-  // Rejilla densa de ocupación para los rayos de sombra
-  const GW = world.width, GD = world.depth, GZ = topZ + 2 + BASIN_DEPTH, Z0 = -BASIN_DEPTH;
-  const occ = new Uint8Array(GW * GD * GZ);
-  for (const [x, y, z0] of world.model.entries()) { const z = z0 - Z0; if (x >= 0 && y >= 0 && z >= 0 && x < GW && y < GD && z < GZ) occ[(z * GD + y) * GW + x] = 1; }
-  const filled = (x: number, y: number, z0: number) => { const z = z0 - Z0; return x >= 0 && y >= 0 && z >= 0 && x < GW && y < GD && z < GZ && occ[(z * GD + y) * GW + x] === 1; };
-
-  function occluded(px: number, py: number, pz: number, lx: number, ly: number, lz: number): boolean {
-    const dx = lx - px, dy = ly - py, dz = lz - pz;
-    let x = Math.floor(px), y = Math.floor(py), z = Math.floor(pz);
-    const tx = Math.floor(lx), ty = Math.floor(ly), tz = Math.floor(lz);
-    const sx = Math.sign(dx), sy = Math.sign(dy), sz = Math.sign(dz);
-    const ddx = sx ? Math.abs(1 / dx) : Infinity, ddy = sy ? Math.abs(1 / dy) : Infinity, ddz = sz ? Math.abs(1 / dz) : Infinity;
-    let mx = sx ? (sx > 0 ? x + 1 - px : px - x) * ddx : Infinity;
-    let my = sy ? (sy > 0 ? y + 1 - py : py - y) * ddy : Infinity;
-    let mz = sz ? (sz > 0 ? z + 1 - pz : pz - z) * ddz : Infinity;
-    for (let i = 0; i < 1024; i++) {
-      if (x === tx && y === ty && z === tz) return false;
-      if (mx <= my && mx <= mz) { if (mx > 1) return false; x += sx; mx += ddx; }
-      else if (my <= mz) { if (my > 1) return false; y += sy; my += ddy; }
-      else { if (mz > 1) return false; z += sz; mz += ddz; }
-      if (x === tx && y === ty && z === tz) return false;
-      if (filled(x, y, z)) return true;
-    }
-    return false;
-  }
-
-  const lights: BakedLight[] = [];
+  const b: Baked = {
+    width: img.width, height: img.height, rgba: img.rgba, depth: img.depth, face: img.pickFace!, pick: img.pickKey!,
+    options, cam: camera(options), lights: [], version: world.model.clock, ms: { render: Math.round(t1 - t0), light: 0 },
+    source: world.model, occ: new Uint8Array(world.width * world.depth * gridZ(topZ)), topZ,
+  };
+  fillOcc(b, 0, 0, world.width - 1, world.depth - 1);
   for (const l of world.lights) {
     if (l.baked === false) continue;                 // las dinámicas no se hornean: se suman cada cuadro
-    const p = resolveLight(l, 0);
-    const r = p.radius;
-    // Zona de la imagen: la proyección de la caja que rodea la esfera de la luz
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const dx of [-r, r]) for (const dy of [-r, r]) for (const z of [0, Math.min(topZ, l.z + r)]) {
-      const [sx, sy] = cam.project(l.x + dx, l.y + dy, z);
-      x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
-    }
-    const rx = Math.max(0, Math.floor(x0)), ry = Math.max(0, Math.floor(y0));
-    const rect = { x: rx, y: ry, w: Math.min(img.width, Math.ceil(x1)) - rx, h: Math.min(img.height, Math.ceil(y1)) - ry };
-    if (rect.w <= 0 || rect.h <= 0) continue;
-    const weight = new Float32Array(rect.w * rect.h);
-    const cache = new Map<number, number>();
-    for (let j = 0; j < rect.h; j++) for (let i = 0; i < rect.w; i++) {
-      const idx = (rect.y + j) * img.width + rect.x + i;
-      const k = img.pickKey![idx]!;
-      if (Number.isNaN(k)) continue;
-      const f = img.pickFace![idx]!;
-      const ck = k * 8 + f;
-      let w = cache.get(ck);
-      if (w === undefined) {
-        const [vx, vy, vz] = unkey(k);
-        const n = DIR_VECTORS[f]!;
-        const cx = vx + 0.5 + n[0] * 0.5, cy = vy + 0.5 + n[1] * 0.5, cz = vz + 0.5 + n[2] * 0.5;
-        const ax = l.x - cx, ay = l.y - cy, az = l.z - cz;
-        const d = Math.hypot(ax, ay, az);
-        w = 0;
-        if (d < r) {
-          const fa = d < 1e-6 ? 1 : facing((n[0] * ax + n[1] * ay + n[2] * az) / d);
-          const k2 = 1 - d / r;
-          if (fa > 0 && !occluded(vx + 0.5 + n[0], vy + 0.5 + n[1], vz + 0.5 + n[2], l.x, l.y, l.z)) w = k2 * k2 * fa * p.base;
-        }
-        cache.set(ck, w);
-      }
-      weight[j * rect.w + i] = w;
-    }
-    lights.push({ light: l, color: p.color, intensity: p.base, rect, weight });
+    const bl = lightWeights(b, l);
+    if (bl) b.lights.push(bl);
   }
-  const t2 = performance.now();
-  return { width: img.width, height: img.height, rgba: img.rgba, depth: img.depth, face: img.pickFace!, options, cam, lights, ms: { render: Math.round(t1 - t0), light: Math.round(t2 - t1) } };
+  b.ms.light = Math.round(performance.now() - t1);
+  return b;
+}
+
+// ---- rejilla densa de ocupación para los rayos de sombra (columnas x0..x1, y0..y1, toda la altura)
+const gridZ = (topZ: number) => topZ + 2 + BASIN_DEPTH;
+const Z0 = -BASIN_DEPTH;
+
+function fillOcc(b: Baked, x0: number, y0: number, x1: number, y1: number): void {
+  const GW = b.source.width, GD = b.source.depth, GZ = gridZ(b.topZ);
+  for (let z = 0; z < GZ; z++) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) b.occ[(z * GD + y) * GW + x] = 0;
+  for (const [x, y, z0] of b.source.entries({ x0, y0, x1, y1 })) {
+    const z = z0 - Z0;
+    if (z >= 0 && z < GZ) b.occ[(z * GD + y) * GW + x] = 1;
+  }
+}
+
+function occluded(b: Baked, px: number, py: number, pz: number, lx: number, ly: number, lz: number): boolean {
+  const GW = b.source.width, GD = b.source.depth, GZ = gridZ(b.topZ);
+  const filled = (x: number, y: number, z0: number) => { const z = z0 - Z0; return x >= 0 && y >= 0 && z >= 0 && x < GW && y < GD && z < GZ && b.occ[(z * GD + y) * GW + x] === 1; };
+  const dx = lx - px, dy = ly - py, dz = lz - pz;
+  let x = Math.floor(px), y = Math.floor(py), z = Math.floor(pz);
+  const tx = Math.floor(lx), ty = Math.floor(ly), tz = Math.floor(lz);
+  const sx = Math.sign(dx), sy = Math.sign(dy), sz = Math.sign(dz);
+  const ddx = sx ? Math.abs(1 / dx) : Infinity, ddy = sy ? Math.abs(1 / dy) : Infinity, ddz = sz ? Math.abs(1 / dz) : Infinity;
+  let mx = sx ? (sx > 0 ? x + 1 - px : px - x) * ddx : Infinity;
+  let my = sy ? (sy > 0 ? y + 1 - py : py - y) * ddy : Infinity;
+  let mz = sz ? (sz > 0 ? z + 1 - pz : pz - z) * ddz : Infinity;
+  for (let i = 0; i < 1024; i++) {
+    if (x === tx && y === ty && z === tz) return false;
+    if (mx <= my && mx <= mz) { if (mx > 1) return false; x += sx; mx += ddx; }
+    else if (my <= mz) { if (my > 1) return false; y += sy; my += ddy; }
+    else { if (mz > 1) return false; z += sz; mz += ddz; }
+    if (x === tx && y === ty && z === tz) return false;
+    if (filled(x, y, z)) return true;
+  }
+  return false;
+}
+
+// ---- pesos de una luz fija: su zona de pantalla y el peso de cada píxel (por cara de vóxel, con sombras)
+function lightWeights(b: Baked, l: WorldLight): BakedLight | null {
+  const p = resolveLight(l, 0);
+  const r = p.radius;
+  // Zona de la imagen: la proyección de la caja que rodea la esfera de la luz
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const dx of [-r, r]) for (const dy of [-r, r]) for (const z of [Z0, Math.min(b.topZ, l.z + r)]) {
+    const [sx, sy] = b.cam.project(l.x + dx, l.y + dy, z);
+    x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+  }
+  const rx = Math.max(0, Math.floor(x0)), ry = Math.max(0, Math.floor(y0));
+  const rect = { x: rx, y: ry, w: Math.min(b.width, Math.ceil(x1)) - rx, h: Math.min(b.height, Math.ceil(y1)) - ry };
+  if (rect.w <= 0 || rect.h <= 0) return null;
+  const weight = new Float32Array(rect.w * rect.h);
+  const cache = new Map<number, number>();
+  for (let j = 0; j < rect.h; j++) for (let i = 0; i < rect.w; i++) {
+    const idx = (rect.y + j) * b.width + rect.x + i;
+    const k = b.pick[idx]!;
+    if (Number.isNaN(k)) continue;
+    const f = b.face[idx]!;
+    const ck = k * 8 + f;
+    let w = cache.get(ck);
+    if (w === undefined) {
+      const [vx, vy, vz] = unkey(k);
+      const n = DIR_VECTORS[f]!;
+      const cx = vx + 0.5 + n[0] * 0.5, cy = vy + 0.5 + n[1] * 0.5, cz = vz + 0.5 + n[2] * 0.5;
+      const ax = l.x - cx, ay = l.y - cy, az = l.z - cz;
+      const d = Math.hypot(ax, ay, az);
+      w = 0;
+      if (d < r) {
+        const fa = d < 1e-6 ? 1 : facing((n[0] * ax + n[1] * ay + n[2] * az) / d);
+        const k2 = 1 - d / r;
+        if (fa > 0 && !occluded(b, vx + 0.5 + n[0], vy + 0.5 + n[1], vz + 0.5 + n[2], l.x, l.y, l.z)) w = k2 * k2 * fa * p.base;
+      }
+      cache.set(ck, w);
+    }
+    weight[j * rect.w + i] = w;
+  }
+  return { light: l, color: p.color, intensity: p.base, rect, weight };
+}
+
+// ---- rehorneado parcial
+
+// Rehace el horneado de los trozos dados (índices de StaticVoxels): su recuadro de pantalla, la rejilla de sombras
+// de sus columnas y los pesos de las luces fijas que los alcanzan.
+export function rebake(b: Baked, chunks: readonly number[], lights: readonly WorldLight[]): { pixels: number; lights: number } {
+  if (!chunks.length) return { pixels: 0, lights: 0 };
+  const s = b.source;
+  // Caja en planta de los trozos cambiados
+  let cx0 = Infinity, cy0 = Infinity, cx1 = -Infinity, cy1 = -Infinity;
+  for (const c of chunks) {
+    const cx = c % s.cols, cy = Math.floor(c / s.cols);
+    cx0 = Math.min(cx0, cx); cx1 = Math.max(cx1, cx); cy0 = Math.min(cy0, cy); cy1 = Math.max(cy1, cy);
+  }
+  const X0 = cx0 * CHUNK, Y0 = cy0 * CHUNK, X1 = Math.min(s.width, (cx1 + 1) * CHUNK) - 1, Y1 = Math.min(s.depth, (cy1 + 1) * CHUNK) - 1;
+  fillOcc(b, X0, Y0, X1, Y1);
+
+  // Recuadro de pantalla que pueden ocupar esos vóxeles (toda la altura), más un píxel por las caras vecinas
+  const a = b.options.oblique?.y ?? 1, O = b.options.originY;
+  const rx0 = Math.max(0, X0 - 1), rx1 = Math.min(b.width - 1, X1 + 2);
+  const ry0 = Math.max(0, Math.floor(O - a * (Y1 + 1) - (s.zMax + 1)) - 1), ry1 = Math.min(b.height - 1, Math.ceil(O - a * Y0 - s.zMin) + 1);
+  const rw = rx1 - rx0 + 1, rh = ry1 - ry0 + 1;
+  // Todos los vóxeles que pueden caer en ese recuadro (vistos con los vecinos del mundo entero)
+  const yLo = Math.floor((O - ry1 - 1 - s.zMax - 1) / a) - 1, yHi = Math.ceil((O - ry0 - s.zMin) / a) + 1;
+  const region = { x0: rx0 - 1, y0: Math.max(0, yLo), x1: rx1 + 1, y1: Math.min(s.depth - 1, yHi) };
+  const sub: VoxelSource = { palette: s.palette, get: (x, y, z) => s.get(x, y, z), entries: () => s.entries(region) };
+  const img = render(sub, { ...b.options, width: rw, height: rh, originX: (b.options.originX ?? 0) - rx0, originY: O - ry0 });
+  for (let j = 0; j < rh; j++) for (let i = 0; i < rw; i++) {
+    const src = j * rw + i, dst = (ry0 + j) * b.width + rx0 + i;
+    b.depth[dst] = img.depth[src]!; b.face[dst] = img.pickFace![src]!; b.pick[dst] = img.pickKey![src]!;
+    for (let ch = 0; ch < 4; ch++) b.rgba[dst * 4 + ch] = img.rgba[src * 4 + ch]!;
+  }
+
+  // Luces fijas que alcanzan la zona: sus pesos de nuevo (un hueco nuevo puede dejar pasar luz lejos del recuadro)
+  let relit = 0;
+  for (const l of lights) {
+    if (l.baked === false) continue;
+    const r = resolveLight(l, 0).radius;
+    if (l.x + r < X0 || l.x - r > X1 + 1 || l.y + r < Y0 || l.y - r > Y1 + 1) continue;
+    const i = b.lights.findIndex((bl) => bl.light.id === l.id);
+    const bl = lightWeights(b, l);
+    if (i >= 0) { if (bl) b.lights[i] = bl; else b.lights.splice(i, 1); } else if (bl) b.lights.push(bl);
+    relit++;
+  }
+  return { pixels: rw * rh, lights: relit };
+}
+
+// Rehornea lo que haya cambiado (solo vóxeles) desde el último horneado
+export function rebakeChanged(b: Baked, lights: readonly WorldLight[]): { chunks: number; pixels: number; lights: number } {
+  const changed = b.source.changedSince(b.version);
+  const r = rebake(b, changed, lights);
+  b.version = b.source.clock;
+  return { chunks: changed.length, ...r };
 }
 
 // Luz total (ambiente + fuentes con su parpadeo en `time`) de una ventana de la imagen horneada
