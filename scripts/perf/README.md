@@ -41,3 +41,18 @@ es una cota, no la cifra de aceptación, y el freno de CDP no frena la GPU. La a
 | medieval, lago con pisotones | 16,7 ms | 0,9 % | 3,7 ms |
 
 Antes, con el cuadro en CPU: 43-77 ms por cuadro y p95 de 67-133 ms.
+
+## Multitud (app/multitud.html), 2026-10-24
+
+N MAIAs andando en círculo con su walk, pintadas por el compositor (`?n=200`, `?ruta=cpu`, `?tema=`, `?sombras=0`).
+Las entidades son quads instanciados con un atlas de sprites; la luz de cada una va en el shader. Sombra de verdad
+solo para las 8 más cercanas al centro; de contacto, todas. Edge con GPU (`-Gpu`).
+
+| Caso | p95 | Perdidos | CPU del compositor | Mover N + step del mundo |
+|---|---|---|---|---|
+| 200, 1x | 4,3 ms | 0 % | 0,3 ms | 0,3 ms |
+| 200, 6x | 12,6 ms | 0,2 % | 3,8 ms | 2,4 ms |
+| 100, 6x | 12,5 ms | 0,1 % | 2,8 ms | 2,2 ms |
+| 200 por CPU, 1x (fallback) | 92 ms | 100 % | 78 ms | — |
+
+Sigue valiendo el aviso de arriba: el freno no frena la GPU, la aceptación es en el Flip. Por CPU no caben 200.

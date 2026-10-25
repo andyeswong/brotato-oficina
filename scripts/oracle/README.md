@@ -60,3 +60,14 @@ Dos casos que el oráculo encontró en un solo píxel y que se arreglaron en la 
 `ctxloss.ps1 -Url 'http://<host>:5190/escena.html?tema=medieval&seed=7' -Dir 'C:\...' -Gpu` pierde el contexto a
 los 6 s y lo recupera 2 s después. Guarda `ctx0/1/2.png`. Resultado: mientras no hay contexto pinta la CPU (la misma
 imagen, HUD `(cpu)`); al volver, la GPU lo sube todo y el HUD dice `(gpu)`.
+
+## Multitudes (2026-10-24)
+
+Dos escenarios más: 60 y 200 MAIAs con cuadros del walk y giros distintos, solapadas, más de 8 con sombra y una luz
+dinámica. Las dos rutas siguen las mismas reglas:
+- primero todas las sombras de contacto;
+- en cada píxel gana la entidad más cercana, comparada por la misma clave float32 que el z-buffer;
+- sombra de verdad solo para las 8 más cercanas al centro;
+- el rayo de la luz propia sale desplazado igual en las dos (`RAY_NUDGE`).
+
+Resultado: pasan los 9 escenarios en la GPU de la Alienware (máx. 0,16 %, diferencia 1) y en SwiftShader (máx. 0,04 %).
