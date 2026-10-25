@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Model, material } from '../../src/core';
+import { Model, material, type VoxelSource } from '../../src/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, CLEARED_TICKS, type Models } from '../../src/game/brotato/play';
@@ -13,7 +13,12 @@ import type { TickInput } from '../../src/game/runtime';
 const { registry } = validateContent(discoverContent());
 const pal = { ramps: [{ name: 'gris', colors: ['#202020', '#606060', '#a0a0a0'] }] };
 const cube = (h: number) => { const m = new Model(pal, `c${h}`); for (let z = 0; z < h; z++) m.set(0, 0, z, material(0, 1)); return m; };
-const models: Models = { model: () => cube(2), walk: () => ({ frames: [cube(3), cube(4)], ms: 100 }) };
+// Como la vista: un modelo por referencia y unos cuadros de andar por modelo y papel, siempre los mismos objetos
+const modelCache = new Map<string, Model>(), walkCache = new Map<string, { frames: Model[]; ms: number }>();
+const models: Models = {
+  model: (ref) => modelCache.get(ref) ?? (modelCache.set(ref, cube(2)), modelCache.get(ref)!),
+  walk: (ref, role) => walkCache.get(`${ref}|${role}`) ?? (walkCache.set(`${ref}|${role}`, { frames: [cube(3), cube(4)], ms: 100 }), walkCache.get(`${ref}|${role}`)!),
+};
 const player = { model: cube(6), walk: [cube(7), cube(8)], walkMs: 100 };
 
 function input(t: number): TickInput {
@@ -34,6 +39,7 @@ describe('la partida en el mundo', () => {
     const g = new BrotatoGame(registry, 7, models, player, registry.level('medieval'));
     let seenEnemies = 0;
     const yaws = new Set<number>();
+    const seenModels = new Set<VoxelSource>();
     for (let t = 0; t < 900 && g.phase === 'wave'; t++) {
       g.step(input(t));
       const w = g.current;
@@ -42,9 +48,13 @@ describe('la partida en el mundo', () => {
       expect(g.state.entities.length).toBe(1 + w.weapons.length + w.enemies.length + w.projectiles.length + w.materials.length);
       // y todas en uno de los 8 rumbos: un giro continuo es un sprite nuevo en la caché del compositor por cuadro
       for (const e of g.state.entities) yaws.add(e.yaw);
+      for (const e of g.state.entities) seenModels.add(e.model);
     }
     expect(seenEnemies).toBeGreaterThan(0);
     expect([...yaws].every((y) => y % 45 === 0 && y >= 0 && y < 360), [...yaws].join(' ')).toBe(true);
+    // y todo modelo que llegó a verse está en la lista para precalentar (game.models())
+    const listed = new Set(g.preloadModels());
+    for (const m of seenModels) expect(listed.has(m), 'un modelo visto que no está en preloadModels()').toBe(true);
   });
 
   it('la oleada superada: un respiro, la tienda (el mundo sigue, la oleada no) y salir empieza la siguiente', { timeout: 60_000 }, () => {
