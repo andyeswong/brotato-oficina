@@ -162,11 +162,11 @@ void version;
   </main>
 
   <!-- Arriba a la izquierda: el archivo -->
-  <div class="float top-left pill" @click.stop>
+  <div class="float top-left pill" data-repel @click.stop>
     <span class="logo">VoxPix</span>
     <span class="name" :title="`${model.size} vóxeles`">{{ model.name }}</span>
     <button class="ghost" :class="{ on: ui.menu === 'archivo' }" @click="toggleMenu('archivo')">Archivo ▾</button>
-    <div v-if="ui.menu === 'archivo'" class="menu card">
+    <div v-if="ui.menu === 'archivo'" class="menu card" data-repel>
       <button class="ghost" @click="newModel(); closeMenus()"><PxIcon name="new" />Nuevo</button>
       <button class="ghost" @click="replaceModel(sampleScene()); closeMenus()"><PxIcon name="sample" />Escena de muestra</button>
       <label class="btn ghost"><input type="file" accept=".json" @change="open($event); closeMenus()" /><PxIcon name="open" />Abrir…</label>
@@ -177,7 +177,7 @@ void version;
   </div>
 
   <!-- Arriba en el centro: cómo se edita -->
-  <div class="float top-center pill">
+  <div class="float top-center pill" data-repel>
     <div class="seg big">
       <button :class="{ on: editor.mode === 'layers' }" title="Editar por capas (Tab)" @click="editor.mode = 'layers'"><PxIcon name="layers" />Capas</button>
       <button :class="{ on: editor.mode === 'voxel3d' }" title="Editar sobre el modelo en 3D (Tab)" @click="editor.mode = 'voxel3d'"><PxIcon name="cube" />3D</button>
@@ -185,7 +185,7 @@ void version;
   </div>
 
   <!-- Arriba a la derecha: deshacer, rehacer y exportar -->
-  <div class="float top-right" @click.stop>
+  <div class="float top-right" data-repel @click.stop>
     <div class="pill">
       <button class="ghost round" :disabled="!history.canUndo" title="Deshacer (Ctrl+Z)" @click="undo"><PxIcon name="undo" /></button>
       <button class="ghost round" :disabled="!history.canRedo" title="Rehacer (Ctrl+Y)" @click="redo"><PxIcon name="redo" /></button>
@@ -193,7 +193,7 @@ void version;
     <div class="pill">
       <button class="primary" @click="toggleMenu('exportar')"><PxIcon name="export" />Exportar ▾</button>
     </div>
-    <div v-if="ui.menu === 'exportar'" class="menu card right">
+    <div v-if="ui.menu === 'exportar'" class="menu card right" data-repel>
       <button class="ghost" title="Un sprite por ángulo + hoja" @click="exportPxl(); closeMenus()"><PxIcon name="export" />pxl: {{ editor.view.turn }} ángulos</button>
       <button class="ghost" title="Un sprite por altura, vistas desde arriba" @click="exportStack(); closeMenus()"><PxIcon name="layers" />pxl: capas</button>
       <button class="ghost" @click="save(); closeMenus()"><PxIcon name="save" />Modelo (.voxpix.json)</button>
@@ -207,7 +207,7 @@ void version;
   <aside v-draggable="'vista-previa'" class="float right card" :class="{ folded: !ui.previewOpen }"><Viewport /></aside>
 
   <!-- Abajo: herramientas y colores, y encima las opciones de la herramienta -->
-  <div class="float bottom">
+  <div class="float bottom" data-repel>
     <div class="pill options">
       <strong>{{ TOOLS.find((x) => x[0] === editor.tool)?.[2] }}</strong>
       <span class="hint">{{ editor.mode === 'voxel3d' ? TOOL_HINT[editor.tool].replace(' · clic derecho borra', '') : TOOL_HINT[editor.tool] }}</span>
@@ -302,6 +302,9 @@ void version;
 /* Las ventanas se arrastran por la cabecera; mientras se mueven, por encima de todo */
 aside :deep(header) { cursor: grab; user-select: none; }
 aside.dragging { z-index: 6; box-shadow: 0 18px 50px rgba(0, 0, 0, .6); }
+/* Al apartarse de un menú (y al volver), con suavidad; mientras se arrastra, al momento */
+aside.repels { transition: translate .22s cubic-bezier(.2, .8, .2, 1); }
+aside.repels.dragging { transition: none; }
 aside.dragging :deep(header) { cursor: grabbing; }
 .bottom { bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .bottom .row { display: flex; gap: 8px; align-items: stretch; }
