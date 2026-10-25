@@ -123,7 +123,11 @@ function iconImage(ref: IconRef): HTMLCanvasElement | null {
   if (m) {
     // Las armas de perfil (el modelo apunta a -y); el resto, de frente
     const S = 72;
-    const img = render(m, { width: S, height: S, originX: S / 2, originY: S - 8, pivot: [0.5, 0, 0], yaw: ref.kind === 'weapon' ? 90 : 0, oblique: { y: INCLINE, z: 1 }, flat: true, outline: 'outer', outlineColor: INK });
+    // El material es una pieza de 3 o 4 vóxeles tumbada: de frente se lee como un guion, y en oblicua la cara del
+    // vóxel de delante tapa el hueco del clip. Cenital y a 2 px por vóxel se ven el clip, la moneda o el chip
+    const top = ref.kind === 'material';
+    const view = top ? { elevation: 90, ppu: 2 } : { oblique: { y: INCLINE, z: 1 } };
+    const img = render(m, { width: S, height: S, originX: S / 2, originY: S - 8, pivot: [0.5, 0, 0], yaw: ref.kind === 'weapon' ? 90 : 0, ...view, flat: true, outline: 'outer', outlineColor: INK });
     let x0 = S, y0 = S, x1 = -1, y1 = -1;
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (img.rgba[(y * S + x) * 4 + 3]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     if (x1 >= 0) {

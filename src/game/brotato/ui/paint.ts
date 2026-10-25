@@ -41,6 +41,6 @@ export function stroke(p: Painter, x: number, y: number, w: number, h: number, c
 }
 
 export const COLORS = {
-  bg: '#12101c', panel: '#12101ce6', row: '#1f1c30', rowLocked: '#2c2645', edge: '#4a4463', edgeLocked: '#f0b951',
+  bg: '#12101c', panel: '#12101ce6', row: '#1f1c30', rowLocked: '#2c2645', edge: '#4a4463', slot: '#2e2a42', edgeLocked: '#f0b951',
   text: '#fdf6ff', dim: '#8a94a6', gold: '#f0b951', bad: '#ff4d5e', good: '#7bd88f', accent: '#7a5bd6',
 } as const;

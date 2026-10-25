@@ -12,6 +12,7 @@ export type ShopAction = { type: 'buy'; index: number } | { type: 'lock'; index:
 
 export const ICON_W = 24;   // caja de un icono a escala x1: las armas, de perfil, son más largas que altas
 export const ICON_H = 16;
+export const MATERIAL_ICON = 10;   // caja del icono del material, junto a la cuenta
 const MAX_ROW_W = 100;      // ancho máximo de una fila, en letras: en pantallas anchas no se estira de lado a lado
 const TIERS = ['I', 'II', 'III', 'IV'];
 
@@ -65,7 +66,8 @@ export function drawShop(p: Painter, run: Run, theme: ThemeId, message: ShopMess
   let y = pad;
   drawText(p, left, y, 'Tienda', COLORS.text, { scale: u });
   const moneyW = drawText(p, left + rowW, y, String(run.materials), COLORS.gold, { scale: u, align: 'right' });
-  p.icon({ kind: 'material', id: theme }, left + rowW - moneyW - 2 * u - line, y - u, line, line);
+  const mat = MATERIAL_ICON * u;
+  p.icon({ kind: 'material', id: theme }, left + rowW - moneyW - 2 * u - mat, y + Math.floor((line - u - mat) / 2), mat, mat);
   y += line;
   for (const l of wrapText(`oleada ${run.waveIndex} superada · viene la ${run.waveNumber} de ${run.totalWaves}`, Math.floor(rowW / (CHAR_W * u)))) {
     drawText(p, left, y, l, COLORS.dim, { scale: u });
@@ -84,7 +86,7 @@ export function drawShop(p: Painter, run: Run, theme: ThemeId, message: ShopMess
   button(p, zones, left, footerTop, rerollLabel, rerollColor, u, buttonH, { type: 'reroll' });
   button(p, zones, left + rowW, fits ? footerTop : footerTop + buttonH + 3 * u, nextLabel, COLORS.gold, u, buttonH, { type: 'next' }, true);
   const weaponsTop = footerTop - 4 * u - ICON_H * u;
-  weaponsBar(p, run, left, weaponsTop, u);
+  weaponsBar(p, run, left, weaponsTop, rowW, u);
   const messageTop = weaponsTop - line - 2 * u;
   if (message?.text) drawText(p, left, messageTop, message.text, message.color, { scale: u });
 
@@ -147,16 +149,23 @@ function row(p: Painter, zones: Zone<ShopAction>[], run: Run, theme: ThemeId, of
   zones.push({ x: x + w - lockZoneW, y: y + h - lockZoneH, w: lockZoneW, h: lockZoneH, action: { type: 'lock', index: i } });
 }
 
-function weaponsBar(p: Painter, run: Run, x: number, y: number, u: number): void {
-  const ih = ICON_H * u, iw = ICON_W * u;
-  const ty = y + Math.floor((ih - FONT_SIZE * u) / 2);
-  let wx = x + drawText(p, x, ty, `armas ${run.weapons.length}/${MAX_WEAPONS}`, COLORS.dim, { scale: u }) + 4 * u;
-  for (const w of run.weapons) {
-    p.icon({ kind: 'weapon', id: w.id }, wx, y, iw, ih);
-    wx += iw + 2 * u;
-    if (w.tier > 0) wx += drawText(p, wx, y, TIERS[w.tier]!, COLORS.gold, { scale: u }) + 2 * u;
+// Las armas en sus casillas, como el Brotato: una por hueco (los vacíos, tenues), con el nivel en la esquina; y la
+// cuenta de ítems detrás si cabe
+function weaponsBar(p: Painter, run: Run, x: number, y: number, w: number, u: number): void {
+  const iw = ICON_W * u, ih = ICON_H * u;
+  const sw = iw + 2 * u, sh = ih + 2 * u, gap = 2 * u;
+  for (let k = 0; k < MAX_WEAPONS; k++) {
+    const sx = x + k * (sw + gap), weapon = run.weapons[k];
+    if (weapon) {
+      p.fill(sx, y - u, sw, sh, COLORS.row);
+      stroke(p, sx, y - u, sw, sh, COLORS.edge, u);
+      p.icon({ kind: 'weapon', id: weapon.id }, sx + u, y, iw, ih);
+      if (weapon.tier > 0) drawText(p, sx + sw - u, y, TIERS[weapon.tier]!, COLORS.gold, { scale: u, align: 'right' });
+    } else stroke(p, sx, y - u, sw, sh, COLORS.slot, u);
   }
-  if (run.items.length > 0) drawText(p, wx + 4 * u, ty, `· ${run.items.length} ítems`, COLORS.dim, { scale: u });
+  const after = x + MAX_WEAPONS * (sw + gap) + 2 * u;
+  const items = `${run.items.length} ítems`;
+  if (run.items.length > 0 && after + textWidth(items, u) <= x + w) drawText(p, after, y + Math.floor((ih - FONT_SIZE * u) / 2), items, COLORS.dim, { scale: u });
 }
 
 function button(p: Painter, zones: Zone<ShopAction>[], x: number, y: number, label: string, color: string, u: number, h: number, action: ShopAction, alignRight = false): void {
