@@ -3,7 +3,7 @@
 //     aprobado; columnas: quieto + los 8 cuadros;
 //   - maia_walk_x6.gif: los mismos 6 en una fila, animados a 100 ms por cuadro.
 // Guarda también cada cuadro como modelo (models/maia/walk/maia_walk_N.json) para el juego.
-//   npx tsx --tsconfig tsconfig.runtime.json scripts/maia-walk.ts [carpeta de salida]
+//   [MODEL=otro.json] npx tsx --tsconfig tsconfig.runtime.json scripts/maia-walk.ts [carpeta de salida]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 import { Model, render, type ModelFile } from '../src/core';
@@ -14,11 +14,15 @@ import { encodeGIF } from './lib/gif';
 const outDir = process.argv[2] ?? 'out';
 const APPROVED = '/mnt/c/Users/andre/Sync/brotato-oficina/arte/aseprite-maia/v2_moonlighter/maia.png';
 const BG: [number, number, number] = [58, 62, 74];
-const maia = Model.fromJSON(JSON.parse(readFileSync('models/maia/maia.json', 'utf8')) as ModelFile);
+const MODEL = process.env.MODEL ?? 'models/maia/maia.json';
+const maia = Model.fromJSON(JSON.parse(readFileSync(MODEL, 'utf8')) as ModelFile);
 const frames = walkFrames(maia);
 
-mkdirSync('models/maia/walk', { recursive: true });
-frames.forEach((f, i) => writeFileSync(`models/maia/walk/maia_walk_${i}.json`, JSON.stringify(f.toJSON())));
+// Los cuadros como modelos solo con el modelo aprobado (con MODEL=otro.json es una prueba y no se guardan)
+if (!process.env.MODEL) {
+  mkdirSync('models/maia/walk', { recursive: true });
+  frames.forEach((f, i) => writeFileSync(`models/maia/walk/maia_walk_${i}.json`, JSON.stringify(f.toJSON())));
+}
 
 // Celda del juego (frame2d: 48x72, pies en (24, 60)), recortada a la figura con margen
 const W = 48, H = 72, OX = 24, OY = 60;
