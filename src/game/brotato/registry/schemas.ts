@@ -37,6 +37,23 @@ export const TERRAIN_TILE = 16;
 export const COUNTERS = ['distinct-weapons', 'wave', 'kills', 'materials', 'items'] as const;
 export type CounterId = (typeof COUNTERS)[number];
 
+// Los mundos (temas de nivel). Armas y enemigos tienen un aspecto por mundo (looks) que la simulación no mira.
+export const THEME_IDS = ['oficina', 'medieval', 'cyberpunk'] as const;
+export type ThemeId = (typeof THEME_IDS)[number];
+
+// El aspecto de un arma o un enemigo en un mundo: nombre y descripción que se enseñan, y su modelo de vóxeles
+// (models/brotato/<model>.json). Solo lo lee la vista: el papel en el juego (stats, comportamiento, tamaño) es el
+// mismo en todos los mundos (MAIA, 2026-10-25), y lo comprueba test/brotato/looks.test.ts.
+const modelRef = z.string().regex(/^[a-z0-9-]+\/[a-z0-9-]+$/, 'el modelo se escribe "carpeta/nombre", relativo a models/brotato');
+export const lookSchema = z.strictObject({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  model: modelRef,
+  projectile: modelRef.optional(),   // armas: el modelo de lo que dispara
+});
+export type Look = z.infer<typeof lookSchema>;
+const looksSchema = z.strictObject({ oficina: lookSchema, medieval: lookSchema.optional(), cyberpunk: lookSchema.optional() });
+
 export const idSchema = z
   .string()
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'el id va en kebab-case: minúsculas, números y guiones');
@@ -133,7 +150,7 @@ export const levelSchema = z.strictObject({
     })
     .default({ slots: 4, reroll: { base: 1, perWave: 0.5, step: 1 }, priceScale: { perWave: 0.1 } }),
   // Tema del mundo de vóxeles (paleta y materiales de src/world/build.ts)
-  theme: z.enum(['medieval', 'cyberpunk', 'oficina']),
+  theme: z.enum(THEME_IDS),
   // Mapa generado (src/worldgen): uno distinto en cada partida, sacado de la semilla de la partida, y construido en
   // vóxeles (src/world/build.ts). El tamaño sale de la arena (una celda cada 16 px).
   generator: z
@@ -201,6 +218,7 @@ export const enemySchema = z.strictObject({
     })
     .default({ materials: 1, consumableChance: 0 }),
   height: z.number().positive().default(14),   // alto del cuerpo: dónde salen los números de daño (vista)
+  looks: looksSchema,                          // su aspecto en cada mundo (el de la oficina, obligatorio)
 });
 
 const shopEntrySchema = z.strictObject({
@@ -235,6 +253,7 @@ export const weaponSchema = z.strictObject({
   // menos el agarre)
   length: z.number().positive().default(16),
   shop: shopEntrySchema.optional(),
+  looks: looksSchema,                          // su aspecto en cada mundo (el de la oficina, obligatorio)
 });
 
 export const itemSchema = z.strictObject({

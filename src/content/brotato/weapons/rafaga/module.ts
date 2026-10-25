@@ -3,9 +3,9 @@ import { defineWeapon } from '../../../../game/brotato/api';
 export default defineWeapon({
   format: 1,
   id: 'rafaga',
-  name: 'Grapadora',
-  description: 'Grapas rápidas y flojas. Ideal para muchos enemigos pequeños.',
-  tags: ['distancia', 'oficina'],
+  name: 'Ráfaga',   // el papel; el nombre que se enseña va en looks, por mundo
+  description: 'Disparos rápidos y flojos. Ideal para muchos enemigos pequeños.',
+  tags: ['distancia'],
   behavior: 'projectile',
   params: { speed: 240, radius: 2 },
   scaling: { 'ranged-damage': 0.5 },
@@ -17,4 +17,7 @@ export default defineWeapon({
   ],
   length: 17,   // del agarre a la punta: en el Brotato, ancho de la celda menos el agarre
   shop: { price: 18, minWave: 2, order: 2 },
+  looks: {
+    oficina: { name: 'Subfusil de agujas', description: 'Agujas rápidas y flojas. Ideal para muchos enemigos pequeños.', model: 'armas-futuro/subfusil', projectile: 'armas-futuro/aguja' },
+  },
 });

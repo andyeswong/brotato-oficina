@@ -3,9 +3,9 @@ import { defineWeapon } from '../../../../game/brotato/api';
 export default defineWeapon({
   format: 1,
   id: 'estocada',
-  name: 'Regla',
+  name: 'Estocada',   // el papel; el nombre que se enseña va en looks, por mundo
   description: 'Estocada corta y fuerte. Con MAIA hace la mitad de daño: no se ensucia las manos.',
-  tags: ['cuerpo-a-cuerpo', 'oficina'],
+  tags: ['cuerpo-a-cuerpo'],
   behavior: 'thrust',
   params: { width: 8 },
   scaling: { 'melee-damage': 1 },
@@ -17,4 +17,7 @@ export default defineWeapon({
   ],
   length: 19,   // del agarre a la punta: en el Brotato, ancho de la celda menos el agarre
   shop: { price: 12, order: 3 },
+  looks: {
+    oficina: { name: 'Hoja de energía', description: 'Estocada corta y fuerte con una hoja de luz. Con MAIA hace la mitad de daño: no se ensucia las manos.', model: 'armas-futuro/hoja' },
+  },
 });

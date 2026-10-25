@@ -3,9 +3,9 @@ import { defineWeapon } from '../../../../game/brotato/api';
 export default defineWeapon({
   format: 1,
   id: 'tiro',
-  name: 'Buzón',
-  description: 'Manda un sobre al enemigo más cercano. Lo que llega sin destinatario, va al líder.',
-  tags: ['distancia', 'oficina'],
+  name: 'Tiro',   // el papel; el nombre que se enseña va en looks, por mundo
+  description: 'Un disparo lento y fuerte al enemigo más cercano.',
+  tags: ['distancia'],
   behavior: 'projectile',
   params: { speed: 176, radius: 3 },
   scaling: { 'ranged-damage': 1 },
@@ -17,4 +17,7 @@ export default defineWeapon({
   ],
   length: 14,   // del agarre a la punta: en el Brotato, ancho de la celda menos el agarre
   shop: { price: 15, order: 1 },
+  looks: {
+    oficina: { name: 'Pistola de plasma', description: 'Un bólido de plasma lento y fuerte al enemigo más cercano.', model: 'armas-futuro/pistola', projectile: 'armas-futuro/bolido' },
+  },
 });
