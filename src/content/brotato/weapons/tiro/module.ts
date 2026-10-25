@@ -19,5 +19,7 @@ export default defineWeapon({
   shop: { price: 15, order: 1 },
   looks: {
     oficina: { name: 'Pistola de plasma', description: 'Un bólido de plasma lento y fuerte al enemigo más cercano.', model: 'armas-futuro/pistola', projectile: 'armas-futuro/bolido' },
+    medieval: { name: 'Ballesta de energía', description: 'Un virote de luz ámbar, lento y fuerte, al enemigo más cercano.', model: 'medieval/tiro', projectile: 'medieval/virote' },
+    cyberpunk: { name: 'Pistola de raíles', description: 'Una bala de raíl, lenta y fuerte, al enemigo más cercano.', model: 'cyberpunk/tiro', projectile: 'cyberpunk/bala' },
   },
 });

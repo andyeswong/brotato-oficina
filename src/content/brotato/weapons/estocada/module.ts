@@ -19,5 +19,7 @@ export default defineWeapon({
   shop: { price: 12, order: 3 },
   looks: {
     oficina: { name: 'Hoja de energía', description: 'Estocada corta y fuerte con una hoja de luz. Con MAIA hace la mitad de daño: no se ensucia las manos.', model: 'armas-futuro/hoja' },
+    medieval: { name: 'Espada rúnica', description: 'Estocada corta y fuerte. Con MAIA hace la mitad de daño: no se ensucia las manos.', model: 'medieval/estocada' },
+    cyberpunk: { name: 'Katana de neón', description: 'Estocada corta y fuerte. Con MAIA hace la mitad de daño: no se ensucia las manos.', model: 'cyberpunk/estocada' },
   },
 });

@@ -17,5 +17,7 @@ export default defineEnemy({
   height: 14,   // alto del dibujo del Brotato: dónde salen los números de daño
   looks: {
     oficina: { name: 'Clip robot', model: 'bicho-clip/bicho-clip' },
+    medieval: { name: 'Escarabajo de latón', model: 'medieval/embestidor' },
+    cyberpunk: { name: 'Escarabajo de cromo', model: 'cyberpunk/embestidor' },
   },
 });

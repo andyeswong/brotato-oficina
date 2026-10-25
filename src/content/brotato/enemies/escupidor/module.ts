@@ -17,5 +17,7 @@ export default defineEnemy({
   height: 14,   // alto del dibujo del Brotato: dónde salen los números de daño
   looks: {
     oficina: { name: 'Taza robot', description: 'Se queda lejos y te escupe café. Para un momento antes de cada disparo.', model: 'bicho-taza/bicho-taza' },
+    medieval: { name: 'Jarra de peltre', description: 'Se queda lejos y te escupe cerveza. Para un momento antes de cada disparo.', model: 'medieval/escupidor' },
+    cyberpunk: { name: 'Vaso para llevar', description: 'Se queda lejos y te escupe café. Para un momento antes de cada disparo.', model: 'cyberpunk/escupidor' },
   },
 });

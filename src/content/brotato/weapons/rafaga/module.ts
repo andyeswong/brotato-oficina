@@ -19,5 +19,7 @@ export default defineWeapon({
   shop: { price: 18, minWave: 2, order: 2 },
   looks: {
     oficina: { name: 'Subfusil de agujas', description: 'Agujas rápidas y flojas. Ideal para muchos enemigos pequeños.', model: 'armas-futuro/subfusil', projectile: 'armas-futuro/aguja' },
+    medieval: { name: 'Repetidora rúnica', description: 'Chispas rúnicas rápidas y flojas. Ideal para muchos enemigos pequeños.', model: 'medieval/rafaga', projectile: 'medieval/chispa' },
+    cyberpunk: { name: 'Subfusil de neón', description: 'Perdigones de neón rápidos y flojos. Ideal para muchos enemigos pequeños.', model: 'cyberpunk/rafaga', projectile: 'cyberpunk/perdigon' },
   },
 });

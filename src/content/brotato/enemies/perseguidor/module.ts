@@ -17,5 +17,7 @@ export default defineEnemy({
   height: 12,   // alto del dibujo del Brotato: dónde salen los números de daño
   looks: {
     oficina: { name: 'Grapa robot', model: 'bicho-grapa/bicho-grapa' },
+    medieval: { name: 'Autómata de latón', model: 'medieval/perseguidor' },
+    cyberpunk: { name: 'Grapa de cromo', model: 'cyberpunk/perseguidor' },
   },
 });
