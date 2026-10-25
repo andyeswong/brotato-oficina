@@ -21,6 +21,8 @@ Parámetros de `juego.html`:
 - `?seed=N` fija la partida y salta la selección. El mundo sale de la semilla.
 - `?nivel=oficina|medieval|cyberpunk` fuerza el tema.
 - `?ruta=cpu` compone en la CPU.
+- `?camara=clasica|cenital|baja|cerca` elige la cámara (también en la selección, con C o tocando la línea). Son presets fijos:
+  la inclinación del suelo (0,5, 1 o 0,35) y el zoom (Cerca, una escala más). La interfaz no cambia de tamaño.
 - `?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no` elige el contorno.
 - `?ir=tienda|fin` simula sin entrada hasta la primera tienda o hasta el final.
 - Para medir (fase 4): `?ola=N` empieza en la oleada N, e `?inmortal` hace que MAIA no caiga. El número de enemigos

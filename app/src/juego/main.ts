@@ -3,7 +3,7 @@
 // pantallas (tienda, selección, fin, HUD), src/game/brotato/ui (funciones puras sobre un Painter); el bucle de ticks
 // fijos, src/game/runtime.ts.
 // ?seed=N fija la partida y salta la selección (el mundo sale de la semilla); ?nivel=oficina|medieval|cyberpunk fuerza
-// el tema; ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
+// el tema; ?camara=clasica|cenital|baja|cerca, la cámara (ui/camera.ts); ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
 // ?ir=tienda|fin simula sin entrada hasta la primera tienda o hasta el final (para verify y las capturas).
 // Para medir (fase 4): ?ola=N empieza en la oleada N e ?inmortal hace que MAIA no caiga; body[data-enemigos] los cuenta.
 import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
@@ -28,17 +28,27 @@ import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from 
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { drawHud, hudText } from '../../../src/game/brotato/ui/hud';
-import { computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
+import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
+import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
 import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
 import type { EntityId } from '@voxpix/world/state';
 import maiaFile from 'voxpix/models/maia/maia.json';
 
-const TOPZ = 40, INCLINE = 0.5;
+const TOPZ = 40;
+const ICON_INCLINE = 0.5;   // los iconos de la interfaz se ven siempre igual, sea cual sea la cámara
 // Lo que se ve, en píxeles del juego: lo decide la regla 216/384 (ui/layout.ts) según la pantalla, en fit()
 let VW = 384, VH = 216;
+// Lo que mide la interfaz (HUD, tienda, selección): siempre la regla 216/384, sea cual sea el zoom de la cámara
+let UW = 384, UH = 216;
 const INK = '#0d0c12';
 const DEAD_PAUSE_S = 0.7;   // lo que se ve la caída antes de la pantalla de fin
 const q = new URLSearchParams(location.search);
+// La cámara (ui/camera.ts): ?camara=id, o la última elegida en la selección (se recuerda en este navegador)
+const CAMERA_KEY = 'brotato.camara';
+function storedCamera(): string | null {
+  try { return localStorage.getItem(CAMERA_KEY); } catch { return null; }
+}
+let camera: CameraPreset = cameraById(q.get('camara') ?? storedCamera());
 
 // ---- contenido y modelos
 const { registry, errors } = validateContent(discoverContent());
@@ -88,25 +98,31 @@ const ui = document.getElementById('ui') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 const loading = document.getElementById('loading')!;
 canvas.width = VW; canvas.height = VH;
-ui.width = VW; ui.height = VH;
+ui.width = UW; ui.height = UH;
 fxCanvas.width = VW; fxCanvas.height = VH;
 const compositor = createCompositor(canvas, { prefer: q.get('ruta') === 'cpu' ? 'cpu' : 'gpu' });
 // La regla de píxel del Brotato (216/384): un píxel del juego son s×s píxeles FÍSICOS, s entero, y se ve lo que quepa
-// hasta 384 por eje. Los tres lienzos miden lo mismo y van encima uno de otro; el tamaño CSS (con decimales si hace
-// falta) cae en píxeles físicos exactos. El compositor ajusta su lienzo al tamaño de cada cuadro
+// hasta 384 por eje. El mundo y los efectos usan la regla de la cámara (la Cerca acerca); la interfaz, siempre la de
+// 216/384, para que la tienda quepa igual con cualquier cámara. Cada lienzo va centrado en su caja y el tamaño CSS (con
+// decimales si hace falta) cae en píxeles físicos exactos. El compositor ajusta su lienzo al tamaño de cada cuadro
 function fit(): void {
   // innerWidth es entero y el ancho de verdad puede no serlo: en el Flip abierto, 411 x 2,625 = 1078,9 en vez de
   // 1080, y la escala bajaba de 5 a 4. visualViewport da el ancho con decimales
   const dpr = devicePixelRatio || 1;
   const vv = visualViewport;
-  const l = computeLayout(Math.round((vv?.width ?? innerWidth) * dpr), Math.round((vv?.height ?? innerHeight) * dpr));
-  VW = l.width; VH = l.height;
-  for (const c of [ui, fxCanvas]) if (c.width !== VW || c.height !== VH) { c.width = VW; c.height = VH; }
-  for (const c of [compositor.canvas, fxCanvas, ui]) {
+  const pw = Math.round((vv?.width ?? innerWidth) * dpr), ph = Math.round((vv?.height ?? innerHeight) * dpr);
+  const l = computeLayout(pw, ph, camera.rules), lu = computeLayout(pw, ph, PIXEL_RULES);
+  VW = l.width; VH = l.height; UW = lu.width; UH = lu.height;
+  if (fxCanvas.width !== VW || fxCanvas.height !== VH) { fxCanvas.width = VW; fxCanvas.height = VH; }
+  if (ui.width !== UW || ui.height !== UH) { ui.width = UW; ui.height = UH; }
+  const place = (c: HTMLCanvasElement, w: number, h: number, k: typeof l) => {
     c.style.position = 'fixed'; c.style.margin = '0';
-    c.style.width = `${(VW * l.scale) / dpr}px`; c.style.height = `${(VH * l.scale) / dpr}px`;
-    c.style.left = `${l.left / dpr}px`; c.style.top = `${l.top / dpr}px`;
-  }
+    c.style.width = `${(w * k.scale) / dpr}px`; c.style.height = `${(h * k.scale) / dpr}px`;
+    c.style.left = `${k.left / dpr}px`; c.style.top = `${k.top / dpr}px`;
+  };
+  place(compositor.canvas, VW, VH, l);
+  place(fxCanvas, VW, VH, l);
+  place(ui, UW, UH, lu);
 }
 addEventListener('resize', fit);
 visualViewport?.addEventListener('resize', fit);
@@ -148,7 +164,7 @@ function iconImage(ref: IconRef): HTMLCanvasElement | null {
     // El material es una pieza de 3 o 4 vóxeles tumbada: de frente se lee como un guion, y en oblicua la cara del
     // vóxel de delante tapa el hueco del clip. Cenital y a 2 px por vóxel se ven el clip, la moneda o el chip
     const top = ref.kind === 'material';
-    const view = top ? { elevation: 90, ppu: 2 } : { oblique: { y: INCLINE, z: 1 } };
+    const view = top ? { elevation: 90, ppu: 2 } : { oblique: { y: ICON_INCLINE, z: 1 } };
     const img = render(m, { width: S, height: S, originX: S / 2, originY: S - 8, pivot: [0.5, 0, 0], yaw: ref.kind === 'weapon' ? 90 : 0, ...view, flat: true, outline: 'outer', outlineColor: INK });
     let x0 = S, y0 = S, x1 = -1, y1 = -1;
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (img.rgba[(y * S + x) * 4 + 3]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
@@ -165,8 +181,8 @@ function iconImage(ref: IconRef): HTMLCanvasElement | null {
   return out;
 }
 const painter: Painter = {
-  get width() { return VW; },
-  get height() { return VH; },
+  get width() { return UW; },
+  get height() { return UH; },
   fill(x, y, w, h, color) { g2.fillStyle = color; g2.fillRect(x, y, w, h); },
   icon(ref, x, y, w, h) {
     const img = iconImage(ref);
@@ -212,7 +228,7 @@ function newRun(after?: () => void): void {
     theme = level.theme;
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
-    baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: INCLINE, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color });
+    baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: camera.incline, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color });
     // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
     // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
     // cuadro tardaba 86-88 ms
@@ -309,12 +325,12 @@ function drawUi(): void {
   const c = current();
   document.body.dataset.pantalla = c.name;
   // Con el tamaño en la firma: si la ventana cambia, se repinta a la nueva medida
-  const sign = `${VW}x${VH}|${c.sign}`;
+  const sign = `${UW}x${UH}|${camera.id}|${c.sign}`;
   if (sign === drawn) return;
   drawn = sign;
-  g2.clearRect(0, 0, VW, VH);
+  g2.clearRect(0, 0, UW, UH);
   zones = [];
-  if (screen === 'select') zones = drawSelect(painter, registry, selected, theme);
+  if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name);
   else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat');
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage);
   else if (game) drawHud(painter, game);
@@ -348,6 +364,11 @@ function act(action: ShopAction | SelectAction): void {
   } else if (action.type === 'move') {
     const n = registry.characters().length;
     selected = (selected + action.delta + n) % n;
+  } else if (action.type === 'camera') {
+    // Se elige en la selección: la inclinación se hornea al empezar la partida y el zoom se aplica ya
+    camera = cycleCamera(camera, action.delta);
+    try { localStorage.setItem(CAMERA_KEY, camera.id); } catch { /* sin almacenamiento: solo esta vez */ }
+    fit();
   } else if (game?.phase === 'shop') {
     if (action.type === 'next') { shopMessage = null; game.leaveShop(); }
     else shopMessage = applyShop(game.run, action);
@@ -365,7 +386,7 @@ addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 ui.addEventListener('pointerdown', (e) => {
   if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); return; }
   const r = ui.getBoundingClientRect();
-  const a = hit(zones, ((e.clientX - r.left) * VW) / r.width, ((e.clientY - r.top) * VH) / r.height);
+  const a = hit(zones, ((e.clientX - r.left) * UW) / r.width, ((e.clientY - r.top) * UH) / r.height);
   if (a) act(a);
 });
 
