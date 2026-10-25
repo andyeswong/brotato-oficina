@@ -7,6 +7,7 @@ import type { LevelModule } from '../registry/schemas';
 import { generateLayout, NORTH, TILE, WALL, type Layout } from '@voxpix/worldgen';
 import { buildWorldState, type World } from '@voxpix/world/build';
 import { FOLIAGE_THEMES, addFoliage } from './foliage';
+import { GLASS_THEMES, addGlass } from './glass';
 import type { WorldState } from '@voxpix/world/state';
 import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runtime/body';
 
@@ -52,13 +53,21 @@ export class Arena {
   private readonly free: Point[] = [];
   // Las plantas que puso la vegetación, por tipo (vacío si el tema no la lleva)
   plants: Record<string, number> = {};
+  // Cuántas rampas pasaron a vidrio (0 si el tema no lo lleva)
+  glassRamps = 0;
 
-  // foliage: false quita la vegetación (para las pruebas que comparan con y sin ella)
-  constructor(level: LevelModule, seed: number, opts: { foliage?: boolean } = {}) {
+  // foliage / glass: false quitan la vegetación o el vidrio (para las pruebas que comparan con y sin ellos)
+  constructor(level: LevelModule, seed: number, opts: { foliage?: boolean; glass?: boolean } = {}) {
     this.layout = levelLayout(level, seed);
-    // La vegetación (solo aspecto, se atraviesa) en los temas que la llevan: entre construir el mundo y crear su estado
-    const foliage = opts.foliage !== false && FOLIAGE_THEMES.has(level.theme) ? { decorate: (w: World) => { this.plants = addFoliage(w, seed); } } : {};
-    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme, foliage));
+    // Lo que cada tema añade entre construir el mundo y crear su estado: la vegetación (solo aspecto, se atraviesa) y el
+    // vidrio (ventanas y pantallas, que dejan pasar la luz)
+    const veg = opts.foliage !== false && FOLIAGE_THEMES.has(level.theme);
+    const glass = opts.glass !== false && GLASS_THEMES.has(level.theme);
+    const decorate = (w: World) => {
+      if (veg) this.plants = addFoliage(w, seed);
+      if (glass) this.glassRamps = addGlass(w);
+    };
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme, veg || glass ? { decorate } : {}));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte
