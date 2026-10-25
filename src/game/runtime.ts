@@ -1,0 +1,132 @@
+// RUNTIME DEL JUEGO (FERN): el tick. Uno solo para todo, a 1/60 s fijos, en este orden: entrada -> mover cuerpos y
+// resolver colisiones -> eventos sobre el mundo -> world.step(). Determinista: la misma semilla y la misma entrada por
+// tick dan la misma partida, byte a byte (lo comprueba test/game/determinism.test.ts). Sin reloj ni Math.random:
+// el azar, si hace falta, sale de world.random().
+import { TICK, type WorldState } from '../world/state';
+import { DEFAULT_RULES, moveBody, restZ, type Body, type MoveRules } from './body';
+
+// Lo que llega de los mandos en un tick. dx, dy en ejes del modelo (dy > 0 = norte); se normaliza la dirección.
+export interface TickInput {
+  dx: number;
+  dy: number;
+  stomp: boolean;
+}
+
+export const NO_INPUT: TickInput = { dx: 0, dy: 0, stomp: false };
+
+export interface PlayerConfig {
+  radius: number;
+  speed: number;        // vóxeles por segundo en seco
+  entity?: string;      // id de la entidad del mundo que lo dibuja (su modelo), si la hay
+  rules?: MoveRules;
+}
+
+export interface RuntimeSnapshot {
+  tick: number;
+  player: Body & { facing: number; inWater: boolean; walked: number };
+  world: ReturnType<WorldState['snapshot']>;
+}
+
+// El agua frena: por la profundidad bajo los pies (como en la demo de NARUTO)
+const WADE = 0.3;                         // menos que esto es suelo mojado: no frena ni salpica
+function waterFactor(depth: number): number {
+  return depth < WADE ? 1 : depth < 2.5 ? 0.8 : 0.55;
+}
+const RIPPLE_HZ = 12;                     // ondas al andar por el agua
+
+export class Runtime {
+  tick = 0;
+  readonly player: Body & { facing: number; inWater: boolean; walked: number };
+  private readonly rules: MoveRules;
+
+  constructor(readonly world: WorldState, spawn: { x: number; y: number }, readonly config: PlayerConfig) {
+    this.rules = config.rules ?? DEFAULT_RULES;
+    const r = config.radius;
+    this.player = { x: spawn.x, y: spawn.y, z: restZ(world, spawn.x, spawn.y, r), r, facing: 0, inWater: false, walked: 0 };
+    this.sync();
+  }
+
+  step(input: TickInput): void {
+    const w = this.world, p = this.player;
+    // 1. Mover y resolver colisiones
+    const len = Math.hypot(input.dx, input.dy);
+    if (len > 0) {
+      const depth = w.waterAt(p.x, p.y)?.depth ?? 0;
+      const v = this.config.speed * TICK * waterFactor(depth);
+      moveBody(w, p, (input.dx / len) * v, (input.dy / len) * v, this.rules);
+      p.facing = ((Math.round(Math.atan2(input.dx, -input.dy) / (Math.PI / 4)) % 8) + 8) % 8;   // sur 0, este 2, norte 4
+      // 2. Eventos: ondas y salpicaduras al andar por el agua, a RIPPLE_HZ
+      const before = Math.floor(p.walked * RIPPLE_HZ);
+      p.walked += TICK;
+      const wa = w.waterAt(p.x, p.y);
+      if (wa && wa.depth > WADE && Math.floor(p.walked * RIPPLE_HZ) !== before) {
+        w.events.disturb(p.x, p.y, 0.35);
+        w.events.splash(p.x, p.y, wa.surface, 3, 38);
+      }
+    }
+    const wa = w.waterAt(p.x, p.y);
+    const inWater = (wa?.depth ?? 0) > WADE;
+    if (wa && inWater && !p.inWater) { w.events.disturb(p.x, p.y, 0.7, 2); w.events.splash(p.x, p.y, wa.surface, 14, 70); }
+    if (wa && inWater && input.stomp) { w.events.disturb(p.x, p.y, 2.8, 3); w.events.splash(p.x, p.y, wa.surface, 40, 105); }
+    p.inWater = inWater;
+    this.sync();
+    // 3. El mundo
+    w.step();
+    this.tick++;
+  }
+
+  // La entidad que lo dibuja va donde el cuerpo
+  private sync(): void {
+    const id = this.config.entity;
+    const e = id ? this.world.entities.find((en) => en.id === id) : undefined;
+    if (!e) return;
+    e.x = Math.round(this.player.x);
+    e.y = Math.round(this.player.y);
+    e.z = this.player.z;
+    e.yaw = this.player.facing * 45;
+  }
+
+  snapshot(): RuntimeSnapshot {
+    return { tick: this.tick, player: { ...this.player }, world: this.world.snapshot() };
+  }
+
+  restore(s: RuntimeSnapshot): void {
+    this.tick = s.tick;
+    Object.assign(this.player, s.player);
+    this.world.restore(s.world);
+  }
+
+  // Huella de la partida: la del mundo más la del runtime (FNV-1a de 32 bits)
+  hash(): string {
+    const p = this.player;
+    const view = new DataView(new ArrayBuffer(8 * 7));
+    [this.tick, p.x, p.y, p.z, p.facing, p.inWater ? 1 : 0, p.walked].forEach((v, i) => view.setFloat64(i * 8, v));
+    let h = 0x811c9dc5;
+    const feed = (u: Uint8Array) => { for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i]!, 0x01000193); };
+    feed(new TextEncoder().encode(this.world.hash()));
+    feed(new Uint8Array(view.buffer));
+    return (h >>> 0).toString(16).padStart(8, '0');
+  }
+}
+
+// El bucle de la vista: convierte tiempo real en ticks fijos. La partida depende solo de la entrada de cada tick, no
+// del ritmo de cuadros. Con un cuadro muy largo (pestaña en segundo plano) se hacen como mucho maxTicks y se suelta
+// el resto: la partida se frena en vez de encadenar cuadros cada vez más lentos.
+export class FixedLoop {
+  private acc = 0;
+
+  constructor(private readonly runtime: Runtime, private readonly input: (tick: number) => TickInput, private readonly maxTicks = 5) {}
+
+  // seconds: tiempo real desde el cuadro anterior. Devuelve cuántos ticks dio.
+  advance(seconds: number): number {
+    this.acc += seconds;
+    let n = 0;
+    while (this.acc >= TICK - 1e-9 && n < this.maxTicks) {
+      this.runtime.step(this.input(this.runtime.tick));
+      this.acc -= TICK;
+      n++;
+    }
+    if (n === this.maxTicks && this.acc >= TICK) this.acc = 0;
+    return n;
+  }
+}
