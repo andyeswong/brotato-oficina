@@ -170,10 +170,12 @@ describe('determinismo del runtime', () => {
     expect(e().modelId).toBe(idleId);
   });
 
-  it('src/game no usa reloj ni azar del navegador', () => {
-    const dir = join(__dirname, '../../src/game');
-    for (const f of readdirSync(dir)) {
-      const code = readFileSync(join(dir, f), 'utf8').replace(/\/\/.*$/gm, '');
+  it('src/game (con la simulación del Brotato) y su contenido no usan reloj ni azar del navegador', () => {
+    const files = ['../../src/game', '../../src/content/brotato'].flatMap((d) =>
+      (readdirSync(join(__dirname, d), { recursive: true }) as string[]).filter((f) => f.endsWith('.ts')).map((f) => join(__dirname, d, f)));
+    expect(files.length).toBeGreaterThan(20);
+    for (const f of files) {
+      const code = readFileSync(f, 'utf8').replace(/\/\/.*$/gm, '');
       expect(code, f).not.toMatch(/Math\.random|performance\.now|Date\.now|new Date\(/);
     }
   });

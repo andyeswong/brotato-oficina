@@ -17,6 +17,13 @@ export interface MoveRules {
 
 export const DEFAULT_RULES: MoveRules = { step: 2, maxWater: 4.5 };
 
+// El agua frena según la profundidad bajo los pies (los números de la demo de NARUTO). Menos de WADE es suelo
+// mojado: ni frena ni salpica.
+export const WADE = 0.3;
+export function waterFactor(depth: number): number {
+  return depth < WADE ? 1 : depth < 2.5 ? 0.8 : 0.55;
+}
+
 // Lo más que avanza en un subpaso: con menos de 1 vóxel no se salta una pared de 1 de grueso
 const SUBSTEP = 0.5;
 
@@ -49,22 +56,38 @@ export function restZ(world: WorldState, x: number, y: number, r: number): numbe
 }
 
 // Mueve el cuerpo (dx, dy) en subpasos, cada eje por separado: si un eje choca, el otro sigue, y así resbala por
-// las paredes. Devuelve si algo lo frenó.
+// las paredes. Contra algo redondo (una columna) eso no basta: los dos ejes chocan con la curva y el cuerpo se queda
+// clavado. Entonces el eje que choca prueba a avanzar desviándose un poco hacia un lado (lo mismo que avanza, o el
+// doble), primero hacia donde no empuja el otro eje: así rodea la curva como lo haría un círculo. Devuelve si algo
+// lo frenó.
 export function moveBody(world: WorldState, body: Body, dx: number, dy: number, rules: MoveRules = DEFAULT_RULES): boolean {
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / SUBSTEP));
   let blocked = false;
+  const go = (nx: number, ny: number) => {
+    if (!fits(world, nx, ny, body.z, body.r, rules)) return false;
+    body.x = nx;
+    body.y = ny;
+    body.z = restZ(world, nx, ny, body.r);
+    return true;
+  };
   for (let i = 0; i < n; i++) {
+    let moved = false;
     for (const axis of ['x', 'y'] as const) {
       const d = (axis === 'x' ? dx : dy) / n;
       if (d === 0) continue;
-      const nx = axis === 'x' ? body.x + d : body.x;
-      const ny = axis === 'y' ? body.y + d : body.y;
-      if (fits(world, nx, ny, body.z, body.r, rules)) {
-        body.x = nx;
-        body.y = ny;
-        body.z = restZ(world, nx, ny, body.r);
-      } else {
-        blocked = true;
+      if (go(axis === 'x' ? body.x + d : body.x, axis === 'y' ? body.y + d : body.y)) { moved = true; continue; }
+      blocked = true;
+    }
+    if (moved) continue;
+    // Ningún eje avanzó: desvío. Se prueba el avance entero con un paso de lado, hacia fuera de lo que choca.
+    deflect: for (const axis of ['x', 'y'] as const) {
+      const d = (axis === 'x' ? dx : dy) / n;
+      if (d === 0) continue;
+      const other = axis === 'x' ? dy : dx;
+      const signs = other > 0 ? [-1, 1] : other < 0 ? [1, -1] : [-1, 1];
+      for (const k of [1, 2]) for (const s of signs) {
+        const side = s * k * Math.abs(d);
+        if (go(axis === 'x' ? body.x + d : body.x + side, axis === 'y' ? body.y + d : body.y + side)) break deflect;
       }
     }
   }

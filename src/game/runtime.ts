@@ -4,7 +4,7 @@
 // el azar, si hace falta, sale de world.random().
 import { TICK, type EntityId, type WorldState } from '../world/state';
 import type { VoxelSource } from '../core';
-import { DEFAULT_RULES, moveBody, restZ, type Body, type MoveRules } from './body';
+import { DEFAULT_RULES, moveBody, restZ, WADE, waterFactor, type Body, type MoveRules } from './body';
 import { WALK_FRAME_MS } from '../anim/walk';
 
 // Lo que llega de los mandos en un tick. dx, dy en ejes del modelo (dy > 0 = norte); se normaliza la dirección.
@@ -32,11 +32,6 @@ export interface RuntimeSnapshot {
   world: ReturnType<WorldState['snapshot']>;
 }
 
-// El agua frena: por la profundidad bajo los pies (como en la demo de NARUTO)
-const WADE = 0.3;                         // menos que esto es suelo mojado: no frena ni salpica
-function waterFactor(depth: number): number {
-  return depth < WADE ? 1 : depth < 2.5 ? 0.8 : 0.55;
-}
 const RIPPLE_HZ = 12;                     // ondas al andar por el agua
 
 export class Runtime {

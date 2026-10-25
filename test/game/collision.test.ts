@@ -151,6 +151,21 @@ describe('colisión en una sala de prueba', () => {
     expect(body.x + body.r).toBeGreaterThan(39);
   });
 
+  it('andando en diagonal contra una columna redonda, la rodea en vez de quedarse clavado', () => {
+    const s = new StaticVoxels({ ramps: [{ name: 'piedra', colors: ['#202020', '#404040', '#606060']}] }, 60, 60, -4, 20);
+    for (let y = 0; y < 60; y++) for (let x = 0; x < 60; x++) s.set(x, y, 0, material(0, 1));
+    // Columna redonda de radio 7 centrada en (30, 30), como las del medieval
+    for (let y = 22; y <= 38; y++) for (let x = 22; x <= 38; x++) if (Math.hypot(x + 0.5 - 30, y + 0.5 - 30) < 7) for (let z = 1; z <= 12; z++) s.set(x, y, z, material(0, 2));
+    const w = new WorldState(s, [], null);
+    // Desde el suroeste, apuntando un poco a un lado del centro: sin el desvío se clava contra la curva
+    for (const [x0, y0] of [[18, 16], [16, 18], [20, 17]] as const) {
+      const body: Body = { x: x0, y: y0, z: 1, r: 4 };
+      for (let i = 0; i < 80; i++) moveBody(w, body, Math.SQRT1_2, Math.SQRT1_2);
+      expect(body.x + body.y, `desde (${x0}, ${y0}) llegó a (${body.x.toFixed(1)}, ${body.y.toFixed(1)})`).toBeGreaterThan(80);
+      expect(fits(w, body.x, body.y, body.z, body.r)).toBe(true);
+    }
+  });
+
   it('raycast: un disparo desde el suelo libre da en la columna, en su cara', () => {
     const w = room();
     const hit = w.raycast([20, 12, 4], [55, 12, 4]);
