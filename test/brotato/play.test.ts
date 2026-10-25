@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { Model, material } from '../../src/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
-import { BrotatoGame, type Models } from '../../src/game/brotato/play';
+import { BrotatoGame, CLEARED_TICKS, type Models } from '../../src/game/brotato/play';
+import { Run } from '../../src/game/brotato/sim/Run';
+import { TICK } from '../../src/world/state';
 import { runDigest } from '../../src/game/brotato/sim/digest';
 import type { TickInput } from '../../src/game/runtime';
 
@@ -41,16 +43,56 @@ describe('la partida en el mundo', () => {
     expect(seenEnemies).toBeGreaterThan(0);
   });
 
-  it('la oleada superada para la partida hasta seguir, y seguir empieza la siguiente', { timeout: 60_000 }, () => {
+  it('la oleada superada: un respiro, la tienda (el mundo sigue, la oleada no) y salir empieza la siguiente', { timeout: 60_000 }, () => {
     const g = new BrotatoGame(registry, 3, models, player, registry.level('cyberpunk'));
     for (let t = 0; t < 60 * 30 && g.phase === 'wave'; t++) g.step(input(t));
     expect(g.phase).toBe('cleared');
+    expect(g.run.waveIndex).toBe(1);                    // cerrada en el acto, como el Brotato
+    for (let t = 0; t < CLEARED_TICKS; t++) { expect(g.phase).toBe('cleared'); g.step(input(0)); }
+    expect(g.phase).toBe('shop');
+    expect(g.run.shop.offers.length).toBe(registry.level('cyberpunk').shop.slots);
     const tick = g.tick, time = g.current.time;
     g.step(input(0));
     expect(g.current.time).toBe(time);                 // parada: la oleada no avanza
     expect(g.tick).toBe(tick + 1);                     // pero el mundo sí (agua, gotas)
-    g.nextWave();
+    g.leaveShop();
     expect(g.phase).toBe('wave');
     expect(g.run.waveNumber).toBe(2);
+  });
+
+  // La huella sin el mundo de vóxeles: el juego lo hace avanzar (agua, entidades) y el Run solo no; la simulación,
+  // en cambio, tiene que ser la misma tick a tick (comprobado: solo se separan en el tick en que se cierra la oleada,
+  // que el juego cierra en el acto y aquí se cierra después)
+  it('comprar en la tienda del juego es comprar en la del Run: la misma huella que la partida sin vista', { timeout: 120_000 }, () => {
+    const g = new BrotatoGame(registry, 11, models, player, registry.level('oficina'));
+    const run = new Run(registry, registry.character('maia'), registry.level('oficina'), 11);
+    let wave = run.startWave();
+    let t = 0, shops = 0;
+    for (let round = 0; round < 3 && g.phase !== 'dead' && g.phase !== 'victory'; round++) {
+      // Una oleada en los dos, con la misma entrada
+      while (g.phase === 'wave') {
+        const i = input(t++);
+        g.step(i);
+        const len = Math.hypot(i.dx, i.dy);
+        wave.step(TICK, len > 0 ? { x: i.dx / len, y: i.dy / len } : { x: 0, y: 0 });
+      }
+      if (g.phase !== 'cleared') break;
+      while (g.phase === 'cleared') g.step(input(0));
+      run.finishWave();
+      run.shop.open();
+      // Las mismas compras: todo lo que alcance, de izquierda a derecha, y una tirada si sobra
+      for (const r of [g.run, run]) {
+        r.shop.offers.forEach((_o, k) => r.shop.buy(k));
+        r.shop.reroll();
+        r.shop.buy(0);
+      }
+      expect(runDigest(g.run, g.current, false)).toBe(runDigest(run, wave, false));
+      g.leaveShop();
+      wave = run.startWave();
+      shops++;
+    }
+    expect(shops).toBeGreaterThanOrEqual(1);   // al menos una tienda, y la oleada de después jugada con lo comprado
+    expect(g.run.items.length + g.run.weapons.length).toBeGreaterThan(registry.character('maia').startingWeapons!.length);
+    expect(runDigest(g.run, g.current, false)).toBe(runDigest(run, wave, false));
   });
 });

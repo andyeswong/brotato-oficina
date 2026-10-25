@@ -7,9 +7,9 @@
   <style>
     html, body { margin: 0; height: 100%; background: #0d0c12; color: #d9d7e8; font: 14px system-ui, sans-serif; overflow: hidden; }
     canvas { image-rendering: pixelated; display: block; margin: 0 auto; }
-    #hud { position: fixed; left: 10px; top: 8px; text-shadow: 0 1px 0 #000; white-space: pre; pointer-events: none; }
-    #banner { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 10px 18px; display: none;
-      background: #1a1420e6; color: #f4ecff; border: 1px solid #4a3a6a; border-radius: 4px; font-size: 18px; pointer-events: none; }
+    /* La interfaz se pinta en #ui con la fuente de píxel; #hud repite su texto para lectores de pantalla */
+    #ui { position: fixed; margin: 0; touch-action: none; }
+    #hud { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     #lowdetail { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 6px 12px; display: none;
       background: #1a1420e6; color: #ffd08a; border: 1px solid #6a4a2a; border-radius: 4px; font-size: 13px; pointer-events: none; }
     #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(13,12,18,.82); font-size: 16px; }
@@ -17,8 +17,8 @@
 </head>
 <body>
   <canvas id="view"></canvas>
-  <div id="hud"></div>
-  <div id="banner"></div>
+  <canvas id="ui"></canvas>
+  <div id="hud" role="status"></div>
   <div id="lowdetail"></div>
   <div id="loading">Construyendo el mundo en vóxeles…</div>
   <script type="module" src="./src/juego/main.ts"></script>

@@ -27,7 +27,12 @@ export interface PlayerLooks {
   carry?: CarryConfig;
 }
 
-export type Phase = 'wave' | 'cleared' | 'dead' | 'victory';
+// wave: se juega. cleared: oleada superada, un respiro antes de la tienda. shop: la tienda (el mundo sigue debajo).
+// dead / victory: la partida acabó.
+export type Phase = 'wave' | 'cleared' | 'shop' | 'dead' | 'victory';
+
+// El respiro entre la oleada superada y la tienda, en ticks (1,2 s, como el Brotato en Phaser)
+export const CLEARED_TICKS = 72;
 
 const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
@@ -37,6 +42,7 @@ export class BrotatoGame {
   readonly theme: ThemeId;
   tick = 0;
   phase: Phase = 'wave';
+  phaseTick = 0;                 // ticks dados en esta fase (el del cambio no cuenta)
   readonly playerId: EntityId;
   private wave: Wave;
   private facing = 0;            // 8 direcciones, como el runtime de la escena: sur 0, este 2, norte 4
@@ -89,30 +95,40 @@ export class BrotatoGame {
         this.facing = ((Math.round(Math.atan2(input.dx, -input.dy) / (Math.PI / 4)) % 8) + 8) % 8;
       }
       this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 });
+      this.phaseTick++;
       if (this.wave.status === 'dead') {
-        this.phase = 'dead';
+        this.setPhase('dead');
         this.run.lose();
       } else if (this.wave.status === 'cleared') {
-        if (this.run.isLastWave) { this.run.finishWave(); this.phase = 'victory'; } else this.phase = 'cleared';
+        // Como el Brotato: la oleada se cierra en el acto (y la última es la victoria)
+        this.setPhase(this.run.finishWave() === 'victory' ? 'victory' : 'cleared');
       }
       this.sync();
     } else {
       this.moving = false;
+      this.phaseTick++;
+      if (this.phase === 'cleared' && this.phaseTick >= CLEARED_TICKS) {
+        this.run.shop.open();
+        this.setPhase('shop');
+      }
     }
     // El mundo sigue (agua, gotas, parpadeo) aunque la oleada esté parada
     this.state.step();
     this.tick++;
   }
 
-  // Tras una oleada superada: la siguiente. (La tienda llega en la fase 3.2; mientras, se pasa sin comprar.)
-  nextWave(): void {
-    if (this.phase !== 'cleared') return;
-    this.run.finishWave();
-    this.run.shop.open();
+  // Salir de la tienda: la siguiente oleada, con las armas que haya ahora
+  leaveShop(): void {
+    if (this.phase !== 'shop') return;
     this.wave = this.run.startWave();
-    this.phase = 'wave';
+    this.setPhase('wave');
     this.placeWeapons();
     this.sync();
+  }
+
+  private setPhase(phase: Phase): void {
+    this.phase = phase;
+    this.phaseTick = 0;
   }
 
   // ---- el reflejo de la simulación en entidades
