@@ -19,6 +19,8 @@ import type { Rendered, VoxelSource } from '../../core';
 import { FRAG_CONTACT, FRAG_DROPS, FRAG_ENTITY, FRAG_SCENE, FRAG_SHADE, FRAG_WATER, MAX_BAKED, MAX_CASTERS, MAX_LIGHTS, VERT_CONTACT, VERT_DROPS, VERT_ENTITY, VERT_FULLSCREEN } from './shaders';
 
 export type GpuOutput = 'frame' | 'color' | 'multiply' | 'add';
+// Tope del atlas de sprites de entidades (48x72 cada uno, ~40 KB en la GPU y ~60 KB en la CPU)
+export const MAX_SPRITE_LAYERS = 1024;
 
 interface Target { fbo: WebGLFramebuffer; color: WebGLTexture; light: WebGLTexture; depth: WebGLTexture; dropsFbo: WebGLFramebuffer }
 // La capa de entidades (con z-buffer) y la de sombras de contacto
@@ -68,6 +70,9 @@ export class GpuCompositor {
   private spriteImgs: Rendered[] = [];
   private spriteEmissive: Array<Uint8Array | null> = [];
   private spriteCap = 0;
+  // Cuándo se usó cada capa por última vez (en cuadros): con el atlas lleno, la nueva ocupa la menos usada
+  private spriteUse: number[] = [];
+  private frameNo = 0;
   private tSprColor: WebGLTexture | null = null;
   private tSprDepth: WebGLTexture | null = null;
   private tSprVox: WebGLTexture | null = null;
@@ -153,6 +158,7 @@ export class GpuCompositor {
 
   // Pinta el cuadro en el lienzo
   frame(state: WorldState, b: Baked, o: Frame2DOptions): void {
+    this.frameNo++;
     this.compose(state, b, o);
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -162,6 +168,7 @@ export class GpuCompositor {
   // Para la prueba del oráculo: una salida del cuadro en RGBA, fila 0 arriba (como frame2D)
   read(state: WorldState, b: Baked, o: Frame2DOptions, what: GpuOutput = 'frame'): Uint8Array {
     const gl = this.gl;
+    this.frameNo++;
     this.compose(state, b, o);
     if (!this.out) {
       const tex = gl.createTexture()!;
@@ -508,32 +515,44 @@ export class GpuCompositor {
     gl.bindVertexArray(this.vao);
   }
 
-  // La capa del atlas de un sprite (modelo, giro, contorno): se sube la primera vez que aparece
+  // La capa del atlas de un sprite (modelo, giro, contorno): se sube la primera vez que aparece. El atlas crece hasta
+  // MAX_SPRITE_LAYERS capas; lleno, la nueva sustituye a la que lleva más cuadros sin usarse (con giros libres,
+  // cada ángulo es un sprite nuevo y el atlas crecía sin fin)
   private spriteLayer(d: EntitySprite): number {
     let layer = this.sprites.get(d.key);
-    if (layer !== undefined) return layer;
+    if (layer !== undefined) { this.spriteUse[layer] = this.frameNo; return layer; }
     const gl = this.gl;
-    layer = this.spriteImgs.length;
-    if (layer >= this.spriteCap) {
-      // Atlas lleno: uno el doble de grande, y se vuelven a subir los que había (se guardan en la CPU)
-      const max = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
-      if (layer >= max) {
-        warnOnce(`el atlas de sprites pasa de ${max} capas: se vacía`);
-        this.sprites.clear(); this.spriteImgs = []; this.spriteEmissive = []; layer = 0;
+    const cap = Math.min(MAX_SPRITE_LAYERS, gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number);
+    if (this.spriteImgs.length < cap) {
+      layer = this.spriteImgs.length;
+      if (layer >= this.spriteCap) {
+        // Atlas lleno: uno el doble de grande, y se vuelven a subir los que había (se guardan en la CPU)
+        this.spriteCap = Math.min(cap, Math.max(64, this.spriteCap * 2));
+        for (const t of [this.tSprColor, this.tSprDepth, this.tSprVox]) if (t) gl.deleteTexture(t);
+        this.tSprColor = texArray(gl, gl.RGBA8, EW, EH, this.spriteCap);
+        this.tSprDepth = texArray(gl, gl.R32F, EW, EH, this.spriteCap);
+        this.tSprVox = texArray(gl, gl.RGBA8UI, EW, EH, this.spriteCap);
+        this.spriteImgs.forEach((img, i) => this.uploadSprite(img, i, this.spriteEmissive[i] ?? null));
       }
-      this.spriteCap = Math.min(max, Math.max(64, this.spriteCap * 2));
-      for (const t of [this.tSprColor, this.tSprDepth, this.tSprVox]) if (t) gl.deleteTexture(t);
-      this.tSprColor = texArray(gl, gl.RGBA8, EW, EH, this.spriteCap);
-      this.tSprDepth = texArray(gl, gl.R32F, EW, EH, this.spriteCap);
-      this.tSprVox = texArray(gl, gl.RGBA8UI, EW, EH, this.spriteCap);
-      this.spriteImgs.forEach((img, i) => this.uploadSprite(img, i, this.spriteEmissive[i] ?? null));
+      this.spriteImgs.push(d.img);
+      this.spriteEmissive.push(emissiveMask(d));
+    } else {
+      // La menos usada (nunca una de este cuadro: ya tiene su sitio en el registro de entidades)
+      layer = 0;
+      for (let i = 1; i < this.spriteUse.length; i++) if (this.spriteUse[i]! < this.spriteUse[layer]!) layer = i;
+      if (this.spriteUse[layer] === this.frameNo) warnOnce(`más de ${cap} sprites distintos en un cuadro`);
+      for (const [k, v] of this.sprites) if (v === layer) { this.sprites.delete(k); break; }
+      this.spriteImgs[layer] = d.img;
+      this.spriteEmissive[layer] = emissiveMask(d);
     }
     this.sprites.set(d.key, layer);
-    this.spriteImgs.push(d.img);
-    this.spriteEmissive.push(emissiveMask(d));
-    this.uploadSprite(d.img, layer, emissiveMask(d));
+    this.spriteUse[layer] = this.frameNo;
+    this.uploadSprite(d.img, layer, this.spriteEmissive[layer] ?? null);
     return layer;
   }
+
+  // Cuántos sprites hay en el atlas (para medir)
+  get spriteCount(): number { return this.spriteImgs.length; }
 
   private uploadSprite(img: Rendered, layer: number, emissive: Uint8Array | null): void {
     const gl = this.gl;

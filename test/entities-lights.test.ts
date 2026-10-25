@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Model, material, box } from '../src/core';
 import { StaticVoxels, WorldState } from '../src/world/state';
 import { bakeWorld } from '../src/world/bake';
-import { frame2D } from '../src/world/frame2d';
+import { frame2D, entitySprite, entityRenderCount, MAX_ENTITY_RENDERS } from '../src/world/frame2d';
 import type { World } from '../src/world/build';
 
 const PAL = { ramps: [{ name: 'suelo', colors: ['#202020', '#404040', '#606060', '#808080', '#a0a0a0'] }] };
@@ -189,5 +189,21 @@ describe('luces que van con una entidad (follow)', () => {
     expect(l.x).toBeCloseTo(57.5); expect(l.y).toBeCloseTo(30); expect(l.z).toBe(2);
     expect(l.dir![0]).toBeCloseTo(1); expect(l.dir![1]).toBeCloseTo(0);
     expect(state.hash()).not.toBe(h0);
+  });
+});
+
+describe('caché de renders de entidad', () => {
+  it('con giros libres no crece sin fin: suelta los menos usados', () => {
+    const { state, body, bake } = world();
+    const b = bake();
+    const id = state.entities.add({ model: body, x: 40, y: 30, z: 1, facing: 0 });
+    const e = state.entities.get(id)!;
+    const o = { vx: 0, vy: 0, vw: 96, vh: 64, time: 0, lights: false, ambient: AMB };
+    for (let i = 0; i < MAX_ENTITY_RENDERS + 200; i++) { e.yaw = i * 0.25; entitySprite(b, e, o); }
+    expect(entityRenderCount()).toBe(MAX_ENTITY_RENDERS);
+    // El último sigue en la caché (mismo objeto) y uno de los primeros se volvió a renderizar
+    e.yaw = (MAX_ENTITY_RENDERS + 199) * 0.25;
+    const last = entitySprite(b, e, o).img;
+    expect(entitySprite(b, e, o).img).toBe(last);
   });
 });

@@ -28,8 +28,22 @@ export interface Frame2DOptions {
 // Lienzo del render de una entidad y dónde caen sus pies
 export const EW = 48, EH = 72;
 const EOX = 24, EOY = 60;
-// El render de una entidad no cambia mientras no cambie su modelo, su giro ni la proyección: se guarda
+// El render de una entidad no cambia mientras no cambie su modelo, su giro ni la proyección: se guarda. Con tope
+// (los menos usados se sueltan): con giros libres, cada ángulo nuevo es un render nuevo y la caché crecía sin fin
+// (FERN lo midió: 220 MB por partida antes de llevar los giros a 8 rumbos).
+export const MAX_ENTITY_RENDERS = 1024;
 const entityCache = new WeakMap<object, Map<string, Rendered>>();
+const entityLru = new Map<string, [object, string]>();      // en orden de uso: el primero es el más viejo
+function cacheTouch(model: object, ck: string, id: string): void {
+  entityLru.delete(id);
+  entityLru.set(id, [model, ck]);
+  if (entityLru.size <= MAX_ENTITY_RENDERS) return;
+  const [oldId, [m, k]] = entityLru.entries().next().value!;
+  entityLru.delete(oldId);
+  entityCache.get(m)?.delete(k);
+}
+// Cuántos renders de entidad hay guardados (para medir)
+export const entityRenderCount = (): number => entityLru.size;
 
 export function frame2D(state: WorldState, b: Baked, o: Frame2DOptions): Uint8ClampedArray {
   const { view, total } = frame2DParts(state, b, o);
@@ -167,6 +181,7 @@ export function entitySprite(b: Baked, e: Entity, o: Frame2DOptions): EntitySpri
   if (!img) { img = withOutlineDepth(render(e.model, lo)); cache.set(ck, img); }
   let mid = spriteIds.get(e.model);
   if (!mid) spriteIds.set(e.model, (mid = nextSpriteId++));
+  cacheTouch(e.model, ck, `${mid}|${ck}`);
   const offX = X - EOX, offY = Math.round(b.options.originY - a * Y - Z) - EOY - bob;
   const dOff = Y * b.cam.fwd[1] + Z * b.cam.fwd[2];
   return { e, img, key: `${mid}|${ck}`, offX, offY, dOff, fx, fy, sry, X, Y, Z, bob, ro: lo };

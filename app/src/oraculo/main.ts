@@ -58,7 +58,8 @@ interface Scenario {
   lights?: boolean;
   setup?: (s: WorldState, rt: Runtime) => void;
   // Lo que pasa después del primer cuadro de la GPU (para probar lo que se sube al rehornear)
-  after?: (s: WorldState, b: Baked) => void;
+  // (gpuFrame compone un cuadro en la GPU sin compararlo)
+  after?: (s: WorldState, b: Baked, gpuFrame: () => void) => void;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -114,6 +115,16 @@ const SCENARIOS: Scenario[] = [
     },
   },
   { name: 'medieval multitud de 200', theme: 'medieval', ticks: 30, setup: crowd(200) },
+  {
+    // Giros libres: 60 entidades x 30 cuadros = 1800 sprites distintos, más que el tope del atlas (MAX_SPRITE_LAYERS):
+    // la GPU va sustituyendo capas y el cuadro final tiene que seguir siendo el de la CPU
+    name: 'oficina 60 con giros libres', theme: 'oficina', ticks: 30, setup: crowd(60),
+    after: (s, _b, gpuFrame) => {
+      const spin = (f: number) => s.entities.forEach((e, k) => { if (k) e.yaw = (k * 37.3 + f * 11.7) % 360; });
+      for (let f = 0; f < 30; f++) { spin(f); gpuFrame(); }
+      spin(30);
+    },
+  },
 ];
 
 function viewOf(s: WorldState, b: Baked, x: number, y: number, z: number): { vx: number; vy: number } {
@@ -196,7 +207,7 @@ async function run(): Promise<void> {
     const { vx, vy } = viewOf(state, b, maia.x, maia.y, maia.z);
     const ambient = THEMES[sc.theme].ambient;
     const o: Frame2DOptions = { vx, vy, vw: VW, vh: VH, time: sc.ticks / 60, lights: sc.lights ?? true, ambient, ...(sc.lightCap !== undefined ? { entityLightCap: sc.lightCap } : {}) };
-    if (sc.after) { gpu.read(state, b, o, 'color'); sc.after(state, b); }
+    if (sc.after) { gpu.read(state, b, o, 'color'); sc.after(state, b, () => gpu.read(state, b, o, 'color')); }
     const c0 = performance.now();
     const parts = frame2DParts(state, b, o);
     const layers = parts.total ? shadeLayers(parts.total, o) : null;
