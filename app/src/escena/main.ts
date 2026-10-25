@@ -8,6 +8,7 @@ import { Model, type ModelFile } from '@core/index';
 import { buildWorldState, type WorldTheme, type World } from '../../../src/world/build';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '../../../src/world/bake';
 import { FrameBudget } from '../../../src/view/budget';
+import { walkFrames } from '../../../src/anim/walk';
 import { createCompositor } from '../../../src/view/compositor';
 import { frame3D } from '../../../src/world/frame3d';
 import type { WorldState, Entity } from '../../../src/world/state';
@@ -45,6 +46,7 @@ function fit(): void {
 addEventListener('resize', fit); fit();
 
 const maiaModel = Model.fromJSON(maiaFile as unknown as ModelFile);
+const WALK = q.get('anim') === 'walk';
 
 // ---- estado de la demo (el del juego vive en `state`)
 let theme: WorldTheme = (THEME_IDS.includes(q.get('tema') as WorldTheme) ? q.get('tema') : 'medieval') as WorldTheme;
@@ -75,7 +77,8 @@ function rebuild(): void {
     let spawn = { x: layout.spawn.x, y: world.depth - 1 - layout.spawn.y };
     const pos = q.get('pos')?.split(',').map(Number);              // ?pos=x,y en ejes del modelo (y hacia el norte)
     if (pos && pos.length === 2 && pos.every(Number.isFinite)) spawn = { x: pos[0]!, y: pos[1]! };
-    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel });
+    // El walk de MAIA solo con ?anim=walk hasta que Andrés apruebe la lámina; sin él anda con el modelo quieto
+    runtime = new Runtime(state, spawn, { radius: 4, speed: 70, model: maiaModel, walk: WALK ? walkFrames(maiaModel) : undefined });
     maia = state.entities.get(runtime.entityId!) ?? null;
     if (q.get('dir')) { runtime.player.facing = Number(q.get('dir')) % 8; runtime.syncEntity(); }
     ticks = new FixedLoop(runtime, input);
@@ -121,7 +124,8 @@ function frame(time: number): void {
   const vy = Math.max(top, Math.min(b.height - VH, fy - VH / 2 - 12));
   compositor.frame(state, b, {
     vx, vy, vw: VW, vh: VH, time, lights: lightsOn, ambient: THEMES[theme].ambient,
-    bob: (e) => (e === maia && moving && runtime && Math.floor(runtime.player.walked * 8) % 2 ? 1 : 0),
+    // Sin walk, un bote de 1 px al andar; el walk ya trae el sube y baja del cuerpo
+    bob: (e) => (!WALK && e === maia && moving && runtime && Math.floor(runtime.player.walked * 8) % 2 ? 1 : 0),
   });
 }
 

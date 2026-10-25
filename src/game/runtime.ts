@@ -5,6 +5,7 @@
 import { TICK, type EntityId, type WorldState } from '../world/state';
 import type { VoxelSource } from '../core';
 import { DEFAULT_RULES, moveBody, restZ, type Body, type MoveRules } from './body';
+import { WALK_FRAME_MS } from '../anim/walk';
 
 // Lo que llega de los mandos en un tick. dx, dy en ejes del modelo (dy > 0 = norte); se normaliza la dirección.
 export interface TickInput {
@@ -19,12 +20,15 @@ export interface PlayerConfig {
   radius: number;
   speed: number;        // vóxeles por segundo en seco
   model?: VoxelSource | number;   // su modelo (o su id en world.models): el runtime crea la entidad que lo dibuja
+  walk?: ReadonlyArray<VoxelSource | number>;   // los cuadros del walk, en orden del ciclo (WALK_FRAME_MS cada uno); sin ellos anda con el quieto
   rules?: MoveRules;
 }
 
+export type Player = Body & { facing: number; inWater: boolean; walked: number; moving: boolean };
+
 export interface RuntimeSnapshot {
   tick: number;
-  player: Body & { facing: number; inWater: boolean; walked: number };
+  player: Player;
   world: ReturnType<WorldState['snapshot']>;
 }
 
@@ -37,23 +41,31 @@ const RIPPLE_HZ = 12;                     // ondas al andar por el agua
 
 export class Runtime {
   tick = 0;
-  readonly player: Body & { facing: number; inWater: boolean; walked: number };
+  readonly player: Player;
   readonly entityId: EntityId | null;     // la entidad del mundo que lo dibuja, si tiene modelo
   private readonly rules: MoveRules;
+  private readonly idleModel: number | null = null;   // ids en world.models: se registran una vez, al crear la partida
+  private readonly walkModels: number[] = [];
 
   constructor(readonly world: WorldState, spawn: { x: number; y: number }, readonly config: PlayerConfig) {
     this.rules = config.rules ?? DEFAULT_RULES;
     const r = config.radius;
-    this.player = { x: spawn.x, y: spawn.y, z: restZ(world, spawn.x, spawn.y, r), r, facing: 0, inWater: false, walked: 0 };
+    this.player = { x: spawn.x, y: spawn.y, z: restZ(world, spawn.x, spawn.y, r), r, facing: 0, inWater: false, walked: 0, moving: false };
     const p = this.player;
-    this.entityId = config.model === undefined ? null
-      : world.entities.add({ model: config.model, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0 });
+    const id = (m: VoxelSource | number) => (typeof m === 'number' ? m : world.models.register(m));
+    if (config.model !== undefined) {
+      this.idleModel = id(config.model);
+      this.walkModels = (config.walk ?? []).map(id);
+    }
+    this.entityId = this.idleModel === null ? null
+      : world.entities.add({ model: this.idleModel, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0 });
   }
 
   step(input: TickInput): void {
     const w = this.world, p = this.player;
     // 1. Mover y resolver colisiones
     const len = Math.hypot(input.dx, input.dy);
+    p.moving = len > 0;
     if (len > 0) {
       const depth = w.waterAt(p.x, p.y)?.depth ?? 0;
       const v = this.config.speed * TICK * waterFactor(depth);
@@ -84,6 +96,15 @@ export class Runtime {
     if (this.entityId === null) return;
     const p = this.player;
     this.world.entities.move(this.entityId, Math.round(p.x), Math.round(p.y), p.z, p.facing * 45);
+    this.world.entities.setModel(this.entityId, this.modelNow());
+  }
+
+  // El modelo que toca: andando, el cuadro del walk por lo que lleva andado (determinista, entra en la huella);
+  // parado, el quieto
+  private modelNow(): number {
+    const n = this.walkModels.length;
+    if (!this.player.moving || !n) return this.idleModel!;
+    return this.walkModels[Math.floor((this.player.walked * 1000) / WALK_FRAME_MS + 1e-9) % n]!;
   }
 
   snapshot(): RuntimeSnapshot {
@@ -99,8 +120,8 @@ export class Runtime {
   // Huella de la partida: la del mundo más la del runtime (FNV-1a de 32 bits)
   hash(): string {
     const p = this.player;
-    const view = new DataView(new ArrayBuffer(8 * 7));
-    [this.tick, p.x, p.y, p.z, p.facing, p.inWater ? 1 : 0, p.walked].forEach((v, i) => view.setFloat64(i * 8, v));
+    const view = new DataView(new ArrayBuffer(8 * 8));
+    [this.tick, p.x, p.y, p.z, p.facing, p.inWater ? 1 : 0, p.walked, p.moving ? 1 : 0].forEach((v, i) => view.setFloat64(i * 8, v));
     let h = 0x811c9dc5;
     const feed = (u: Uint8Array) => { for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i]!, 0x01000193); };
     feed(new TextEncoder().encode(this.world.hash()));

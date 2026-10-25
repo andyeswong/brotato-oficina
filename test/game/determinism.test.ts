@@ -143,6 +143,33 @@ describe('determinismo del runtime', () => {
     expect(a.hash()).not.toBe(b.hash());
   });
 
+  it('con walk, andando cambia de cuadro cada WALK_FRAME_MS, en orden, y parado vuelve al quieto', () => {
+    const layout = generateLayout(THEMES.oficina.spec, 2);
+    const pal = { ramps: [{ name: 'tela', colors: ['#202040', '#404080', '#6060c0'] }] };
+    const cube = (h: number) => {
+      const m = new Model(pal, `cubo${h}`);
+      for (let z = 0; z < h; z++) m.set(0, 0, z, material(0, 1));
+      return m;
+    };
+    const idle = cube(4), frames = [1, 2, 3, 5, 6, 7, 8, 9].map(cube);
+    const { state } = buildWorldState(layout, 'oficina');
+    const rt = new Runtime(state, { x: layout.spawn.x, y: layout.rows * TILE - 1 - layout.spawn.y }, { radius: 4, speed: 70, model: idle, walk: frames });
+    const e = () => state.entities.get(rt.entityId!)!;
+    const idleId = e().modelId;
+    const seen: number[] = [];
+    for (let t = 0; t < 47; t++) { rt.step({ dx: 1, dy: 0, stomp: false }); seen.push(e().modelId); }
+    // 6 ticks por cuadro (100 ms a 60 Hz): en 47 ticks, los 8 cuadros una vez cada uno y en orden, sin el quieto
+    const distinct = seen.filter((m, i) => i === 0 || m !== seen[i - 1]);
+    expect(distinct).toEqual(frames.map((f) => state.models.register(f)));
+    expect(seen.filter((m) => m === distinct[1]).length).toBe(6);
+    expect(seen).not.toContain(idleId);
+    // El tick 48 cierra el ciclo: vuelve al primero
+    rt.step({ dx: 1, dy: 0, stomp: false });
+    expect(e().modelId).toBe(distinct[0]);
+    rt.step({ dx: 0, dy: 0, stomp: false });
+    expect(e().modelId).toBe(idleId);
+  });
+
   it('src/game no usa reloj ni azar del navegador', () => {
     const dir = join(__dirname, '../../src/game');
     for (const f of readdirSync(dir)) {
