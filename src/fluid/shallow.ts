@@ -54,6 +54,16 @@ export class ShallowWater {
       for (let x = Math.max(0, Math.floor(cx - radius)); x <= Math.min(this.w - 1, Math.ceil(cx + radius)); x++) this.awake[y * this.w + x] = 90;
   }
 
+  // Todo lo que define el estado del fluido (para snapshot, restore y hash). Las matrices de trabajo (active, list)
+  // no cuentan: se rehacen en cada paso a partir de awake.
+  exportState(): { depth: Float32Array; fl: Float32Array; fr: Float32Array; ft: Float32Array; fb: Float32Array; awake: Uint16Array } {
+    return { depth: this.depth.slice(), fl: this.fl.slice(), fr: this.fr.slice(), ft: this.ft.slice(), fb: this.fb.slice(), awake: this.awake.slice() };
+  }
+
+  importState(s: ReturnType<ShallowWater['exportState']>): void {
+    this.depth.set(s.depth); this.fl.set(s.fl); this.fr.set(s.fr); this.ft.set(s.ft); this.fb.set(s.fb); this.awake.set(s.awake);
+  }
+
   // Cuántas celdas se están calculando (para medir)
   get activeCount(): number { return this.count; }
 

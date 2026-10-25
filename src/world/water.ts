@@ -23,7 +23,6 @@ export class WaterLayer {
   readonly gh: number;
   private tones: Array<[number, number, number]>;
   private basin: Uint8Array;                      // 1 = celda de cuenca (si no, suelo seco: el agua se empapa)
-  private lastStep = 0;
   private fountainIn: number[] = [];              // celdas donde cae el agua del cuenco
   private fountainOut: number[] = [];             // desagüe
 
@@ -98,18 +97,18 @@ export class WaterLayer {
     return [(i % this.gw) * CELL + 1, Math.floor(i / this.gw) * CELL + 1];
   }
 
+  // Un paso de simulación de `dt` (el mundo lo llama con 1/60 fijo): exactamente round(dt * 120) subpasos de 1/120,
+  // sin acumular tiempo, así la misma partida da siempre el mismo agua
   step(dt: number): void {
-    this.lastStep += Math.min(dt, 0.05);
     const { sim, basin } = this;
     const f = this.world.fountain;
-    while (this.lastStep >= 1 / 120) {
+    for (let n = Math.max(1, Math.round(dt * 120)); n > 0; n--) {
       // Fuente: el desagüe saca lo que sobra por encima de su nivel (lo que cae lo añaden las gotas con pour)
       if (f) for (const i of this.fountainOut) {
         const over = sim.surface(i) - f.level;
         if (over > 0) sim.depth[i] = Math.max(0, sim.depth[i]! - over * 0.3);
       }
       sim.step(1 / 120);
-      this.lastStep -= 1 / 120;
     }
     // El agua que salta al suelo seco se empapa poco a poco
     const soak = Math.min(dt, 0.05) * 0.3;

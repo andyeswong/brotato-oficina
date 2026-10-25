@@ -20,7 +20,7 @@ for (const theme of ['medieval', 'cyberpunk', 'oficina'] as const) {
   let t2 = 0, t3 = 0;
   for (let f = 0; f < 60; f++) {
     if (f % 10 === 0) { state.water!.disturb(ex, ey, 1.5, 3); state.drops.splash(ex, ey, 1, 20, 80); }
-    state.step(1 / 60);
+    state.step();
     let t = performance.now();
     frame2D(state, b, { vx: 0, vy: 60, vw: 384, vh: 216, time: f / 60, lights: true, ambient: amb });
     t2 += performance.now() - t;

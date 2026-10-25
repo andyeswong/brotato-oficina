@@ -10,12 +10,13 @@ export class Drops {
   // x, y, z (ejes del modelo), vx, vy, vz, vida, agua que lleva
   private d = new Float32Array(MAX * 8);
   private n = 0;
-  private seed = 1;
 
-  private rand(): number {
-    this.seed = (Math.imul(this.seed, 1103515245) + 12345) >>> 0;
-    return this.seed / 4294967296;
-  }
+  // El azar es el del mundo (va en su estado, su snapshot y su huella)
+  constructor(private rand: () => number) {}
+
+  // Estado (para snapshot y hash)
+  exportState(): { data: Float32Array; n: number } { return { data: this.d.slice(0, this.n * 8), n: this.n }; }
+  importState(s: { data: Float32Array; n: number }): void { this.d.fill(0); this.d.set(s.data); this.n = s.n; }
 
   get count(): number { return this.n; }
 

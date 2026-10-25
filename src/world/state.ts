@@ -4,11 +4,15 @@
 //   - el agua: un fluido sobre la misma rejilla (WaterLayer: altura por columna en lagos y charcos);
 //   - entidades: un modelo de vóxeles con posición y giro (MAIA, después los demás);
 //   - fuentes de luz y gotas.
-// Ejes del modelo: x hacia el este, y hacia el norte, z hacia arriba. Las posiciones del juego (px, py con y hacia
-// abajo) se pasan con toModelY.
+// Un solo sistema de coordenadas: ejes del modelo (x hacia el este, y hacia el norte, z hacia arriba; 1 unidad =
+// 1 vóxel = 1 píxel). La única conversión es la cámara.
+//
+// SIMULACIÓN DETERMINISTA (acordado con FERN): el runtime lleva el tick (entrada -> mover entidades -> eventos ->
+// world.step()). step() avanza 1/60 s fijo, sin reloj ni Math.random: el azar es un mulberry32 del estado, sembrado
+// con la semilla de la partida. Misma semilla y mismos eventos dan la misma huella (hash).
 import type { Palette, VoxelSource } from '../core';
 import { decode, key, unkey } from '../core';
-import type { WorldLight } from './build';
+import type { WorldLight, Fountain } from './build';
 import type { WaterLayer } from './water';
 import { Drops } from './particles';
 
@@ -61,6 +65,17 @@ export class StaticVoxels implements VoxelSource {
     }
   }
 
+  // Trozos (con su versión) para snapshot y hash; importChunks rehace la rejilla de alturas
+  exportChunks(): Array<{ version: number; data: Uint16Array | null }> {
+    return this.chunks.map((d, i) => ({ version: this.versions[i]!, data: d ? d.slice() : null }));
+  }
+
+  importChunks(cs: Array<{ version: number; data: Uint16Array | null }>): void {
+    cs.forEach((c, i) => { this.chunks[i] = c.data ? c.data.slice() : null; this.versions[i] = c.version; });
+    this.height.fill(this.zMin);
+    for (const [x, y, z] of this.entries()) { const h = y * this.width + x; if (z + 1 > this.height[h]!) this.height[h] = z + 1; }
+  }
+
   // ¿Hay algún sólido en la columna?
   hasColumn(x: number, y: number): boolean {
     return x >= 0 && y >= 0 && x < this.width && y < this.depth && this.height[y * this.width + x]! > this.zMin;
@@ -106,11 +121,38 @@ export interface ViewRegion { x0: number; y0: number; x1: number; y1: number }
 export class WorldState {
   palette: Palette;
   readonly entities: Entity[] = [];
-  readonly drops = new Drops();
+  readonly drops: Drops;
+  tick = 0;
+  private rngState: number;
 
-  constructor(readonly solid: StaticVoxels, readonly lights: WorldLight[], public water: WaterLayer | null) {
+  constructor(readonly solid: StaticVoxels, readonly lights: WorldLight[], public water: WaterLayer | null,
+    opts: { seed?: number; fountain?: Fountain | null } = {}) {
     this.palette = solid.palette;
+    this.rngState = (opts.seed ?? 1) >>> 0;
+    this.fountain = opts.fountain ?? null;
+    this.drops = new Drops(() => this.random());
   }
+
+  readonly fountain: Fountain | null;
+
+  // mulberry32 (el mismo de src/sim/rng), con el estado a la vista para snapshot y hash
+  random(): number {
+    this.rngState = (this.rngState + 0x6d2b79f5) >>> 0;
+    let t = this.rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  // ---- eventos: lo que el juego le hace al mundo dentro del tick (los llama el runtime antes de step)
+  readonly events = {
+    // Algo empuja el agua (pisar, un golpe): ondas; con fuerza, el agua salta el borde
+    disturb: (x: number, y: number, force: number, radius = 1.5) => { this.water?.disturb(x, y, force, radius); },
+    // Añade agua en un punto
+    pour: (x: number, y: number, amount: number) => { this.water?.pour(x, y, amount); },
+    // Gotas que saltan desde (x, y, z)
+    splash: (x: number, y: number, z: number, count: number, force: number) => { this.drops.splash(x, y, z, count, force); },
+  };
 
   get width(): number { return this.solid.width; }
   get depth(): number { return this.solid.depth; }
@@ -259,8 +301,79 @@ export class WorldState {
     return null;
   }
 
-  step(dt: number): void {
+  // Un tick de simulación: 1/60 s fijo
+  step(): void {
+    const dt = TICK;
+    // La fuente: un chorro de gotas que cae del borde del cuenco al pilón (con el azar del mundo)
+    const f = this.fountain;
+    if (f) for (let k = 0; k < 3; k++) {
+      const ang = this.random() * Math.PI * 2, sp = 10 + this.random() * 8;
+      this.drops.emit(f.x + Math.cos(ang) * 6.5, f.y + Math.sin(ang) * 6.5, f.bowl.z + 2, Math.cos(ang) * sp, Math.sin(ang) * sp, 8 + this.random() * 10, 0.012);
+    }
     this.water?.step(dt);
     this.drops.step(dt, this.water, (x, y) => this.groundAt(x, y));
+    this.tick++;
   }
+
+  // ---- instantánea y huella
+  snapshot(): WorldSnapshot {
+    return {
+      tick: this.tick, rng: this.rngState,
+      chunks: this.solid.exportChunks(),
+      water: this.water ? this.water.sim.exportState() : null,
+      drops: this.drops.exportState(),
+      entities: [...this.entities].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).map((e) => ({ id: e.id, x: e.x, y: e.y, z: e.z, yaw: e.yaw })),
+      lights: this.lights.map((l) => ({ ...l })),
+    };
+  }
+
+  restore(s: WorldSnapshot): void {
+    this.tick = s.tick; this.rngState = s.rng;
+    this.solid.importChunks(s.chunks);
+    if (this.water && s.water) this.water.sim.importState(s.water);
+    this.drops.importState(s.drops);
+    for (const se of s.entities) { const e = this.entity(se.id); if (e) Object.assign(e, { x: se.x, y: se.y, z: se.z, yaw: se.yaw }); }
+    this.lights.splice(0, this.lights.length, ...s.lights.map((l) => ({ ...l })));
+  }
+
+  // Huella (FNV-1a de 32 bits) de todo el estado, en un orden fijo
+  hash(): string {
+    const h = new Fnv();
+    const s = this.snapshot();
+    h.num(s.tick); h.num(s.rng);
+    for (const c of s.chunks) { h.num(c.version); if (c.data) h.bytes(c.data); else h.num(-1); }
+    if (s.water) for (const k of ['depth', 'fl', 'fr', 'ft', 'fb', 'awake'] as const) h.bytes(s.water[k]);
+    h.num(s.drops.n); h.bytes(s.drops.data);
+    for (const e of s.entities) { h.str(e.id); h.f64(e.x); h.f64(e.y); h.f64(e.z); h.f64(e.yaw); }
+    for (const l of [...s.lights].sort((a, b) => (a.id < b.id ? -1 : 1))) { h.str(l.id); h.str(l.kind); h.f64(l.x); h.f64(l.y); h.f64(l.z); }
+    return h.hex();
+  }
+}
+
+export const TICK = 1 / 60;
+
+export interface WorldSnapshot {
+  tick: number;
+  rng: number;
+  chunks: Array<{ version: number; data: Uint16Array | null }>;
+  water: ReturnType<import('../fluid/shallow').ShallowWater['exportState']> | null;
+  drops: { data: Float32Array; n: number };
+  entities: Array<{ id: string; x: number; y: number; z: number; yaw: number }>;
+  lights: WorldLight[];
+}
+
+// FNV-1a de 32 bits sobre los bytes, en orden
+class Fnv {
+  private h = 0x811c9dc5;
+  private buf = new DataView(new ArrayBuffer(8));
+  bytes(a: ArrayBufferView): void {
+    const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    let h = this.h;
+    for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i]!, 0x01000193);
+    this.h = h >>> 0;
+  }
+  num(n: number): void { this.buf.setInt32(0, n | 0); this.bytes(new Uint8Array(this.buf.buffer, 0, 4)); }
+  f64(n: number): void { this.buf.setFloat64(0, n); this.bytes(new Uint8Array(this.buf.buffer, 0, 8)); }
+  str(s: string): void { for (let i = 0; i < s.length; i++) this.num(s.charCodeAt(i)); this.num(0); }
+  hex(): string { return (this.h >>> 0).toString(16).padStart(8, '0'); }
 }

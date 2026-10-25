@@ -8,7 +8,7 @@ import { buildWorldState, type WorldTheme, type World } from '../../../src/world
 import { bakeWorld, type Baked } from '../../../src/world/bake';
 import { frame2D } from '../../../src/world/frame2d';
 import { frame3D } from '../../../src/world/frame3d';
-import type { WorldState, Entity } from '../../../src/world/state';
+import { TICK, type WorldState, type Entity } from '../../../src/world/state';
 import maiaFile from '../../../models/maia/maia.json';
 
 const VW = 384, VH = 216;
@@ -98,8 +98,8 @@ function step(dt: number): void {
     // En el agua se va más despacio, y al moverse se hacen ondas y salpica
     const len = Math.hypot(dx, dy), speed = 70 * dt * (wd < 0.3 ? 1 : wd < 2.5 ? 0.8 : 0.55);
     if (water && wd > 0.3 && Math.floor((player.t + dt) * 12) !== Math.floor(player.t * 12)) {
-      water.disturb(player.x, player.y, 0.35);
-      state.drops.splash(player.x, player.y, state.waterAt(player.x, player.y)?.surface ?? 0, 3, 38);
+      state.events.disturb(player.x, player.y, 0.35);
+      state.events.splash(player.x, player.y, state.waterAt(player.x, player.y)?.surface ?? 0, 3, 38);
     }
     const nx = player.x + (dx / len) * speed, ny = player.y + (dy / len) * speed;
     if (!blocked(nx, player.y)) player.x = nx;
@@ -109,23 +109,12 @@ function step(dt: number): void {
   }
   if (water) {
     const wa = state.waterAt(player.x, player.y), inWater = (wa?.depth ?? 0) > 0.3, zs = wa?.surface ?? 0;
-    if (inWater && !player.wasInWater) { water.disturb(player.x, player.y, 0.7, 2); state.drops.splash(player.x, player.y, zs, 14, 70); }
+    if (inWater && !player.wasInWater) { state.events.disturb(player.x, player.y, 0.7, 2); state.events.splash(player.x, player.y, zs, 14, 70); }
     player.wasInWater = inWater;
-    if (player.stomp && inWater) { water.disturb(player.x, player.y, 2.8, 3); state.drops.splash(player.x, player.y, zs, 40, 105); }
+    if (player.stomp && inWater) { state.events.disturb(player.x, player.y, 2.8, 3); state.events.splash(player.x, player.y, zs, 40, 105); }
   }
   player.stomp = false;
   syncPlayer();
-}
-
-// El mundo sigue vivo en los dos modos: el agua, el chorro de la fuente y las gotas
-function stepWorld(dt: number): void {
-  if (!state || !world) return;
-  const f = world.fountain;
-  if (f) for (let k = 0; k < Math.round(140 * dt) + 1; k++) {
-    const ang = Math.random() * Math.PI * 2, sp = 10 + Math.random() * 8;
-    state.drops.emit(f.x + Math.cos(ang) * 6.5, f.y + Math.sin(ang) * 6.5, f.bowl.z + 2, Math.cos(ang) * sp, Math.sin(ang) * sp, 8 + Math.random() * 10, 0.012);
-  }
-  state.step(dt);
 }
 
 let lastVoxelDraw = 0;
@@ -154,13 +143,18 @@ function frame(time: number): void {
   g.putImageData(new ImageData(out as Uint8ClampedArray<ArrayBuffer>, VW, VH), 0, 0);
 }
 
-let last = performance.now(), avg = 0, acc = 0, n = 0;
+let last = performance.now(), avg = 0, acc = 0, n = 0, tickAcc = 0;
 function loop(now: number): void {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (mode === '2d') step(dt);
+  // Ticks fijos de 1/60 (como el runtime de FERN): entrada y entidades -> eventos -> world.step()
   if (q.has('agitar') && Math.floor(now / 700) !== Math.floor((now - dt * 1000) / 700)) player.stomp = true;   // pruebas sin teclado
-  stepWorld(dt);
+  tickAcc += dt;
+  while (state && tickAcc >= TICK) {
+    if (mode === '2d') step(TICK);
+    state.step();
+    tickAcc -= TICK;
+  }
   const t0 = performance.now();
   frame(now / 1000);
   acc += performance.now() - t0; n++;
