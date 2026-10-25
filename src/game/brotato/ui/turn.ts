@@ -9,6 +9,7 @@
 //     vez cuando vuelve a copiar trozos que cambiaron, así la pared rebajada no vuelve a salir alta.
 // Los giros que faltan se preparan en segundo plano con prepareViewJob (por pasos, con el presupuesto por cuadro).
 import { TILE, WALL, type Layout } from '@voxpix/worldgen';
+import { SIDE_WALL_H, SOUTH_WALL_H } from '@voxpix/world/build';
 import type { ViewCamera, ViewDress, WorldView, Quarter } from '@voxpix/world/view';
 import type { Projector } from './fx';
 
@@ -25,9 +26,9 @@ export const BG_IDLE_MS = 12;
 export const WAVE_STAGES: ReadonlySet<string> = new Set(['copy', 'bake']);
 // Cuadros seguidos sin presupuesto en la oleada antes de dar igualmente un paso mínimo (como FrameBudget)
 export const BG_STARVE_FRAMES = 4;
-// Las alturas de build.ts para la pared de delante (la sur) y las de los lados
-export const NEAR_WALL_H = 6;
-export const SIDE_WALL_H = 12;
+// Las alturas de las paredes de VoxPix (build.ts): la de delante como la sur, y las de los lados
+export const NEAR_WALL_H = SOUTH_WALL_H;
+export { SIDE_WALL_H };
 
 export function turnQuarter(q: Quarter, step: 1 | -1): Quarter {
   return (((q + step) % 4) + 4) % 4 as Quarter;

@@ -16,8 +16,8 @@ import { basename, join, resolve } from 'node:path';
 
 const ROOT = resolve(new URL('..', import.meta.url).pathname);
 const MODELS = join(ROOT, 'models/brotato');
-// VOXPIX: un clon de VoxPix en el commit fijado. Hace falta mientras su CLI no corra instalada como dependencia (tsx no
-// aplica el alias pxl-core de su tsconfig a archivos dentro de node_modules)
+// La CLI de VoxPix instalada como dependencia (desde 23ac832 resuelve pxl-core dentro de node_modules). VOXPIX=<clon>
+// permite usar otro VoxPix, por ejemplo uno local con cambios sin publicar
 const VOXPIX = process.env.VOXPIX ? resolve(process.env.VOXPIX) : join(ROOT, 'node_modules/voxpix');
 const args = process.argv.slice(2);
 const check = args.includes('--check');
@@ -38,7 +38,7 @@ try {
       const out = check ? join(tmp, `${dir}-${file}`) : join(here, file);
       const ok = sources.filter((src) => {
         try {
-          execFileSync('npx', ['tsx', '--tsconfig', join(VOXPIX, 'tsconfig.runtime.json'), join(VOXPIX, 'src/cli/main.ts'),
+          execFileSync('npx', ['tsx', join(VOXPIX, 'src/cli/main.ts'),
             'import-pxl', src, '--stack', stackOf(dir, id), out], { cwd: here, stdio: ['ignore', 'ignore', sources.length > 1 ? 'ignore' : 'inherit'] });
           return true;
         } catch { return false; }

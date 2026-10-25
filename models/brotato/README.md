@@ -15,9 +15,5 @@ npm run models:check           # los importa aparte y comprueba que salen idént
 node scripts/import-models.mjs items efectos   # solo esas carpetas
 ```
 
-Mientras la CLI de VoxPix no corra instalada como dependencia (el alias `pxl-core` de su tsconfig no se aplica dentro de
-`node_modules`), se usa un clon de VoxPix en el commit fijado en `package.json`:
-
-```sh
-VOXPIX=/ruta/a/voxpix npm run models:check
-```
+Usa la CLI de VoxPix instalada (`node_modules/voxpix`, el commit fijado en `package.json`). Para probar con otro VoxPix,
+por ejemplo uno local con cambios sin publicar: `VOXPIX=/ruta/a/voxpix npm run models:check`.
