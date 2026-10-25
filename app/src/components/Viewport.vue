@@ -3,7 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { render, camera, lightField3D, type RenderOptions, type PointLight3D } from '@core/index';
 import { lightIntensity, lightOf, SOURCE_PRESETS } from '../../../src/lighting';
 import { buildLayers, applyLayers } from '../../../src/lighting/shade';
-import { model, version, editor } from '../store';
+import { model, version, editor, ui } from '../store';
 import PxIcon from './PxIcon.vue';
 
 // Vista renderizada con el MISMO render que exporta la CLI: lo que ves es lo que sale.
@@ -82,7 +82,7 @@ function drawMain(time: number): void {
   const c = main.value;
   if (!c) return;
   const t0 = performance.now();
-  const s = editor.view.scale;
+  const s = 5;
   c.width = W * s; c.height = H * s;
   const lit = editor.light.enabled;
   blit(c, frame(editor.view.yaw, lit, time), s);
@@ -96,13 +96,22 @@ function drawMain(time: number): void {
     g.beginPath(); g.arc(px * s, py * s, s * 0.8, 0, Math.PI * 2); g.stroke();
   }
   ms.value = Math.round(performance.now() - t0);
+  ui.renderMs = ms.value;
 }
 
+// Los 8 ángulos en una rejilla de 4 x 2, a 1,5x (cabe en la tarjeta)
 function drawStrip(): void {
   if (!strip.value) return;
-  const n = editor.view.turn, s = 2;
-  strip.value.width = n * W * s; strip.value.height = H * s;
-  for (let i = 0; i < n; i++) blit(strip.value, frame(editor.view.yaw + (360 * i) / n, editor.light.enabled, 0), s, i * W * s);
+  const n = editor.view.turn, s = 1.25, cols = 4;
+  strip.value.width = cols * W * s; strip.value.height = Math.ceil(n / cols) * H * s;
+  const g = strip.value.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  for (let i = 0; i < n; i++) {
+    const off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    off.getContext('2d')!.putImageData(new ImageData(frame(editor.view.yaw + (360 * i) / n, editor.light.enabled, 0), W, H), 0, 0);
+    g.drawImage(off, (i % cols) * W * s, Math.floor(i / cols) * H * s, W * s, H * s);
+  }
 }
 
 let pending = 0;
@@ -120,45 +129,48 @@ function animate(): void {
 
 onMounted(() => { schedule(); animate(); });
 onUnmounted(() => clearInterval(timer));
-watch([version, () => ({ ...editor.view })], schedule, { deep: true });
+watch([version, () => ({ ...editor.view }), () => ui.previewOpen], schedule, { deep: true });
 watch(() => JSON.stringify(editor.light), () => { schedule(); animate(); });
 </script>
 
 <template>
   <div class="view">
-    <div class="bar">
-      <label>Giro</label>
-      <input type="range" min="-180" max="180" step="1" v-model.number="editor.view.yaw" />
-      <span>{{ editor.view.yaw }}°</span>
-      <label>Elevación</label>
-      <input type="range" min="0" max="90" step="1" v-model.number="editor.view.elevation" />
-      <span>{{ editor.view.elevation }}°</span>
-      <label>Contorno</label>
-      <select v-model="editor.view.outline">
-        <option value="outer">exterior</option>
-        <option value="both">exterior + interior</option>
-        <option value="none">sin contorno</option>
-      </select>
+    <header>
+      <h2>Vista previa</h2>
       <span class="ms">{{ ms }} ms</span>
-    </div>
-    <div class="bar">
-      <button :class="{ on: editor.light.enabled }" @click="editor.light.enabled = !editor.light.enabled"><PxIcon name="sun" />Iluminación</button>
-      <template v-if="editor.light.enabled">
-        <label>Ambiente</label>
-        <input type="range" min="0.1" max="1" step="0.05" v-model.number="editor.light.ambient" />
-        <span class="hint">{{ editor.light.sources.length }} fuente(s) · se ponen con la herramienta "Fuente de luz"</span>
-      </template>
-    </div>
-    <canvas ref="main" class="main" />
-    <canvas ref="strip" class="strip" />
+      <button class="ghost round" :title="ui.previewOpen ? 'Plegar' : 'Desplegar'" @click="ui.previewOpen = !ui.previewOpen">{{ ui.previewOpen ? '–' : '+' }}</button>
+    </header>
+    <template v-if="ui.previewOpen">
+      <canvas ref="main" class="main" />
+      <div class="props">
+        <div class="field"><label>Giro</label><input type="range" min="-180" max="180" step="1" v-model.number="editor.view.yaw" /><span class="value">{{ editor.view.yaw }}°</span></div>
+        <div class="field"><label>Elevación</label><input type="range" min="0" max="90" step="1" v-model.number="editor.view.elevation" /><span class="value">{{ editor.view.elevation }}°</span></div>
+        <div class="field"><label>Contorno</label><span class="dots" />
+          <div class="seg">
+            <button :class="{ on: editor.view.outline === 'outer' }" @click="editor.view.outline = 'outer'">Exterior</button>
+            <button :class="{ on: editor.view.outline === 'both' }" @click="editor.view.outline = 'both'">Interior</button>
+            <button :class="{ on: editor.view.outline === 'none' }" @click="editor.view.outline = 'none'">No</button>
+          </div>
+        </div>
+        <div class="field"><label><PxIcon name="sun" /> Iluminación</label><span class="dots" />
+          <button class="switch" :class="{ on: editor.light.enabled }" :title="editor.light.enabled ? 'Apagar' : 'Encender'" @click="editor.light.enabled = !editor.light.enabled" />
+        </div>
+        <div v-if="editor.light.enabled" class="field"><label>Ambiente</label><input type="range" min="0.1" max="1" step="0.05" v-model.number="editor.light.ambient" /><span class="value">{{ editor.light.ambient.toFixed(2) }}</span></div>
+        <p v-if="editor.light.enabled" class="hint">{{ editor.light.sources.length }} fuente(s): se ponen con la herramienta Luz</p>
+      </div>
+      <canvas ref="strip" class="strip" />
+    </template>
   </div>
 </template>
 
 <style scoped>
-.view { display: flex; flex-direction: column; gap: 8px; }
-.bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ms { color: var(--muted); margin-left: auto; }
-.hint { color: var(--muted); font-size: 12px; }
-.main { border: 1px solid var(--line); border-radius: 4px; max-width: 100%; }
-.strip { max-width: 100%; border: 1px solid var(--line); border-radius: 4px; }
+.view { display: flex; flex-direction: column; gap: 12px; }
+header { display: flex; align-items: center; gap: 8px; }
+header h2 { flex: 1; }
+.ms { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.main { width: 320px; height: 240px; border-radius: 12px; align-self: center; }
+.props { display: flex; flex-direction: column; gap: 2px; }
+.field label { display: inline-flex; align-items: center; gap: 6px; }
+.strip { width: 320px; border-radius: 12px; align-self: center; }
+.hint { margin: 0; }
 </style>

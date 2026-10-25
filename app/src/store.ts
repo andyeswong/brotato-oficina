@@ -33,6 +33,16 @@ export const editor = reactive({
   },
 });
 
+// Lo de la interfaz que no es del modelo: qué paneles flotantes están abiertos y la celda bajo el cursor
+export const ui = reactive({
+  layersOpen: true,
+  previewOpen: true,
+  paletteOpen: false,
+  menu: '' as '' | 'archivo' | 'exportar',
+  cursor: null as [number, number, number] | null,
+  renderMs: 0,
+});
+
 export interface LightSource3D { id: string; kind: LightKind; x: number; y: number; z: number }
 
 let lightIds = 0;

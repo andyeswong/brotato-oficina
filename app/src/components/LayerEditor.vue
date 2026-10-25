@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue';
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import { decode, rampOf } from '@core/index';
-import { model, history, version, editor, paint, currentMaterial, touch, toggleLight } from '../store';
+import { model, history, version, editor, paint, currentMaterial, touch, toggleLight, ui } from '../store';
 import { SOURCE_PRESETS } from '../../../src/lighting';
 import { startPour, stopPour, fluidState } from '../fluidTool';
 
 // Editor de una capa z vista desde arriba (norte arriba). Clic izquierdo pinta según la herramienta,
 // clic derecho borra. La capa de abajo se ve en fantasma para orientarse.
-const CELL = 14;
+// La capa llena el escenario: el lado de la celda es el que cabe (entre 6 y 40 px)
+let CELL = 14;
 const canvas = ref<HTMLCanvasElement>();
+const box = ref<HTMLDivElement>();
 const cols = computed(() => editor.grid.maxX - editor.grid.minX + 1);
 const rows = computed(() => editor.grid.maxY - editor.grid.minY + 1);
 let painting = 0;            // 0 nada, 1 pintar, 2 borrar
@@ -19,13 +21,20 @@ function colorOf(v: number): string {
   return rampOf(model.value.palette, ramp).colors[tone] ?? '#ff00ff';
 }
 
+function fit(): void {
+  const b = box.value;
+  if (!b) return;
+  CELL = Math.max(6, Math.min(40, Math.floor(Math.min((b.clientWidth - 16) / cols.value, (b.clientHeight - 16) / rows.value))));
+  draw();
+}
+
 function draw(): void {
   const c = canvas.value;
   if (!c) return;
   c.width = cols.value * CELL;
   c.height = rows.value * CELL;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#23252e';
+  g.fillStyle = '#1d1c26';
   g.fillRect(0, 0, c.width, c.height);
   const m = model.value;
   for (let r = 0; r < rows.value; r++) for (let q = 0; q < cols.value; q++) {
@@ -46,7 +55,7 @@ function draw(): void {
     }
   }
   // Rejilla, ejes y eje del espejo
-  g.strokeStyle = 'rgba(255,255,255,0.05)';
+  g.strokeStyle = 'rgba(255,255,255,0.06)';
   g.beginPath();
   for (let q = 0; q <= cols.value; q++) { g.moveTo(q * CELL + 0.5, 0); g.lineTo(q * CELL + 0.5, c.height); }
   for (let r = 0; r <= rows.value; r++) { g.moveTo(0, r * CELL + 0.5); g.lineTo(c.width, r * CELL + 0.5); }
@@ -115,7 +124,12 @@ function down(e: MouseEvent): void {
   history.value.begin();
   apply(e);
 }
-function move(e: MouseEvent): void { if (painting) apply(e); }
+function move(e: MouseEvent): void {
+  const cell = cellAt(e);
+  ui.cursor = cell ? [cell[0], cell[1], editor.z] : null;
+  if (painting) apply(e);
+}
+function leave(): void { ui.cursor = null; up(); }
 function up(): void {
   if (!painting) return;
   painting = 0;
@@ -129,29 +143,19 @@ function wheel(e: WheelEvent): void {
   editor.z = Math.max(0, editor.z + (e.deltaY < 0 ? 1 : -1));
 }
 
-onMounted(draw);
+let ro: ResizeObserver | null = null;
+onMounted(() => { ro = new ResizeObserver(fit); if (box.value) ro.observe(box.value); fit(); });
+onUnmounted(() => ro?.disconnect());
 watch([version, () => JSON.stringify(fluidState.faucets), () => JSON.stringify(editor.light.sources), () => editor.z, () => editor.mirrorX, () => editor.mirrorAxis, () => editor.grid], draw, { deep: true });
 </script>
 
 <template>
-  <div class="layer">
-    <div class="bar">
-      <label>Capa z</label>
-      <button @click="editor.z = Math.max(0, editor.z - 1)">−</button>
-      <strong>{{ editor.z }}</strong>
-      <button @click="editor.z++">+</button>
-      <span class="hint">rueda = subir/bajar capa · clic der. = borrar · norte arriba · el cuadro morado es el pivote</span>
-    </div>
-    <div class="scroll">
-      <canvas ref="canvas" @mousedown="down" @mousemove="move" @mouseup="up" @mouseleave="up" @contextmenu.prevent @wheel="wheel" />
-    </div>
+  <div ref="box" class="layer">
+    <canvas ref="canvas" @mousedown="down" @mousemove="move" @mouseup="up" @mouseleave="leave" @contextmenu.prevent @wheel="wheel" />
   </div>
 </template>
 
 <style scoped>
-.layer { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.hint { color: var(--muted); font-size: 12px; }
-.scroll { overflow: auto; border: 1px solid var(--line); border-radius: 4px; max-height: 70vh; }
-canvas { cursor: crosshair; }
+.layer { position: absolute; top: 80px; bottom: 150px; left: var(--free-left, 24px); right: var(--free-right, 24px); display: grid; place-items: center; }
+canvas { cursor: crosshair; border-radius: 6px; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0, 0, 0, .45); }
 </style>

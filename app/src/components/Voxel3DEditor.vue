@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { render, camera, key, unkey, decode, DIR_VECTORS, type RenderOptions, type Rendered } from '@core/index';
 import { model, history, version, editor, paint, currentMaterial, touch, toggleLight } from '../store';
 import { SOURCE_PRESETS } from '../../../src/lighting';
@@ -8,8 +8,10 @@ import { startPour, stopPour, fluidState } from '../fluidTool';
 // Edición sobre el modelo en 3D con el mismo render que la vista previa, a más píxeles por vóxel.
 // Clic izquierdo: lápiz pone un vóxel sobre la cara que tocas (o en el suelo), borrar lo quita, repintar le
 // cambia el material, cuentagotas lo copia. Arrastre derecho: orbitar. Rueda: zoom.
-const W = 640, H = 520;
+// El lienzo tiene el tamaño del escenario
+let W = 640, H = 520;
 const canvas = ref<HTMLCanvasElement>();
+const box = ref<HTMLDivElement>();
 let last: Rendered | null = null;
 let opts: RenderOptions | null = null;
 let hover: [number, number, number] | null = null;
@@ -33,7 +35,7 @@ function draw(): void {
   const cam = camera(opts);
   c.width = W; c.height = H;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#1b1d24';
+  g.fillStyle = '#15141c';
   g.fillRect(0, 0, W, H);
 
   // Suelo z = 0 con la rejilla de celdas y el pivote
@@ -205,25 +207,25 @@ function wheel(e: WheelEvent): void {
   editor.view3d.zoom = Math.max(4, Math.min(32, editor.view3d.zoom + (e.deltaY < 0 ? 1 : -1)));
 }
 
-onMounted(draw);
+let ro: ResizeObserver | null = null;
+function fit(): void {
+  const b = box.value;
+  if (!b) return;
+  W = Math.max(200, b.clientWidth); H = Math.max(200, b.clientHeight);
+  draw();
+}
+onMounted(() => { ro = new ResizeObserver(fit); if (box.value) ro.observe(box.value); fit(); });
+onUnmounted(() => ro?.disconnect());
 watch([version, () => JSON.stringify(fluidState.faucets), () => JSON.stringify(editor.light.sources), () => ({ ...editor.view3d }), () => editor.mirrorX, () => editor.mirrorAxis, () => editor.grid], draw, { deep: true });
 </script>
 
 <template>
-  <div class="v3d">
-    <div class="bar">
-      <label>Giro</label><input type="range" min="-180" max="180" v-model.number="editor.view3d.yaw" /><span>{{ editor.view3d.yaw }}°</span>
-      <label>Elev.</label><input type="range" min="5" max="89" v-model.number="editor.view3d.elevation" /><span>{{ editor.view3d.elevation }}°</span>
-      <label>Zoom</label><input type="range" min="4" max="32" v-model.number="editor.view3d.zoom" />
-      <span class="hint">arrastre derecho = orbitar · rueda = zoom · lápiz pone sobre la cara que tocas</span>
-    </div>
+  <div ref="box" class="v3d">
     <canvas ref="canvas" @mousedown="down" @mousemove="move" @mouseup="up" @mouseleave="up" @contextmenu.prevent @wheel="wheel" />
   </div>
 </template>
 
 <style scoped>
-.v3d { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.hint { color: var(--muted); font-size: 12px; }
-canvas { width: 100%; max-width: 640px; height: auto; border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; image-rendering: auto; }
+.v3d { position: absolute; inset: 0; }
+canvas { width: 100%; height: 100%; cursor: crosshair; image-rendering: auto; }
 </style>
