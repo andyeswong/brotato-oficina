@@ -42,7 +42,7 @@ export interface CarryConfig {
 
 // Un vector del marco del cuerpo (mirando al frente) girado al facing de la entidad (grados): la misma cuenta que
 // placeFollowers del núcleo, para que la mano y su luz coincidan
-function turn(v: readonly [number, number, number], yaw: number): [number, number, number] {
+export function turn(v: readonly [number, number, number], yaw: number): [number, number, number] {
   const a = (yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   return [v[0] * c - v[1] * s, v[0] * s + v[1] * c, v[2]];
 }
@@ -171,10 +171,16 @@ export class Runtime {
 // El bucle de la vista: convierte tiempo real en ticks fijos. La partida depende solo de la entrada de cada tick, no
 // del ritmo de cuadros. Con un cuadro muy largo (pestaña en segundo plano) se hacen como mucho maxTicks y se suelta
 // el resto: la partida se frena en vez de encadenar cuadros cada vez más lentos.
+// Lo que mueve el bucle: este Runtime o la partida del Brotato (src/game/brotato/play.ts)
+export interface Steppable {
+  readonly tick: number;
+  step(input: TickInput): void;
+}
+
 export class FixedLoop {
   private acc = 0;
 
-  constructor(private readonly runtime: Runtime, private readonly input: (tick: number) => TickInput, private readonly maxTicks = 5) {}
+  constructor(private readonly runtime: Steppable, private readonly input: (tick: number) => TickInput, private readonly maxTicks = 5) {}
 
   // seconds: tiempo real desde el cuadro anterior. Devuelve cuántos ticks dio.
   advance(seconds: number): number {

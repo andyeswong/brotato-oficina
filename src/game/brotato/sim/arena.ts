@@ -5,7 +5,7 @@
 import type { Point } from '../api';
 import type { LevelModule } from '../registry/schemas';
 import { generateLayout, NORTH, TILE, WALL, type Layout } from '../../../worldgen';
-import { buildWorldState } from '../../../world/build';
+import { buildWorldState, type World } from '../../../world/build';
 import type { WorldState } from '../../../world/state';
 import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '../../body';
 
@@ -42,6 +42,7 @@ export interface Mover {
 
 export class Arena {
   readonly layout: Layout;
+  readonly world: World;                 // el mundo construido (lo que se hornea para la vista)
   readonly state: WorldState;
   // Interior jugable, en ejes del modelo: dentro de las paredes (la del norte es tapa + fachada)
   readonly inner: { x0: number; y0: number; x1: number; y1: number };
@@ -51,7 +52,7 @@ export class Arena {
 
   constructor(level: LevelModule, seed: number) {
     this.layout = levelLayout(level, seed);
-    this.state = buildWorldState(this.layout, level.theme).state;
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte
