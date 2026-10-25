@@ -53,7 +53,7 @@ describe('la partida en el mundo', () => {
     expect(seenEnemies).toBeGreaterThan(0);
     expect([...yaws].every((y) => y % 45 === 0 && y >= 0 && y < 360), [...yaws].join(' ')).toBe(true);
     // y todo modelo que llegó a verse está en la lista para precalentar (game.models())
-    const listed = new Set(g.preloadModels());
+    const listed = new Set(g.preloadModels().map((it) => it.model));
     for (const m of seenModels) expect(listed.has(m), 'un modelo visto que no está en preloadModels()').toBe(true);
   });
 

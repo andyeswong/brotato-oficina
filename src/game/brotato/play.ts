@@ -44,8 +44,8 @@ export function heading(deg: number): number {
   return (((Math.round(deg / 45) * 45) % 360) + 360) % 360;
 }
 
-// Los 8 rumbos que puede tener cualquier entidad de la partida
-export const HEADINGS = [0, 45, 90, 135, 180, 225, 270, 315] as const;
+// Los 8 rumbos (los de HEADINGS en el núcleo, que el precalentado usa por defecto)
+export { HEADINGS } from '../../world/frame2d';
 
 export class BrotatoGame {
   readonly run: Run;
@@ -88,28 +88,30 @@ export class BrotatoGame {
     this.sync();
   }
 
-  // Todo lo que esta partida puede poner en el mundo, para precalentar el atlas al cargar (NARUTO): cada modelo se ve
-  // solo en los 8 rumbos de HEADINGS. MAIA (quieta y su walk) y lo que lleva en la mano; todas las armas que pueden
-  // salir (iniciales y de tienda) con su disparo; los enemigos de las oleadas del nivel con los cuadros de su rig; el
-  // escupitajo y el material del tema.
-  preloadModels(): VoxelSource[] {
-    const out = new Set<VoxelSource>([this.player.model, ...this.player.walk]);
-    if (this.player.carry && typeof this.player.carry.model !== 'number') out.add(this.player.carry.model);
+  // Todo lo que esta partida puede poner en el mundo, para Compositor.prewarm (NARUTO): cada modelo se ve solo en los
+  // 8 HEADINGS, y casts dice si da sombra (MAIA y los enemigos). MAIA (quieta y su walk) y lo que lleva en la mano;
+  // todas las armas que pueden salir (iniciales y de tienda) con su disparo; los enemigos de las oleadas del nivel con
+  // los cuadros de su rig; el escupitajo y el material del tema.
+  preloadModels(): Array<{ model: VoxelSource; casts: boolean }> {
+    const out = new Map<VoxelSource, boolean>();
+    const add = (m: VoxelSource, casts: boolean) => out.set(m, casts || (out.get(m) ?? false));
+    for (const m of [this.player.model, ...this.player.walk]) add(m, true);
+    if (this.player.carry && typeof this.player.carry.model !== 'number') add(this.player.carry.model, false);
     const reg = this.run.registry;
     for (const w of reg.weapons()) {
       const look = lookOf(w, this.theme);
-      out.add(this.models.model(look.model));
-      if (look.projectile) out.add(this.models.model(look.projectile));
+      add(this.models.model(look.model), false);
+      if (look.projectile) add(this.models.model(look.projectile), false);
     }
     const enemies = new Set(this.run.level.waves.flatMap((id) => reg.wave(id).groups.map((g) => g.enemy)));
     for (const id of enemies) {
       const e = reg.enemy(id), look = lookOf(e, this.theme);
       const walk = this.models.walk(look.model, e.id);
-      for (const m of walk ? walk.frames : [this.models.model(look.model)]) out.add(m);
+      for (const m of walk ? walk.frames : [this.models.model(look.model)]) add(m, true);
     }
-    out.add(this.models.model(`efectos/escupitajo-${this.theme}`));
-    out.add(this.models.model(`efectos/material-${this.theme}`));
-    return [...out];
+    add(this.models.model(`efectos/escupitajo-${this.theme}`), false);
+    add(this.models.model(`efectos/material-${this.theme}`), false);
+    return [...out].map(([model, casts]) => ({ model, casts }));
   }
 
   get state() {

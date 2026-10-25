@@ -185,6 +185,10 @@ function newRun(after?: () => void): void {
     theme = level.theme;
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level);
     baked = bakeWorld(game.run.arena.world, { topZ: TOPZ, incline: INCLINE, outline: outline.scenery === false ? 'none' : outline.id, outlineColor: outline.color });
+    // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
+    // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
+    // cuadro tardaba 86-88 ms
+    compositor.prewarm(baked, viewOptions(0, 0, performance.now() / 1000), game.preloadModels());
     ticks = new FixedLoop(game, input, 10);
     budget = new FrameBudget(3);
     // Con el letrero de carga a la vista: los sprites de todo lo que la partida puede enseñar, en los 8 rumbos, y un
@@ -196,6 +200,7 @@ function newRun(after?: () => void): void {
     shopMessage = null;
     screen = 'game';
     after?.();
+    frame(performance.now() / 1000);
     loading.style.display = 'none';
   }, 30);
 }
@@ -237,7 +242,12 @@ function frame(time: number): void {
   const vx = Math.max(0, Math.min(b.width - VW, Math.floor(feet[0]) - VW / 2));
   const top = Math.floor(b.cam.project(0, s.depth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared norte
   const vy = Math.max(top, Math.min(b.height - VH, Math.floor(feet[1]) - VH / 2 - 12));
-  compositor.frame(s, b, { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: THEMES[game.theme].ambient, outline: outline.id, outlineColor: outline.color });
+  compositor.frame(s, b, viewOptions(vx, vy, time));
+}
+
+// Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
+function viewOptions(vx: number, vy: number, time: number) {
+  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: THEMES[game!.theme].ambient, outline: outline.id, outlineColor: outline.color };
 }
 
 // La pantalla que toca ahora y su firma
