@@ -1,0 +1,27 @@
+/* Interfaz al estilo de la GUI de Aseprite: paneles planos oscuros y botones con bisel pixelado (marcos
+   9-slice dibujados con pxl en app/icons/icons.px.js, a escala 2x). */
+:root {
+  --bg: #16151d; --panel: #201f2a; --line: #121018; --text: #d9d7e8; --muted: #8e8ca6; --accent: #8c78d8;
+  font-family: system-ui, sans-serif; font-size: 13px; color: var(--text); background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+button, .pxbtn {
+  border-style: solid; border-width: 8px; border-image: url(./assets/ui/btn.png) 4 fill / 8px stretch;
+  image-rendering: pixelated; background: none; padding: 0 4px; min-height: 30px;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; line-height: 1;
+}
+button:hover, .pxbtn:hover { border-image-source: url(./assets/ui/btn_hover.png); }
+button:active, .pxbtn:active { border-image-source: url(./assets/ui/btn_down.png); }
+button.on { border-image-source: url(./assets/ui/btn_on.png); color: #fff; }
+button:disabled { opacity: .4; cursor: default; border-image-source: url(./assets/ui/btn.png); }
+button.icon { padding: 0; min-height: 0; }
+select {
+  background: #2b2a38; border: 2px solid var(--line); box-shadow: inset 1px 1px 0 #454357; padding: 3px 6px; border-radius: 0;
+}
+input[type=number] { background: #1c1b25; border: 2px solid var(--line); padding: 2px 4px; }
+input[type=range] { accent-color: var(--accent); }
+canvas { image-rendering: pixelated; display: block; }
+label { color: var(--muted); }
+label.pxbtn { color: var(--text); }
