@@ -218,6 +218,8 @@ let bgJobs: BgJob[] = [];
 const turnBg = new TurnBackground();
 const bakeLog: Array<{ q: Quarter; ms: number; phase: string; wave: number; how: string }> = [];
 (window as unknown as { __giros: typeof bakeLog }).__giros = bakeLog;
+const slowLog: Array<{ at: number; frameMs: number; bgMs: number; rebakeMs: number; q: number; phase: string }> = [];
+(window as unknown as { __lentos: typeof slowLog }).__lentos = slowLog;
 let ticks: FixedLoop | null = null;
 let budget = new FrameBudget(3);
 let selected = 0;
@@ -443,7 +445,14 @@ function loop(now: number): void {
   if (screen !== 'select') frame(now / 1000);
   if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
   const spent = budget.run();
-  if (game && bgJobs.length) bgJobs = turnBg.run(bgJobs, game.phase === 'wave', spent);
+  if (game && bgJobs.length) {
+    // Para medir: los cuadros lentos con lo que se llevó el segundo plano y qué giro estaba trabajando
+    const first = [...pending].find(([, p]) => p.prep.job === bgJobs[0])?.[0];
+    const t0 = performance.now();
+    bgJobs = turnBg.run(bgJobs, game.phase === 'wave', spent);
+    const bgMs = performance.now() - t0;
+    if (dt * 1000 > 30 || bgMs > 10) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: Math.round(bgMs), rebakeMs: Math.round(spent), q: first ?? -1, phase: game.phase });
+  } else if (game && dt * 1000 > 30) slowLog.push({ at: Math.round(now - runStart), frameMs: Math.round(dt * 1000), bgMs: 0, rebakeMs: Math.round(spent), q: -1, phase: game.phase });
   if (pending.size) collectViews();
   drawUi();
   next(loop);
