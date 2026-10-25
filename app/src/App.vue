@@ -24,6 +24,8 @@ const TOOL_HINT: Record<Tool, string> = {
   pen: 'clic pinta · clic derecho borra', erase: 'clic borra', paint: 'cambia el material de lo que ya hay',
   pick: 'copia el material de un vóxel', light: 'clic pone una fuente; sobre una fuente, la quita', fluid: 'mantén pulsado para verter',
 };
+// Escala de la exportación a PNG
+const pngScale = ref(4);
 // Los menús se cierran al hacer clic fuera
 function closeMenus(): void { ui.menu = ''; }
 function toggleMenu(m: 'archivo' | 'exportar'): void { ui.menu = ui.menu === m ? '' : m; }
@@ -120,6 +122,35 @@ function exportPxl(): void {
   download(`${base}.px.js`, toPxlSource(m, frames, { sheet: base, comment: `VoxPix: ${m.name}, ${n} ángulos de 64x48, pivote en 32,42` }), 'text/javascript');
 }
 
+// PNG con fondo transparente, del mismo render que la exportación a pxl (64x48 por ángulo, pivote en 32,42):
+// el ángulo de la vista previa, o la hoja con los N ángulos en fila; a escala entera, sin suavizar
+function exportPng(what: 'vista' | 'hoja', scale: number): void {
+  const m = model.value;
+  const base = (m.name || 'modelo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const W = 64, H = 48;
+  const yaws = what === 'vista' ? [editor.view.yaw] : Array.from({ length: editor.view.turn }, (_, i) => Math.round(editor.view.yaw + (360 * i) / editor.view.turn));
+  const c = document.createElement('canvas');
+  c.width = W * yaws.length * scale; c.height = H * scale;
+  const g = c.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  yaws.forEach((yaw, i) => {
+    const img = render(m, { width: W, height: H, originX: 32, originY: 42, yaw, elevation: editor.view.elevation, outline: editor.view.outline });
+    const off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    off.getContext('2d')!.putImageData(new ImageData(img.rgba, W, H), 0, 0);
+    g.drawImage(off, i * W * scale, 0, W * scale, H * scale);
+  });
+  const name = what === 'vista' ? `${base}_a${String(((editor.view.yaw % 360) + 360) % 360).padStart(3, '0')}` : `${base}_${yaws.length}angulos`;
+  c.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name}${scale > 1 ? `_x${scale}` : ''}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+}
+
 function key(e: KeyboardEvent): void {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
   const mod = e.ctrlKey || e.metaKey;
@@ -197,6 +228,15 @@ void version;
       <button class="ghost" title="Un sprite por ángulo + hoja" @click="exportPxl(); closeMenus()"><PxIcon name="export" />pxl: {{ editor.view.turn }} ángulos</button>
       <button class="ghost" title="Un sprite por altura, vistas desde arriba" @click="exportStack(); closeMenus()"><PxIcon name="layers" />pxl: capas</button>
       <button class="ghost" @click="save(); closeMenus()"><PxIcon name="save" />Modelo (.voxpix.json)</button>
+      <hr />
+      <div class="png-row">
+        <span class="png-label"><PxIcon name="export" />PNG</span>
+        <div class="seg">
+          <button v-for="sc in [1, 2, 4, 8]" :key="sc" :class="{ on: pngScale === sc }" @click="pngScale = sc">×{{ sc }}</button>
+        </div>
+      </div>
+      <button class="ghost" title="El ángulo de la vista previa, fondo transparente" @click="exportPng('vista', pngScale); closeMenus()">PNG: esta vista</button>
+      <button class="ghost" :title="`Los ${editor.view.turn} ángulos en una fila`" @click="exportPng('hoja', pngScale); closeMenus()">PNG: hoja de {{ editor.view.turn }} ángulos</button>
     </div>
   </div>
 
@@ -296,6 +336,9 @@ void version;
 .menu.right { left: auto; right: 0; }
 .menu button, .menu .btn { justify-content: flex-start; border-radius: 10px; }
 .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; width: auto; }
+.png-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 6px 4px 14px; }
+.png-label { display: inline-flex; align-items: center; gap: 8px; }
+.png-row .seg button { min-height: 26px; padding: 0 8px; }
 .left { top: 76px; left: 16px; width: 224px; padding: 14px; max-height: calc(100vh - 210px); display: flex; }
 .right { top: 76px; right: 16px; width: 360px; padding: 16px; max-height: calc(100vh - 210px); overflow-y: auto; }
 .folded { max-height: none; }
