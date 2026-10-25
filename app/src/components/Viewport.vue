@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, watch, onMounted, onUnmounted } from 'vue';
 import { render, camera, lightField3D, type RenderOptions, type PointLight3D } from '@core/index';
 import { lightIntensity, lightOf, SOURCE_PRESETS } from '../../../src/lighting';
 import { buildLayers, applyLayers } from '../../../src/lighting/shade';
@@ -69,23 +69,28 @@ function frame(yaw: number, lit: boolean, time: number): Uint8ClampedArray<Array
   return applyLayers(scene, layers) as Uint8ClampedArray<ArrayBuffer>;
 }
 
-function blit(c: HTMLCanvasElement, rgba: Uint8ClampedArray<ArrayBuffer>, scale: number, x0 = 0): void {
+function blit(c: HTMLCanvasElement, rgba: Uint8ClampedArray<ArrayBuffer>, scale: number, x0 = 0, y0 = 0): void {
   const off = document.createElement('canvas');
   off.width = W; off.height = H;
   off.getContext('2d')!.putImageData(new ImageData(rgba, W, H), 0, 0);
   const g = c.getContext('2d')!;
   g.imageSmoothingEnabled = false;
-  g.drawImage(off, x0, 0, W * scale, H * scale);
+  g.drawImage(off, x0, y0, W * scale, H * scale);
 }
 
 function drawMain(time: number): void {
   const c = main.value;
   if (!c) return;
   const t0 = performance.now();
-  const s = 5;
-  c.width = W * s; c.height = H * s;
+  // El lienzo es fijo (64x48 a 5x); dentro, el sprite a su zoom y desplazado (solo para mirar: no cambia la exportación)
+  const s = look.zoom;
+  c.width = W * 5; c.height = H * 5;
   const lit = editor.light.enabled;
-  blit(c, frame(editor.view.yaw, lit, time), s);
+  const x0 = Math.round((c.width - W * s) / 2 + look.panX), y0 = Math.round((c.height - H * s) / 2 + look.panY);
+  const g0 = c.getContext('2d')!;
+  g0.fillStyle = lit ? FLOOR[0]! : '#8a92a6';
+  g0.fillRect(0, 0, c.width, c.height);
+  blit(c, frame(editor.view.yaw, lit, time), s, x0, y0);
   // Dónde están las fuentes (giran con el modelo)
   const cam = camera(optionsFor(editor.view.yaw, false));
   const g = c.getContext('2d')!;
@@ -93,7 +98,7 @@ function drawMain(time: number): void {
     const [px, py] = cam.project(l.x + 0.5, l.y + 0.5, l.z + 0.5);
     const [r, gg, b] = SOURCE_PRESETS[l.kind].color;
     g.strokeStyle = `rgba(${r * 255},${gg * 255},${b * 255},0.9)`;
-    g.beginPath(); g.arc(px * s, py * s, s * 0.8, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(x0 + px * s, y0 + py * s, s * 0.8, 0, Math.PI * 2); g.stroke();
   }
   ms.value = Math.round(performance.now() - t0);
   ui.renderMs = ms.value;
@@ -112,6 +117,43 @@ function drawStrip(): void {
     off.getContext('2d')!.putImageData(new ImageData(frame(editor.view.yaw + (360 * i) / n, editor.light.enabled, 0), W, H), 0, 0);
     g.drawImage(off, (i % cols) * W * s, Math.floor(i / cols) * H * s, W * s, H * s);
   }
+}
+
+// Mirar la vista previa con los mismos controles que la edición 3D: botón derecho gira, botón del medio mueve,
+// rueda acerca, doble clic con el del medio vuelve a centrar
+const look = reactive({ zoom: 5, panX: 0, panY: 0 });
+let dragging: 0 | 2 | 3 = 0;
+let lastXY: [number, number] = [0, 0];
+function down(e: MouseEvent): void {
+  if (e.button !== 1 && e.button !== 2) return;
+  e.preventDefault();
+  dragging = e.button === 2 ? 2 : 3;
+  lastXY = [e.clientX, e.clientY];
+}
+function move(e: MouseEvent): void {
+  if (!dragging) return;
+  const dx = e.clientX - lastXY[0], dy = e.clientY - lastXY[1];
+  lastXY = [e.clientX, e.clientY];
+  if (dragging === 2) {
+    editor.view.yaw = ((Math.round(editor.view.yaw + dx * 0.5) + 540) % 360) - 180;
+    editor.view.elevation = Math.max(0, Math.min(90, Math.round(editor.view.elevation + dy * 0.4)));
+  } else { look.panX += dx; look.panY += dy; redrawMain(); }
+}
+function up(): void { dragging = 0; }
+function wheel(e: WheelEvent): void {
+  e.preventDefault();
+  look.zoom = Math.max(1, Math.min(16, look.zoom + (e.deltaY < 0 ? 1 : -1)));
+  redrawMain();
+}
+function recenter(e: MouseEvent): void {
+  if (e.button === 1 && e.detail >= 2) { look.zoom = 5; look.panX = 0; look.panY = 0; redrawMain(); }
+}
+
+// Solo la vista grande (mover y acercar no cambian los 8 ángulos)
+let pendingMain = 0;
+function redrawMain(): void {
+  cancelAnimationFrame(pendingMain);
+  pendingMain = requestAnimationFrame(() => drawMain(performance.now() / 1000));
 }
 
 let pending = 0;
@@ -141,7 +183,8 @@ watch(() => JSON.stringify(editor.light), () => { schedule(); animate(); });
       <button class="ghost round" :title="ui.previewOpen ? 'Plegar' : 'Desplegar'" @click="ui.previewOpen = !ui.previewOpen">{{ ui.previewOpen ? '–' : '+' }}</button>
     </header>
     <template v-if="ui.previewOpen">
-      <canvas ref="main" class="main" />
+      <canvas ref="main" class="main" title="Botón derecho: girar · botón del medio: mover · rueda: zoom · doble clic con el del medio: centrar"
+        @mousedown="down" @mousemove="move" @mouseup="up" @mouseleave="up" @contextmenu.prevent @auxclick.prevent="recenter" @wheel="wheel" />
       <div class="props">
         <div class="field"><label>Giro</label><input type="range" min="-180" max="180" step="1" v-model.number="editor.view.yaw" /><span class="value">{{ editor.view.yaw }}°</span></div>
         <div class="field"><label>Elevación</label><input type="range" min="0" max="90" step="1" v-model.number="editor.view.elevation" /><span class="value">{{ editor.view.elevation }}°</span></div>
@@ -168,7 +211,7 @@ watch(() => JSON.stringify(editor.light), () => { schedule(); animate(); });
 header { display: flex; align-items: center; gap: 8px; }
 header h2 { flex: 1; }
 .ms { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
-.main { width: 320px; height: 240px; border-radius: 12px; align-self: center; }
+.main { width: 320px; height: 240px; border-radius: 12px; align-self: center; cursor: grab; }
 .props { display: flex; flex-direction: column; gap: 2px; }
 .field label { display: inline-flex; align-items: center; gap: 6px; }
 .strip { width: 320px; border-radius: 12px; align-self: center; }
