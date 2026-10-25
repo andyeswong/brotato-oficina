@@ -37,6 +37,13 @@ export const CLEARED_TICKS = 72;
 const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
 
+// Todo giro de una entidad va a uno de los 8 rumbos (múltiplos de 45°), como MAIA y los rigs. El compositor guarda
+// un sprite por modelo y giro: con giros continuos (armas apuntando, enemigos y disparos según su velocidad) cada
+// cuadro creaba sprites nuevos que no se soltaban nunca, unos 220 MB por partida hasta agotar la memoria.
+export function heading(deg: number): number {
+  return (((Math.round(deg / 45) * 45) % 360) + 360) % 360;
+}
+
 export class BrotatoGame {
   readonly run: Run;
   readonly theme: ThemeId;
@@ -155,7 +162,7 @@ export class BrotatoGame {
     // Armas: en su sitio de la órbita, apuntando (el modelo apunta a -y; el ángulo de la simulación es atan2(y, x))
     this.wave.weapons.forEach((w, i) => {
       const id = this.weaponIds[i];
-      if (id !== undefined) s.entities.move(id, Math.round(w.x), Math.round(w.y), p.z + WEAPON_Z, (w.angle * 180) / Math.PI + 90);
+      if (id !== undefined) s.entities.move(id, Math.round(w.x), Math.round(w.y), p.z + WEAPON_Z, heading((w.angle * 180) / Math.PI + 90));
     });
     // Enemigos: el modelo del tema y su cuadro de andar; cada uno con su desfase, para que no marchen al paso
     const alive = new Set<number>();
@@ -164,7 +171,7 @@ export class BrotatoGame {
       const look = lookOf(e.def, this.theme);
       const walk = this.models.walk(look.model, e.def.id);
       const frame = walk ? walk.frames[Math.floor((this.tick * TICK * 1000) / walk.ms + e.uid) % walk.frames.length]! : this.models.model(look.model);
-      const eyaw = Math.hypot(e.vx, e.vy) > 1 ? (Math.atan2(e.vx, -e.vy) * 180) / Math.PI : undefined;
+      const eyaw = Math.hypot(e.vx, e.vy) > 1 ? heading((Math.atan2(e.vx, -e.vy) * 180) / Math.PI) : undefined;
       let id = this.enemyIds.get(e.uid);
       if (id === undefined) {
         id = s.entities.add({ model: frame, x: Math.round(e.x), y: Math.round(e.y), z: e.z, facing: eyaw ?? 0, castsShadow: true });
@@ -180,7 +187,7 @@ export class BrotatoGame {
     for (const pr of this.wave.projectiles) {
       flying.add(pr.uid);
       let id = this.shotIds.get(pr.uid);
-      const syaw = (Math.atan2(pr.vx, -pr.vy) * 180) / Math.PI;
+      const syaw = heading((Math.atan2(pr.vx, -pr.vy) * 180) / Math.PI);
       if (id === undefined) {
         id = s.entities.add({ model: this.models.model(this.shotModel(pr.source)), x: Math.round(pr.x), y: Math.round(pr.y), z: p.z + SHOT_Z, facing: syaw, castsShadow: false });
         this.shotIds.set(pr.uid, id);

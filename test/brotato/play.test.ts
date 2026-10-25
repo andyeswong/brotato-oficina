@@ -33,14 +33,18 @@ describe('la partida en el mundo', () => {
   it('cada enemigo, disparo y material de la oleada tiene su entidad, y ninguna sobra', { timeout: 60_000 }, () => {
     const g = new BrotatoGame(registry, 7, models, player, registry.level('medieval'));
     let seenEnemies = 0;
+    const yaws = new Set<number>();
     for (let t = 0; t < 900 && g.phase === 'wave'; t++) {
       g.step(input(t));
       const w = g.current;
       seenEnemies = Math.max(seenEnemies, w.enemies.length);
       // MAIA + sus armas + enemigos + disparos + materiales (sin luz en la mano en esta prueba)
       expect(g.state.entities.length).toBe(1 + w.weapons.length + w.enemies.length + w.projectiles.length + w.materials.length);
+      // y todas en uno de los 8 rumbos: un giro continuo es un sprite nuevo en la caché del compositor por cuadro
+      for (const e of g.state.entities) yaws.add(e.yaw);
     }
     expect(seenEnemies).toBeGreaterThan(0);
+    expect([...yaws].every((y) => y % 45 === 0 && y >= 0 && y < 360), [...yaws].join(' ')).toBe(true);
   });
 
   it('la oleada superada: un respiro, la tienda (el mundo sigue, la oleada no) y salir empieza la siguiente', { timeout: 60_000 }, () => {
