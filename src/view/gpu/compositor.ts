@@ -1,24 +1,28 @@
 // VISTA (NARUTO): el cuadro del modo 2D compuesto en la GPU con WebGL2. Hace lo mismo que frame2D (CPU), que es su
-// oráculo: la CPU sigue haciendo la simulación, el horneado, el render de cada entidad (con caché) y su luz; aquí
-// se hace por píxel lo que costaba por píxel en la CPU: juntar la imagen horneada con la luz (horneada, dinámica y
-// las sombras de las entidades), pintar las entidades, el agua y las gotas, y pasar la luz a pixel art.
+// oráculo: la CPU sigue haciendo la simulación, el horneado y el render de cada sprite de entidad (una vez por modelo
+// y giro, en un atlas); aquí se hace por píxel lo que costaba por píxel en la CPU: la luz (horneada, dinámica, las
+// sombras de las entidades), las entidades (cientos, como quads instanciados, con su luz por cara en el shader), el
+// agua y las gotas, y pasar la luz a pixel art.
 //
 // Lo que sube a la GPU:
 //   - una vez por horneado: la imagen (color, profundidad, cara) y los pesos de las luces fijas;
 //   - al rehornear: solo los recuadros publicados (Baked.published) y los pesos de las luces que cambian;
-//   - cada cuadro: la profundidad del agua de las columnas visibles, las gotas proyectadas, la luz de cada entidad
-//     y los uniforms de las luces.
+//   - una vez por modelo y giro: el sprite de la entidad (color, profundidad, vóxel y cara de cada píxel) y su cuerpo;
+//   - cada cuadro: la profundidad del agua de las columnas visibles, las gotas proyectadas, un registro por entidad
+//     (dónde va, qué sprite) y la tabla de luces.
 import { DIR_VECTORS, unkey } from '../../core';
 import { resolveLight } from '../../world/lightutil';
-import { entityDraw, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions } from '../../world/frame2d';
+import { entitySprite, entityDepthRange, onView, shadowCasters, occupancy, screenBox, dropLook, SHADOW_REACH, EW, EH, BACKGROUND, type Frame2DOptions, type EntitySprite } from '../../world/frame2d';
 import { worldPointAt, type Baked, type BakedLight } from '../../world/bake';
 import type { WorldState } from '../../world/state';
-import type { Rendered } from '../../core';
-import { FRAG_DROPS, FRAG_SCENE, FRAG_SHADE, FRAG_WATER, MAX_BAKED, MAX_ENTS, MAX_LIGHTS, VERT_DROPS, VERT_FULLSCREEN } from './shaders';
+import type { Rendered, VoxelSource } from '../../core';
+import { FRAG_CONTACT, FRAG_DROPS, FRAG_ENTITY, FRAG_SCENE, FRAG_SHADE, FRAG_WATER, MAX_BAKED, MAX_CASTERS, MAX_LIGHTS, VERT_CONTACT, VERT_DROPS, VERT_ENTITY, VERT_FULLSCREEN } from './shaders';
 
 export type GpuOutput = 'frame' | 'color' | 'multiply' | 'add';
 
 interface Target { fbo: WebGLFramebuffer; color: WebGLTexture; light: WebGLTexture; depth: WebGLTexture; dropsFbo: WebGLFramebuffer }
+// La capa de entidades (con z-buffer) y la de sombras de contacto
+interface EntTarget { fbo: WebGLFramebuffer; color: WebGLTexture; light: WebGLTexture; depth: WebGLTexture; zbuf: WebGLRenderbuffer; contactFbo: WebGLFramebuffer; contact: WebGLTexture }
 // Por nombre; la Proxy devuelve null para los que el compilador del shader quitó (WebGL ignora un uniform null)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Uniforms = Record<string, any>;
@@ -30,6 +34,14 @@ export class GpuCompositor {
   private readonly water: Program;
   private readonly drops: Program;
   private readonly shade: Program;
+  private readonly ent: Program;
+  private readonly contact: Program;
+  private readonly entVao: WebGLVertexArrayObject;
+  private readonly entBuf: WebGLBuffer;
+  private entData = new Float32Array(0);
+  private readonly contactVao: WebGLVertexArrayObject;
+  private readonly contactBuf: WebGLBuffer;
+  private contactData = new Float32Array(0);
   private readonly vao: WebGLVertexArrayObject;
   private readonly dropsVao: WebGLVertexArrayObject;
   private readonly dropsBuf: WebGLBuffer;
@@ -37,6 +49,8 @@ export class GpuCompositor {
   // ms del último cuadro en preparar y subir (horneado, pesos, entidades con su luz, agua y gotas): lo que la ruta de
   // la GPU sigue gastando en el hilo principal
   uploadMs = 0;
+  // y de eso, por partes (para medir): horneado y pesos, entidades, agua, gotas
+  readonly parts = { baked: 0, entities: 0, casters: 0, water: 0, drops: 0 };
 
   // Lo subido del horneado
   private baked: Baked | null = null;
@@ -48,15 +62,21 @@ export class GpuCompositor {
   private worldY = new Float32Array(0);
   private tWeights: WebGLTexture | null = null;
   private weightZones: BakedLight[] = [];
-  // Entidades: lienzos (color y profundidad: cambian con el giro), su luz (cada cuadro) y sus cuerpos para sombras
-  private tEntColor: WebGLTexture;
-  private tEntDepth: WebGLTexture;
-  private tEntLight: WebGLTexture;
-  private entImgs: Array<Rendered | null> = new Array(MAX_ENTS).fill(null);
+  // Entidades: el atlas de sprites (una capa por modelo y giro), el de sus cuerpos sin girar (para el rayo de su
+  // propia luz) y los cuerpos girados de las que dan sombra de verdad
+  private sprites = new Map<string, number>();
+  private spriteImgs: Rendered[] = [];
+  private spriteCap = 0;
+  private tSprColor: WebGLTexture | null = null;
+  private tSprDepth: WebGLTexture | null = null;
+  private tSprVox: WebGLTexture | null = null;
+  private bodies = new Map<VoxelSource, { ax: number; min: [number, number, number]; size: [number, number, number]; data: Uint8Array }>();
+  private bodyW = 0;
+  private tBody: WebGLTexture;
+  private entTarget: EntTarget | null = null;
   private tOcc: WebGLTexture;
   private tLights: WebGLTexture;
   private lightTab = new Float32Array(3 * MAX_LIGHTS * 4);
-  private occKey = '';
   private occPlace: Array<{ min: [number, number, number]; size: [number, number, number]; ax: number }> = [];
   // Agua
   private tWDepth: WebGLTexture | null = null;
@@ -81,6 +101,34 @@ export class GpuCompositor {
     this.water = program(gl, VERT_FULLSCREEN, FRAG_WATER);
     this.drops = program(gl, VERT_DROPS, FRAG_DROPS);
     this.shade = program(gl, VERT_FULLSCREEN, FRAG_SHADE);
+    this.ent = program(gl, VERT_ENTITY, FRAG_ENTITY);
+    this.contact = program(gl, VERT_CONTACT, FRAG_CONTACT);
+    // Un quad (dos triángulos) que se repite por entidad; los datos de cada una van en un búfer por instancia
+    const corners = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, corners);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]), gl.STATIC_DRAW);
+    const instanced = (prog: WebGLProgram, attrs: Array<[string, number]>): [WebGLVertexArrayObject, WebGLBuffer] => {
+      const vao = gl.createVertexArray()!, buf = gl.createBuffer()!;
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, corners);
+      const lc = gl.getAttribLocation(prog, 'aCorner');
+      gl.enableVertexAttribArray(lc);
+      gl.vertexAttribPointer(lc, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      const stride = attrs.reduce((n, [, k]) => n + k, 0) * 4;
+      let off = 0;
+      for (const [name, k] of attrs) {
+        const loc = gl.getAttribLocation(prog, name);
+        gl.enableVertexAttribArray(loc);
+        gl.vertexAttribPointer(loc, k, gl.FLOAT, false, stride, off);
+        gl.vertexAttribDivisor(loc, 1);
+        off += k * 4;
+      }
+      gl.bindVertexArray(null);
+      return [vao, buf];
+    };
+    [this.entVao, this.entBuf] = instanced(this.ent.prog, [['aPlace', 4], ['aPos', 4], ['aOcc', 4], ['aOccSize', 4]]);
+    [this.contactVao, this.contactBuf] = instanced(this.contact.prog, [['aFeet', 3]]);
     this.vao = gl.createVertexArray()!;
     this.dropsVao = gl.createVertexArray()!;
     this.dropsBuf = gl.createBuffer()!;
@@ -91,9 +139,10 @@ export class GpuCompositor {
     gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    this.tEntColor = texArray(gl, gl.RGBA8, EW, EH, MAX_ENTS);
-    this.tEntDepth = texArray(gl, gl.R32F, EW, EH, MAX_ENTS);
-    this.tEntLight = texArray(gl, gl.RGB32F, EW, EH, MAX_ENTS);
+    this.tBody = gl.createTexture()!;
+    uploadTo(gl, gl.TEXTURE_3D, this.tBody);
+    nearest(gl, gl.TEXTURE_3D);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, 1, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(1));
     this.tLights = tex2D(gl, gl.RGBA32F, 3, MAX_LIGHTS, gl.RGBA, gl.FLOAT, null);
     this.tOcc = gl.createTexture()!;
     uploadTo(gl, gl.TEXTURE_3D, this.tOcc);
@@ -137,6 +186,7 @@ export class GpuCompositor {
     this.syncBaked(b);
     this.syncWeights(b);
     let upMs = performance.now() - up;
+    this.parts.baked = upMs;
     const [A, B] = this.ensureTargets(o.vw, o.vh);
     gl.viewport(0, 0, o.vw, o.vh);
     gl.disable(gl.BLEND);
@@ -147,6 +197,28 @@ export class GpuCompositor {
     if (state.lights.length > MAX_LIGHTS) warnOnce(`más de ${MAX_LIGHTS} luces: la GPU usa las primeras`);
     const layerOf = new Map(b.lights.map((bl, i) => [bl.light.id, i] as const));
 
+    // Las luces del mundo: la tabla (posición y radio; color e intensidad; capa horneada, k, dinámica)
+    const nb = Math.min(MAX_BAKED, b.lights.length);
+    const tab = this.lightTab;
+    tab.fill(0);
+    lights.forEach(({ l, p }, i) => {
+      const layer = layerOf.get(l.id);
+      const baked = layer !== undefined && layer < nb;
+      tab.set([l.x, l.y, l.z, p.radius], (i * 3) * 4);
+      tab.set([p.color[0], p.color[1], p.color[2], p.intensity], (i * 3 + 1) * 4);
+      tab.set([baked ? layer : -1, baked ? p.intensity / b.lights[layer]!.intensity : 0, l.baked === false ? 1 : 0, 0], (i * 3 + 2) * 4);
+    });
+    uploadTo(gl, gl.TEXTURE_2D, this.tLights);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 3, MAX_LIGHTS, gl.RGBA, gl.FLOAT, tab);
+
+    // 0) las entidades y sus sombras de contacto
+    up = performance.now();
+    const E = this.ensureEntTarget(o.vw, o.vh);
+    const sprites = state.entities.map((e) => entitySprite(b, e, o)).filter((d) => onView(d, o));
+    this.drawEntities(sprites, E, o, lights.length);
+    this.parts.entities = performance.now() - up;
+    upMs += this.parts.entities;
+
     // 1) la escena
     const s = this.scene;
     gl.useProgram(s.prog);
@@ -156,9 +228,10 @@ export class GpuCompositor {
     bindTex(gl, 1, gl.TEXTURE_2D, this.tDepth, s.u.uDepth);
     bindTex(gl, 2, gl.TEXTURE_2D, this.tFace, s.u.uFace);
     bindTex(gl, 3, gl.TEXTURE_2D_ARRAY, this.tWeights, s.u.uWeights);
-    bindTex(gl, 4, gl.TEXTURE_2D_ARRAY, this.tEntColor, s.u.uEntColor);
-    bindTex(gl, 5, gl.TEXTURE_2D_ARRAY, this.tEntDepth, s.u.uEntDepth);
-    bindTex(gl, 6, gl.TEXTURE_2D_ARRAY, this.tEntLight, s.u.uEntLight);
+    bindTex(gl, 4, gl.TEXTURE_2D, E.color, s.u.uEntColor);
+    bindTex(gl, 5, gl.TEXTURE_2D, E.depth, s.u.uEntDepth);
+    bindTex(gl, 6, gl.TEXTURE_2D, E.light, s.u.uEntLight);
+    bindTex(gl, 10, gl.TEXTURE_2D, E.contact, s.u.uContact);
     bindTex(gl, 7, gl.TEXTURE_3D, this.tOcc, s.u.uOcc);
     bindTex(gl, 9, gl.TEXTURE_2D, this.tWorldY, s.u.uWorldY);
     const a = b.options.oblique?.y ?? 1;
@@ -173,7 +246,6 @@ export class GpuCompositor {
     gl.uniform1f(s.u.uF2, b.cam.fwd[2]);
     gl.uniform3fv(s.u.uDirs, DIR_VECTORS.flat());
     // Luces horneadas (lightView)
-    const nb = Math.min(MAX_BAKED, b.lights.length);
     const rect = new Int32Array(MAX_BAKED * 4), ck = new Float32Array(MAX_BAKED * 3);
     for (let i = 0; i < nb; i++) {
       const bl = b.lights[i]!;
@@ -184,23 +256,12 @@ export class GpuCompositor {
     gl.uniform1i(s.u.uNBaked, nb);
     gl.uniform4iv(s.u.uBakedRect, rect);
     gl.uniform3fv(s.u.uBakedColorK, ck);
-    // Luces del mundo: la tabla (posición y radio; color e intensidad; capa horneada, k, dinámica)
-    const tab = this.lightTab;
-    tab.fill(0);
-    lights.forEach(({ l, p }, i) => {
-      const layer = layerOf.get(l.id);
-      const baked = layer !== undefined && layer < nb;
-      tab.set([l.x, l.y, l.z, p.radius], (i * 3) * 4);
-      tab.set([p.color[0], p.color[1], p.color[2], p.intensity], (i * 3 + 1) * 4);
-      tab.set([baked ? layer : -1, baked ? p.intensity / b.lights[layer]!.intensity : 0, l.baked === false ? 1 : 0, 0], (i * 3 + 2) * 4);
-    });
-    uploadTo(gl, gl.TEXTURE_2D, this.tLights);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 3, MAX_LIGHTS, gl.RGBA, gl.FLOAT, tab);
     gl.uniform1i(s.u.uNLights, lights.length);
     bindTex(gl, 8, gl.TEXTURE_2D, this.tLights, s.u.uLightTab);
     up = performance.now();
-    this.setEntities(state, b, o, lights.map((x) => x.l));
-    upMs += performance.now() - up;
+    this.setCasters(state, b, o, lights.map((x) => x.l));
+    this.parts.casters = performance.now() - up;
+    upMs += this.parts.casters;
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     // 2) el agua
@@ -213,7 +274,8 @@ export class GpuCompositor {
     bindTex(gl, 2, gl.TEXTURE_2D, A.depth, w.u.uSrcDepth);
     up = performance.now();
     const hasWater = this.syncWater(state, b, o);
-    upMs += performance.now() - up;
+    this.parts.water = performance.now() - up;
+    upMs += this.parts.water;
     bindTex(gl, 3, gl.TEXTURE_2D, this.tWDepth, w.u.uWDepth);
     bindTex(gl, 4, gl.TEXTURE_2D, this.tWStatic, w.u.uWStatic);
     gl.uniform1i(w.u.uHasWater, hasWater ? 1 : 0);
@@ -250,7 +312,8 @@ export class GpuCompositor {
     const drop = dropLook(state, o.ambient);
     up = performance.now();
     const n = drop ? this.projectDrops(state, b, o) : 0;
-    this.uploadMs = upMs + performance.now() - up;
+    this.parts.drops = performance.now() - up;
+    this.uploadMs = upMs + this.parts.drops;
     if (n && drop) {
       const d = this.drops;
       gl.useProgram(d.prog);
@@ -337,43 +400,24 @@ export class GpuCompositor {
     this.weightZones = zones;
   }
 
-  private setEntities(state: WorldState, b: Baked, o: Frame2DOptions, lights: WorldState['lights'][number][]): void {
-    const gl = this.gl, u = this.scene.u;
-    const ents = state.entities.slice(0, MAX_ENTS);
-    if (state.entities.length > MAX_ENTS) warnOnce(`más de ${MAX_ENTS} entidades: la GPU pinta las primeras`);
-    const place = new Int32Array(MAX_ENTS * 4), param = new Float32Array(MAX_ENTS * 4), box = new Int32Array(MAX_ENTS * 4);
-    const pos = new Float32Array(MAX_ENTS * 3), omin = new Int32Array(MAX_ENTS * 4), osize = new Int32Array(MAX_ENTS * 3), near = new Uint32Array(MAX_ENTS);
-    // Los cuerpos de las que dan sombra, en un atlas 3D (uno detrás de otro en x)
-    const shadowers = ents.map((e) => (o.lights && e.castsShadow ? occupancy(e.model, e.yaw) : null));
-    this.syncOcc(shadowers);
+  // Las sombras de verdad: las MAX_CASTERS entidades de shadowCasters, con su cuerpo girado (cuartos de vuelta)
+  private setCasters(state: WorldState, b: Baked, o: Frame2DOptions, lights: WorldState['lights'][number][]): void {
+    const u = this.scene.u, gl = this.gl;
+    const ents = o.lights ? shadowCasters(state, b, o) : [];
+    const box = new Int32Array(MAX_CASTERS * 4), pos = new Float32Array(MAX_CASTERS * 3);
+    const omin = new Int32Array(MAX_CASTERS * 4), osize = new Int32Array(MAX_CASTERS * 3), near = new Uint32Array(MAX_CASTERS);
+    this.syncOcc(ents.map((e) => occupancy(e.model, e.yaw)));
     ents.forEach((e, i) => {
-      const d = entityDraw(state, b, e, o);
-      if (this.entImgs[i] !== d.img) {
-        this.entImgs[i] = d.img;
-        uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tEntColor);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, EW, EH, 1, gl.RGBA, gl.UNSIGNED_BYTE, d.img.rgba);
-        uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tEntDepth);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, EW, EH, 1, gl.RED, gl.FLOAT, d.img.depth);
-      }
-      if (d.etotal) {
-        uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tEntLight);
-        gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, i, EW, EH, 1, gl.RGB, gl.FLOAT, d.etotal);
-      }
-      place.set([d.offX, d.offY, d.fx, d.fy], i * 4);
-      param.set([d.dOff, d.sry, d.etotal ? 1 : 0, shadowers[i] ? 1 : 0], i * 4);
       const ex = Math.round(e.x), ey = Math.round(e.y), ez = e.z;
       pos.set([ex, ey, ez], i * 3);
-      const sb = shadowers[i] ? screenBox(b, ex, ey, ez, SHADOW_REACH, o) : null;
-      box.set(sb ?? [1, 1, 0, 0], i * 4);
-      const op = this.occPlace[i];
-      if (op) { omin.set([op.min[0], op.min[1], op.min[2], op.ax], i * 4); osize.set(op.size, i * 3); }
+      box.set(screenBox(b, ex, ey, ez, SHADOW_REACH, o) ?? [1, 1, 0, 0], i * 4);
+      const op = this.occPlace[i]!;
+      omin.set([op.min[0], op.min[1], op.min[2], op.ax], i * 4); osize.set(op.size, i * 3);
       let mask = 0;
       lights.forEach((l, j) => { if (Math.hypot(l.x - ex, l.y - ey) < resolveLight(l, 0).radius + SHADOW_REACH) mask |= 1 << j; });
       near[i] = mask >>> 0;
     });
     gl.uniform1i(u.uNEnt, ents.length);
-    gl.uniform4iv(u.uEntPlace, place);
-    gl.uniform4fv(u.uEntParam, param);
     gl.uniform4iv(u.uEntBox, box);
     gl.uniform3fv(u.uEntPos, pos);
     gl.uniform4iv(u.uEntOccMin, omin);
@@ -381,32 +425,222 @@ export class GpuCompositor {
     gl.uniform1uiv(u.uEntNear, near);
   }
 
-  private syncOcc(occs: Array<ReturnType<typeof occupancy> | null>): void {
+  // Las entidades a la capa de entidades (color, su luz, profundidad, con z-buffer) y sus sombras de contacto
+  private drawEntities(sprites: EntitySprite[], E: EntTarget, o: Frame2DOptions, nLights: number): void {
     const gl = this.gl;
-    const key = occs.map((o) => (o ? `${occId(o)}` : '-')).join(',');
-    if (key === this.occKey) return;
-    this.occKey = key;
-    this.occPlace = [];
-    let ax = 0, H = 1, D = 1;
-    for (const o of occs) {
-      if (!o) { this.occPlace.push({ min: [0, 0, 0], size: [0, 0, 0], ax: 0 }); continue; }
-      const size: [number, number, number] = [o.max[0] - o.min[0], o.max[1] - o.min[1], o.max[2] - o.min[2]];
-      this.occPlace.push({ min: o.min, size, ax });
-      ax += size[0]; H = Math.max(H, size[1]); D = Math.max(D, size[2]);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, E.fbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+    gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);
+    gl.clearBufferfv(gl.COLOR, 1, [0, 0, 0, 0]);
+    gl.clearBufferfv(gl.COLOR, 2, [Infinity, 0, 0, 0]);
+    gl.clearBufferfi(gl.DEPTH_STENCIL, 0, 1, 0);
+    // Contacto: se empieza en 1 (sin sombra) y cada elipse multiplica
+    gl.bindFramebuffer(gl.FRAMEBUFFER, E.contactFbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.clearBufferfv(gl.COLOR, 0, [1, 1, 1, 1]);
+    if (!sprites.length) return;
+
+    // Registro por entidad: dónde va su lienzo, qué capa del atlas, su luz y su cuerpo
+    const n = sprites.length;
+    if (this.entData.length < n * 16) this.entData = new Float32Array(Math.max(64, n * 2) * 16);
+    if (this.contactData.length < n * 3) this.contactData = new Float32Array(Math.max(64, n * 2) * 3);
+    const ed = this.entData, cd = this.contactData;
+    // El rango de profundidad de las entidades de este cuadro, para el z-buffer (el mismo que usa la CPU)
+    const range = entityDepthRange(sprites);
+    for (let k = 0; k < n; k++) {
+      const d = sprites[k]!, q = k * 16;
+      const body = o.lights ? this.body(d.e.model) : null;
+      ed[q] = d.offX - o.vx; ed[q + 1] = d.offY - o.vy; ed[q + 2] = this.spriteLayer(d); ed[q + 3] = d.dOff;
+      ed[q + 4] = d.X + 0.5; ed[q + 5] = d.Y; ed[q + 6] = d.Z + d.bob; ed[q + 7] = (d.e.yaw * Math.PI) / 180;
+      if (body) {
+        ed[q + 8] = body.ax; ed[q + 9] = body.min[0]; ed[q + 10] = body.min[1]; ed[q + 11] = body.min[2];
+        ed[q + 12] = body.size[0]; ed[q + 13] = body.size[1]; ed[q + 14] = body.size[2]; ed[q + 15] = 1;
+      } else for (let c = 8; c < 16; c++) ed[q + c] = 0;
+      cd[k * 3] = d.fx - o.vx; cd[k * 3 + 1] = d.fy - o.vy; cd[k * 3 + 2] = d.sry;
     }
-    const W = Math.max(1, ax);
-    const data = new Uint8Array(W * H * D);
-    occs.forEach((o, i) => {
-      if (!o) return;
-      const p = this.occPlace[i]!;
+    this.syncBodies();
+
+    if (o.lights) {
+      const c = this.contact;
+      gl.useProgram(c.prog);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.DST_COLOR, gl.ZERO);
+      gl.uniform2f(c.u.uViewSize, o.vw, o.vh);
+      gl.bindVertexArray(this.contactVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.contactBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, cd.subarray(0, n * 3), gl.DYNAMIC_DRAW);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n);
+      gl.disable(gl.BLEND);
+    }
+
+    const p = this.ent;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, E.fbo);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2]);
+    gl.useProgram(p.prog);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
+    bindTex(gl, 0, gl.TEXTURE_2D_ARRAY, this.tSprColor, p.u.uSprColor);
+    bindTex(gl, 1, gl.TEXTURE_2D_ARRAY, this.tSprDepth, p.u.uSprDepth);
+    bindTex(gl, 2, gl.TEXTURE_2D_ARRAY, this.tSprVox, p.u.uSprVox);
+    bindTex(gl, 3, gl.TEXTURE_3D, this.tBody, p.u.uBody);
+    bindTex(gl, 4, gl.TEXTURE_2D, this.tLights, p.u.uLightTab);
+    gl.uniform2f(p.u.uViewSize, o.vw, o.vh);
+    gl.uniform2f(p.u.uCell, EW, EH);
+    gl.uniform1i(p.u.uLights, o.lights ? 1 : 0);
+    gl.uniform3f(p.u.uAmbient, o.ambient[0], o.ambient[1], o.ambient[2]);
+    gl.uniform3fv(p.u.uDirs, DIR_VECTORS.flat());
+    gl.uniform1i(p.u.uNLights, nLights);
+    gl.uniform2f(p.u.uDepthRange, range[0], range[1]);
+    gl.bindVertexArray(this.entVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.entBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, ed.subarray(0, n * 16), gl.DYNAMIC_DRAW);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, n);
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(this.vao);
+  }
+
+  // La capa del atlas de un sprite (modelo, giro, contorno): se sube la primera vez que aparece
+  private spriteLayer(d: EntitySprite): number {
+    let layer = this.sprites.get(d.key);
+    if (layer !== undefined) return layer;
+    const gl = this.gl;
+    layer = this.spriteImgs.length;
+    if (layer >= this.spriteCap) {
+      // Atlas lleno: uno el doble de grande, y se vuelven a subir los que había (se guardan en la CPU)
+      const max = gl.getParameter(gl.MAX_ARRAY_TEXTURE_LAYERS) as number;
+      if (layer >= max) {
+        warnOnce(`el atlas de sprites pasa de ${max} capas: se vacía`);
+        this.sprites.clear(); this.spriteImgs = []; layer = 0;
+      }
+      this.spriteCap = Math.min(max, Math.max(64, this.spriteCap * 2));
+      for (const t of [this.tSprColor, this.tSprDepth, this.tSprVox]) if (t) gl.deleteTexture(t);
+      this.tSprColor = texArray(gl, gl.RGBA8, EW, EH, this.spriteCap);
+      this.tSprDepth = texArray(gl, gl.R32F, EW, EH, this.spriteCap);
+      this.tSprVox = texArray(gl, gl.RGBA8UI, EW, EH, this.spriteCap);
+      this.spriteImgs.forEach((img, i) => this.uploadSprite(img, i));
+    }
+    this.sprites.set(d.key, layer);
+    this.spriteImgs.push(d.img);
+    this.uploadSprite(d.img, layer);
+    return layer;
+  }
+
+  private uploadSprite(img: Rendered, layer: number): void {
+    const gl = this.gl;
+    // Vóxel y cara de cada píxel (para su luz por cara): x, y, z + 128 y la cara (255 = ninguna, p. ej. el contorno)
+    const vox = new Uint8Array(EW * EH * 4).fill(255);
+    if (img.pickKey && img.pickFace) for (let i = 0; i < EW * EH; i++) {
+      const k = img.pickKey[i]!;
+      if (Number.isNaN(k)) continue;
+      const [x, y, z] = unkey(k);
+      vox.set([x + 128, y + 128, z + 128, img.pickFace[i]!], i * 4);
+    }
+    uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tSprColor!);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, EW, EH, 1, gl.RGBA, gl.UNSIGNED_BYTE, img.rgba);
+    uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tSprDepth!);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, EW, EH, 1, gl.RED, gl.FLOAT, img.depth);
+    uploadTo(gl, gl.TEXTURE_2D_ARRAY, this.tSprVox!);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, EW, EH, 1, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, vox);
+  }
+
+  // El cuerpo (sin girar) de un modelo, para el rayo de su propia luz: se apunta y se sube con syncBodies
+  private body(m: VoxelSource) {
+    let bd = this.bodies.get(m);
+    if (bd) return bd;
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    const vs: Array<[number, number, number]> = [];
+    for (const [x, y, z] of m.entries()) {
+      vs.push([x, y, z]);
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); z0 = Math.min(z0, z); x1 = Math.max(x1, x); y1 = Math.max(y1, y); z1 = Math.max(z1, z);
+    }
+    if (!vs.length) { x0 = y0 = z0 = 0; x1 = y1 = z1 = 0; }
+    const size: [number, number, number] = [x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1];
+    const data = new Uint8Array(size[0] * size[1] * size[2]);
+    for (const [x, y, z] of vs) data[((z - z0) * size[1] + (y - y0)) * size[0] + (x - x0)] = 255;
+    bd = { ax: this.bodyW, min: [x0, y0, z0], size, data };
+    this.bodyW += size[0];
+    this.bodies.set(m, bd);
+    this.bodiesDirty = true;
+    return bd;
+  }
+  private bodiesDirty = false;
+
+  private syncBodies(): void {
+    if (!this.bodiesDirty) return;
+    this.bodiesDirty = false;
+    const gl = this.gl;
+    let H = 1, D = 1;
+    for (const bd of this.bodies.values()) { H = Math.max(H, bd.size[1]); D = Math.max(D, bd.size[2]); }
+    const W = Math.max(1, this.bodyW);
+    const all = new Uint8Array(W * H * D);
+    for (const bd of this.bodies.values()) {
+      const [sx, sy, sz] = bd.size;
+      for (let z = 0; z < sz; z++) for (let y = 0; y < sy; y++) all.set(bd.data.subarray((z * sy + y) * sx, (z * sy + y + 1) * sx), (z * H + y) * W + bd.ax);
+    }
+    uploadTo(gl, gl.TEXTURE_3D, this.tBody);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, W, H, D, 0, gl.RED, gl.UNSIGNED_BYTE, all);
+  }
+
+  private ensureEntTarget(w: number, h: number): EntTarget {
+    const t = this.entTarget;
+    if (t && this.entSize[0] === w && this.entSize[1] === h) return t;
+    const gl = this.gl;
+    const color = tex2D(gl, gl.RGBA8, w, h, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    const light = tex2D(gl, gl.RGBA32F, w, h, gl.RGBA, gl.FLOAT, null);
+    const depth = tex2D(gl, gl.R32F, w, h, gl.RED, gl.FLOAT, null);
+    const zbuf = gl.createRenderbuffer()!;
+    gl.bindRenderbuffer(gl.RENDERBUFFER, zbuf);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH32F_STENCIL8, w, h);
+    const fbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, light, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, depth, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_STENCIL_ATTACHMENT, gl.RENDERBUFFER, zbuf);
+    checkFbo(gl);
+    const contact = tex2D(gl, gl.RGBA16F, w, h, gl.RGBA, gl.HALF_FLOAT, null);
+    const contactFbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, contactFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, contact, 0);
+    checkFbo(gl);
+    this.entTarget = { fbo, color, light, depth, zbuf, contactFbo, contact };
+    this.entSize = [w, h];
+    return this.entTarget;
+  }
+  private entSize = [0, 0];
+
+  // Los cuerpos girados de las que dan sombra, en un atlas 3D que se queda: cada cuerpo (modelo y cuarto de vuelta) se
+  // sube una vez, la primera vez que hace falta (con el walk cambian cada 100 ms: rehacerlo entero costaba)
+  private syncOcc(occs: Array<ReturnType<typeof occupancy>>): void {
+    let grown = false;
+    for (const o of occs) {
+      if (this.occSlabs.has(o)) continue;
+      const size: [number, number, number] = [o.max[0] - o.min[0], o.max[1] - o.min[1], o.max[2] - o.min[2]];
+      const data = new Uint8Array(size[0] * size[1] * size[2]);
       for (const k of o.set) {
         const [x, y, z] = unkey(k);
-        data[((z - p.min[2]) * H + (y - p.min[1])) * W + (x - p.min[0] + p.ax)] = 255;
+        data[((z - o.min[2]) * size[1] + (y - o.min[1])) * size[0] + (x - o.min[0])] = 255;
       }
-    });
+      this.occSlabs.set(o, { ax: this.occW, size, data });
+      this.occW += size[0];
+      grown = true;
+    }
+    this.occPlace = occs.map((o) => { const sl = this.occSlabs.get(o)!; return { min: o.min, size: sl.size, ax: sl.ax }; });
+    if (!grown) return;
+    const gl = this.gl;
+    let H = 1, D = 1;
+    for (const sl of this.occSlabs.values()) { H = Math.max(H, sl.size[1]); D = Math.max(D, sl.size[2]); }
+    const W = Math.max(1, this.occW);
+    const all = new Uint8Array(W * H * D);
+    for (const sl of this.occSlabs.values()) {
+      const [sx, sy, sz] = sl.size;
+      for (let z = 0; z < sz; z++) for (let y = 0; y < sy; y++) all.set(sl.data.subarray((z * sy + y) * sx, (z * sy + y + 1) * sx), (z * H + y) * W + sl.ax);
+    }
     uploadTo(gl, gl.TEXTURE_3D, this.tOcc);
-    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, W, H, D, 0, gl.RED, gl.UNSIGNED_BYTE, data);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.R8, W, H, D, 0, gl.RED, gl.UNSIGNED_BYTE, all);
   }
+  private occSlabs = new Map<object, { ax: number; size: [number, number, number]; data: Uint8Array }>();
+  private occW = 0;
 
   private syncWater(state: WorldState, b: Baked, o: Frame2DOptions): boolean {
     const gl = this.gl;

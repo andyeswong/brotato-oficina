@@ -7,7 +7,7 @@
 
 export const MAX_LIGHTS = 32;      // luces del mundo por cuadro
 export const MAX_BAKED = 32;       // luces fijas horneadas
-export const MAX_ENTS = 8;         // entidades por cuadro
+export const MAX_CASTERS = 8;      // entidades con sombra de verdad por cuadro (frame2d.ts: MAX_CASTERS)
 
 // Las luces del mundo de este cuadro, en una textura RGBA32F de 3 x MAX_LIGHTS (en uniforms se pasaría del mínimo
 // de vectores que WebGL2 garantiza en un móvil): por fila, posición y radio; color e intensidad con parpadeo; y
@@ -36,9 +36,7 @@ void main() {
 export const FRAG_SCENE = `${HEADER}
 #define MAXL ${MAX_LIGHTS}
 #define MAXB ${MAX_BAKED}
-#define MAXE ${MAX_ENTS}
-#define EW 48
-#define EH 72
+#define MAXE ${MAX_CASTERS}
 #define REACH 48.0
 #define TIE (1.0 / 1024.0)
 
@@ -47,9 +45,10 @@ uniform sampler2D uDepth;
 uniform isampler2D uFace;
 uniform sampler2D uWorldY;             // la y del mundo de cada píxel (calculada en la CPU en doble precisión)
 uniform sampler2DArray uWeights;
-uniform sampler2DArray uEntColor;
-uniform sampler2DArray uEntDepth;
-uniform sampler2DArray uEntLight;
+uniform sampler2D uEntColor;             // la capa de entidades (paso de entidades): color, su luz y profundidad
+uniform sampler2D uEntLight;
+uniform sampler2D uEntDepth;
+uniform sampler2D uContact;              // las sombras de contacto: factor que multiplica la luz
 uniform sampler3D uOcc;
 
 uniform ivec2 uView;
@@ -66,9 +65,7 @@ uniform vec3 uBakedColorK[MAXB];       // color * (intensidad con parpadeo / int
 uniform int uNLights;
 ${LIGHT_TABLE}
 
-uniform int uNEnt;
-uniform ivec4 uEntPlace[MAXE];         // offX, offY, pies x, pies y (imagen horneada)
-uniform vec4 uEntParam[MAXE];          // dOff, sry, tiene luz, da sombra
+uniform int uNEnt;                     // las que dan sombra de verdad (shadowCasters)
 uniform ivec4 uEntBox[MAXE];           // recuadro de su sombra (imagen horneada), x0 y0 x1 y1
 uniform vec3 uEntPos[MAXE];            // pies redondeados: ex, ey, ez
 uniform ivec4 uEntOccMin[MAXE];        // esquina mínima del cuerpo (ejes locales girados), w = x en el atlas
@@ -142,7 +139,7 @@ void main() {
         if (w != 0.0) total += lightCol(i).rgb * w;
       }
       for (int e = 0; e < uNEnt; e++) {
-        if (uEntParam[e].w == 0.0 || uEntNear[e] == 0u) continue;
+        if (uEntNear[e] == 0u) continue;
         ivec4 bx = uEntBox[e];
         if (s.x < bx.x || s.y < bx.y || s.x > bx.z || s.y > bx.w) continue;
         vec3 ep = uEntPos[e];
@@ -164,27 +161,13 @@ void main() {
       }
     }
   }
-  // Las entidades, en orden: su sombra de contacto y su lienzo con prueba de profundidad
-  for (int e = 0; e < uNEnt; e++) {
-    ivec4 pl = uEntPlace[e];
-    vec4 pr = uEntParam[e];
-    if (uLights) {
-      int x = s.x - pl.z, y = s.y - pl.w;
-      int cy = int(ceil(pr.y));
-      if (abs(x) <= 6 && abs(y) <= cy) {
-        float ex = float(x) / 6.5, ey = float(y) / pr.y;
-        if (ex * ex + ey * ey <= 1.0) total *= vec3(0.7, 0.7, 0.72);
-      }
-    }
-    ivec2 ij = s - pl.xy;
-    if (ij.x < 0 || ij.y < 0 || ij.x >= EW || ij.y >= EH) continue;
-    vec4 ec = texelFetch(uEntColor, ivec3(ij, e), 0);
-    if (ec.a == 0.0) continue;
-    float ed = texelFetch(uEntDepth, ivec3(ij, e), 0).r + pr.x;
-    if (ed >= depth - 0.5) continue;
+  // Las sombras de contacto, y encima la entidad más cercana si está delante de lo que hay
+  if (uLights) total *= texelFetch(uContact, t, 0).rgb;
+  float ed = texelFetch(uEntDepth, t, 0).r;
+  if (ed < depth - 0.5) {
     depth = ed;
-    col = ec.rgb;
-    if (uLights && pr.z != 0.0) total = texelFetch(uEntLight, ivec3(ij, e), 0).rgb;
+    col = texelFetch(uEntColor, t, 0).rgb;
+    if (uLights) total = texelFetch(uEntLight, t, 0).rgb;
   }
   oColor = vec4(col, 1.0);
   oLight = vec4(total, 0.0);
@@ -404,4 +387,145 @@ void main() {
   if (uMode == 2) { oColor = vec4(mul / 255.0, 1.0); return; }
   if (uMode == 3) { oColor = vec4(add / 255.0, 1.0); return; }
   oColor = vec4(clamp(roundEven(scene * mul / 255.0 + add), 0.0, 255.0) / 255.0, 1.0);
+}`;
+
+
+// ---- 0) Las entidades: un quad por entidad (instanciado) con su sprite del atlas, su luz por cara y el z-buffer de
+// la GPU (gana la más cercana; en un empate, la primera). Su luz es la de lightField3D (src/core/light3d.ts): por
+// cara de vóxel, con el rayo contra su propio cuerpo, en los ejes de su modelo sin girar.
+export const VERT_ENTITY = `#version 300 es
+in vec2 aCorner;                     // 0..1
+in vec4 aPlace;                      // x, y del lienzo en la vista, capa del atlas, dOff
+in vec4 aPos;                        // pies + 0.5 en x, y, z + bote, giro (radianes)
+in vec4 aOcc;                        // x en el atlas de cuerpos, mínimo del cuerpo (x, y, z)
+in vec4 aOccSize;                    // tamaño del cuerpo, w = 1 si lleva luz
+uniform vec2 uViewSize;
+uniform vec2 uCell;
+flat out vec4 vPlace;
+flat out vec4 vPos;
+flat out vec4 vOcc;
+flat out vec4 vOccSize;
+void main() {
+  vPlace = aPlace; vPos = aPos; vOcc = aOcc; vOccSize = aOccSize;
+  vec2 p = aPlace.xy + aCorner * uCell;
+  gl_Position = vec4(p / uViewSize * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+export const FRAG_ENTITY = `${HEADER}
+#define MAXL ${MAX_LIGHTS}
+precision highp usampler2DArray;
+uniform sampler2DArray uSprColor;
+uniform sampler2DArray uSprDepth;
+uniform usampler2DArray uSprVox;       // vóxel (x, y, z + 128) y cara (255 = ninguna) de cada píxel
+uniform sampler3D uBody;               // los cuerpos (sin girar), uno detrás de otro en x
+uniform bool uLights;
+uniform vec3 uAmbient;
+uniform vec3 uDirs[6];
+uniform int uNLights;
+uniform vec2 uDepthRange;              // profundidad mínima de este cuadro y 1 / su rango (para el z-buffer)
+${LIGHT_TABLE}
+flat in vec4 vPlace;
+flat in vec4 vPos;
+flat in vec4 vOcc;
+flat in vec4 vOccSize;
+layout(location = 0) out vec4 oColor;
+layout(location = 1) out vec4 oLight;
+layout(location = 2) out vec4 oDepth;
+
+float facing(float ndl) { return ndl > 0.0 ? 0.35 + 0.65 * ndl : 0.0; }
+
+bool filled(ivec3 c) {
+  ivec3 v = c - ivec3(vOcc.yzw);
+  if (any(lessThan(v, ivec3(0))) || any(greaterThanEqual(v, ivec3(vOccSize.xyz)))) return false;
+  return texelFetch(uBody, ivec3(v.x + int(vOcc.x), v.y, v.z), 0).r > 0.0;
+}
+
+// ¿Hay un vóxel del cuerpo entre p (en el aire) y la luz? Amanatides-Woo como en light3d.ts, recortado a la caja del
+// cuerpo (fuera de ella no hay nada que tape)
+bool occluded(vec3 p0, vec3 l) {
+  vec3 p = p0 + vec3(1.0, 2.0, 3.0) / 1024.0;   // RAY_NUDGE de light3d.ts
+  vec3 d = l - p;
+  vec3 mn = vOcc.yzw, mx = vOcc.yzw + vOccSize.xyz;
+  float tExit = 1.0;
+  for (int i = 0; i < 3; i++) {
+    if (abs(d[i]) < 1e-9) { if (p[i] < mn[i] || p[i] > mx[i]) return false; continue; }
+    float a = (mn[i] - p[i]) / d[i], b = (mx[i] - p[i]) / d[i];
+    tExit = min(tExit, max(a, b));
+  }
+  ivec3 c = ivec3(floor(p)), tc = ivec3(floor(l));
+  ivec3 st = ivec3(sign(d));
+  vec3 dd = vec3(st.x != 0 ? abs(1.0 / d.x) : 1e30, st.y != 0 ? abs(1.0 / d.y) : 1e30, st.z != 0 ? abs(1.0 / d.z) : 1e30);
+  vec3 m = vec3(
+    st.x != 0 ? (st.x > 0 ? float(c.x) + 1.0 - p.x : p.x - float(c.x)) * dd.x : 1e30,
+    st.y != 0 ? (st.y > 0 ? float(c.y) + 1.0 - p.y : p.y - float(c.y)) * dd.y : 1e30,
+    st.z != 0 ? (st.z > 0 ? float(c.z) + 1.0 - p.z : p.z - float(c.z)) * dd.z : 1e30);
+  for (int i = 0; i < 160; i++) {
+    if (c == tc) return false;
+    if (min(m.x, min(m.y, m.z)) > tExit) return false;
+    if (m.x <= m.y && m.x <= m.z) { if (m.x > 1.0) return false; c.x += st.x; m.x += dd.x; }
+    else if (m.y <= m.z) { if (m.y > 1.0) return false; c.y += st.y; m.y += dd.y; }
+    else { if (m.z > 1.0) return false; c.z += st.z; m.z += dd.z; }
+    if (c == tc) return false;
+    if (filled(c)) return true;
+  }
+  return false;
+}
+
+void main() {
+  ivec2 ij = ivec2(gl_FragCoord.xy) - ivec2(vPlace.xy);
+  int layer = int(vPlace.z);
+  vec4 c = texelFetch(uSprColor, ivec3(ij, layer), 0);
+  if (c.a == 0.0) discard;
+  float depth = texelFetch(uSprDepth, ivec3(ij, layer), 0).r + vPlace.w;
+  gl_FragDepth = clamp((depth - uDepthRange.x) * uDepthRange.y, 0.0, 1.0);
+  vec3 total = uAmbient;
+  uvec4 vx = texelFetch(uSprVox, ivec3(ij, layer), 0);
+  if (uLights && vOccSize.w != 0.0 && vx.a != 255u) {
+    vec3 v = vec3(vx.rgb) - 128.0;
+    vec3 n = uDirs[int(vx.a)];
+    vec3 p = v + 0.5 + n * 0.5, start = v + 0.5 + n;
+    float cs = cos(vPos.w), sn = sin(vPos.w);
+    for (int i = 0; i < uNLights; i++) {
+      vec4 lp = lightPos(i), lc = lightCol(i);
+      float dx = lp.x - vPos.x, dy = lp.y - vPos.y;
+      vec3 l = vec3(dx * cs + dy * sn + 0.5, -dx * sn + dy * cs, lp.z - vPos.z);
+      if (length(l.xy) >= lp.w + 20.0) continue;
+      vec3 w = l - p;
+      float d = length(w);
+      if (d >= lp.w || lc.w <= 0.0) continue;
+      float f = d < 1e-6 ? 1.0 : facing(dot(n, w) / d);
+      if (f <= 0.0) continue;
+      float k = 1.0 - d / lp.w;
+      float att = k * k * lc.w * f;
+      if (att < 0.002) continue;
+      if (occluded(start, l)) continue;
+      total += lc.rgb * att;
+    }
+  }
+  oColor = vec4(c.rgb, 1.0);
+  oLight = vec4(total, 0.0);
+  oDepth = vec4(depth, 0.0, 0.0, 0.0);
+}`;
+
+// ---- 0b) Las sombras de contacto: una elipse bajo los pies de cada entidad que multiplica la luz del suelo
+export const VERT_CONTACT = `#version 300 es
+in vec2 aCorner;
+in vec3 aFeet;                       // pies en la vista (x, y) y radio vertical
+uniform vec2 uViewSize;
+flat out vec3 vFeet;
+void main() {
+  vFeet = aFeet;
+  float cy = ceil(aFeet.z);
+  vec2 p = aFeet.xy + vec2(-6.0, -cy) + aCorner * vec2(13.0, 2.0 * cy + 1.0);
+  gl_Position = vec4(p / uViewSize * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+export const FRAG_CONTACT = `${HEADER}
+flat in vec3 vFeet;
+out vec4 oFactor;
+void main() {
+  ivec2 q = ivec2(gl_FragCoord.xy) - ivec2(vFeet.xy);
+  float ex = float(q.x) / 6.5, ey = float(q.y) / vFeet.z;
+  if (ex * ex + ey * ey > 1.0) discard;
+  oFactor = vec4(0.7, 0.7, 0.72, 1.0);
 }`;

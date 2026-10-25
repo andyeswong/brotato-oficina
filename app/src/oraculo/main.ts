@@ -19,10 +19,25 @@ import type { WorldState } from '../../../src/world/state';
 import { NO_INPUT, Runtime } from '../../../src/game/runtime';
 import { GpuCompositor } from '../../../src/view/gpu/compositor';
 import maiaFile from '../../../models/maia/maia.json';
+import { walkFrames } from '../../../src/anim/walk';
 
 const VW = 384, VH = 216, TOPZ = 40, INCLINE = 0.5;
 const TOL_SHARE = 0.005;
 const maiaModel = Model.fromJSON(maiaFile as unknown as ModelFile);
+const walk = walkFrames(maiaModel);
+
+// Una multitud determinista alrededor de MAIA: n entidades con cuadros del walk y giros variados, solapadas
+function crowd(n: number) {
+  return (s: WorldState, rt: Runtime) => {
+    const p = rt.player;
+    for (let k = 0; k < n; k++) {
+      const ang = k * 2.39996, r = 10 + 5 * Math.sqrt(k);
+      const x = Math.round(p.x + Math.cos(ang) * r * 1.6), y = Math.round(p.y + Math.sin(ang) * r);
+      s.entities.add({ model: walk[k % 8]!, x, y, z: s.groundAt(x, y), facing: (k * 45) % 360, castsShadow: true });
+    }
+    s.lights.add({ kind: 'lantern', x: p.x - 12, y: p.y + 6, z: 16 });
+  };
+}
 
 interface Scenario {
   name: string;
@@ -59,6 +74,8 @@ const SCENARIOS: Scenario[] = [
       s.lights.add({ kind: 'lantern', x: p.x + 8, y: p.y - 10, z: 14 });
     },
   },
+  { name: 'oficina multitud de 60', theme: 'oficina', ticks: 30, setup: crowd(60) },
+  { name: 'medieval multitud de 200', theme: 'medieval', ticks: 30, setup: crowd(200) },
 ];
 
 function viewOf(s: WorldState, b: Baked, x: number, y: number, z: number): { vx: number; vy: number } {

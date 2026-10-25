@@ -153,9 +153,25 @@ export class EntityList extends Array<Entity> {
     const model = w.models.get(modelId);
     const id = o.id ?? this.next++;
     this.push({ id, modelId, model, x: o.x, y: o.y, z: o.z, yaw: o.facing ?? 0, castsShadow: o.castsShadow ?? true, rampOffset: w.models.rampOffset(modelId) });
+    this.indexed = -1;
     return id;
   }
-  get(id: EntityId): Entity | undefined { return this.find((e) => e.id === id); }
+  // Por id con un índice (con cientos de entidades, buscar en la lista en cada move costaba O(n) por llamada). El
+  // índice se rehace si la lista cambió por fuera (restore la vacía y la vuelve a llenar)
+  private index = new Map<EntityId, Entity>();
+  private indexed = -1;
+  get(id: EntityId): Entity | undefined {
+    if (this.indexed !== this.length) this.reindex();
+    const e = this.index.get(id);
+    if (e && e.id === id) return e;
+    this.reindex();
+    return this.index.get(id);
+  }
+  reindex(): void {
+    this.index.clear();
+    for (const e of this) this.index.set(e.id, e);
+    this.indexed = this.length;
+  }
   move(id: EntityId, x: number, y: number, z: number, facing?: number): void {
     const e = this.get(id);
     if (!e) throw new Error(`no hay entidad ${id}`);
@@ -179,7 +195,7 @@ export class EntityList extends Array<Entity> {
   }
   remove(id: EntityId): void {
     const i = this.findIndex((e) => e.id === id);
-    if (i >= 0) { this.owner.touchArea(this[i]!.x, this[i]!.y, ENTITY_REACH); this.splice(i, 1); }
+    if (i >= 0) { this.owner.touchArea(this[i]!.x, this[i]!.y, ENTITY_REACH); this.splice(i, 1); this.indexed = -1; }
   }
 }
 
@@ -517,6 +533,7 @@ export class WorldState {
     this.lights.length = 0;
     this.lights.push(...s.lights.map((l) => ({ ...l })));
     this.entities.next = s.next.entity; this.lights.next = s.next.light;
+    this.entities.reindex();
     this.solid.clock = s.clock; this.dynamicVersions.set(s.dynamicVersions);
   }
 

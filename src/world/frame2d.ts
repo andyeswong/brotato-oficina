@@ -51,11 +51,40 @@ export function frame2DParts(state: WorldState, b: Baked, o: Frame2DOptions): { 
   if (total) {
     // Luces dinámicas (las añadidas en partida): por cuadro, en su radio
     for (const l of state.lights) if (l.baked === false) addDynamicLight(b, l, total, o);
-    // Sombras de las entidades: lo que su cuerpo tapa de cada luz
-    for (const e of state.entities) if (e.castsShadow) castShadow(state, b, e, total, o);
+    // Sombras de las entidades: lo que su cuerpo tapa de cada luz (solo las MAX_CASTERS más cercanas al centro)
+    for (const e of shadowCasters(state, b, o)) castShadow(state, b, e, total, o);
   }
 
-  for (const e of state.entities) drawEntity(entityDraw(state, b, e, o), view, depthBuf, total, o);
+  // Las entidades: primero todas las sombras de contacto (en el suelo), después, en cada píxel, la entidad más
+  // cercana a la cámara, y esa tapa el escenario si está delante. Es lo mismo que hace la GPU con su z-buffer.
+  const sprites = state.entities.map((e) => entitySprite(b, e, o)).filter((d) => onView(d, o));
+  if (total) for (const d of sprites) contactShadow(d, total, o);
+  // La profundidad de cada píxel de entidad se calcula en float32 y se compara por la misma clave que el z-buffer de
+  // la GPU (entityDepthKey): así, en un casi empate, las dos rutas eligen la misma entidad
+  const entDepth = new Float32Array(vw * vh).fill(Infinity), entKey = new Float32Array(vw * vh).fill(Infinity);
+  const entOf = new Int32Array(vw * vh).fill(-1), entPx = new Int32Array(vw * vh);
+  const range = entityDepthRange(sprites);
+  sprites.forEach((d, k) => {
+    const dOff = Math.fround(d.dOff);
+    for (let j = 0; j < EH; j++) for (let i = 0; i < EW; i++) {
+      const s = j * EW + i;
+      if (!d.img.rgba[s * 4 + 3]) continue;
+      const sx = i + d.offX - vx, sy = j + d.offY - vy;
+      if (sx < 0 || sy < 0 || sx >= vw || sy >= vh) continue;
+      const t = sy * vw + sx, dd = Math.fround(d.img.depth[s]! + dOff), key = entityDepthKey(dd, range);
+      if (key < entKey[t]!) { entKey[t] = key; entDepth[t] = dd; entOf[t] = k; entPx[t] = s; }
+    }
+  });
+  const etotals = total ? sprites.map((d) => entityLight(state, d, o)) : [];
+  for (let t = 0; t < vw * vh; t++) {
+    const k = entOf[t]!;
+    if (k < 0 || entDepth[t]! >= depthBuf[t]! - 0.5) continue;      // lo que hay delante la tapa
+    const d = sprites[k]!, s = entPx[t]!;
+    depthBuf[t] = entDepth[t]!;
+    view[t * 4] = d.img.rgba[s * 4]!; view[t * 4 + 1] = d.img.rgba[s * 4 + 1]!; view[t * 4 + 2] = d.img.rgba[s * 4 + 2]!;
+    const et = etotals[k];
+    if (total && et) { total[t * 3] = et[s * 3]!; total[t * 3 + 1] = et[s * 3 + 1]!; total[t * 3 + 2] = et[s * 3 + 2]!; }
+  }
 
   // El agua (tapa lo sumergido) y las gotas
   state.water?.draw(b, view, depthBuf, total, vx, vy, vw, vh, ambient, o.time, state.lights);
@@ -72,18 +101,38 @@ export function dropLook(state: WorldState, ambient: readonly [number, number, n
   return wr ? { color: rgbOf(wr.colors[4] ?? wr.colors[0]!), light: [ambient[0] * 1.7, ambient[1] * 1.7, ambient[2] * 1.8] } : null;
 }
 
-// Lo que hace falta para pintar una entidad: su render (de la caché), su luz por píxel (null sin luces), dónde cae
-// su lienzo en la imagen horneada, cuánto se suma a su profundidad y su sombra de contacto (centro y radio vertical)
-export interface EntityDraw {
-  img: Rendered;
-  etotal: Float32Array | null;
-  offX: number; offY: number; dOff: number;
-  fx: number; fy: number; sry: number;
+// Las entidades que dan sombra de verdad (con su cuerpo) en un cuadro: como mucho MAX_CASTERS, las de pies más
+// cercanos al centro de la vista; las demás solo llevan la de contacto. En el orden de la lista de entidades.
+export const MAX_CASTERS = 8;
+export function shadowCasters(state: WorldState, b: Baked, o: Frame2DOptions): Entity[] {
+  const cx = o.vx + o.vw / 2, cy = o.vy + o.vh / 2;
+  const cand = state.entities.map((e, i) => {
+    const [sx, sy] = b.cam.project(Math.round(e.x) + 0.5, Math.round(e.y), e.z);
+    return { e, i, d: (sx - cx) ** 2 + (sy - cy) ** 2 };
+  }).filter((c) => c.e.castsShadow);
+  if (cand.length <= MAX_CASTERS) return cand.map((c) => c.e);
+  return cand.sort((a, c) => a.d - c.d || a.i - c.i).slice(0, MAX_CASTERS).sort((a, c) => a.i - c.i).map((c) => c.e);
 }
 
-// Una entidad del mundo con la misma cámara que el escenario, iluminada por cara con las fuentes del mundo y con
-// su sombra en el suelo. Su profundidad se pasa a la del mundo y lo que tiene delante la tapa.
-export function entityDraw(state: WorldState, b: Baked, e: Entity, o: Frame2DOptions): EntityDraw {
+// Lo que hace falta para pintar una entidad: su render (de la caché), dónde cae su lienzo en la imagen horneada,
+// cuánto se suma a su profundidad y su sombra de contacto (centro y radio vertical). Lo comparten la CPU y la GPU.
+export interface EntitySprite {
+  e: Entity;
+  img: Rendered;
+  key: string;                   // qué render es (modelo y giro): la GPU lo usa para su atlas
+  offX: number; offY: number; dOff: number;
+  fx: number; fy: number; sry: number;
+  X: number; Y: number; Z: number; bob: number;
+  ro: ReturnType<typeof entityRenderOptions>;
+}
+// Lo de antes más su luz por píxel (null sin luces), calculada en la CPU
+export interface EntityDraw extends EntitySprite { etotal: Float32Array | null }
+
+const spriteIds = new WeakMap<object, number>();
+let nextSpriteId = 1;
+
+// Una entidad del mundo con la misma cámara que el escenario. Su profundidad se pasa a la del mundo.
+export function entitySprite(b: Baked, e: Entity, o: Frame2DOptions): EntitySprite {
   const a = b.options.oblique?.y ?? 1;
   const X = Math.round(e.x), Y = Math.round(e.y), Z = e.z;
   const bob = o.bob ? o.bob(e) : 0;
@@ -91,27 +140,44 @@ export function entityDraw(state: WorldState, b: Baked, e: Entity, o: Frame2DOpt
   const feet = b.cam.project(X + 0.5, Y, Z);
   const fx = Math.floor(feet[0]), fy = Math.floor(feet[1]);
   const sry = Math.max(1.2, 2.5 * a);
-  const lo = { width: EW, height: EH, originX: EOX, originY: EOY, pivot: [0.5, 0, 0] as [number, number, number], yaw: e.yaw,
-    oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: o.outline ?? 'none', ...(o.outlineColor ? { outlineColor: o.outlineColor } : {}), pick: o.lights };
+  const lo = entityRenderOptions(b, e, o);
   let cache = entityCache.get(e.model);
   if (!cache) entityCache.set(e.model, (cache = new Map()));
   const ck = `${e.yaw}|${lo.oblique.y}|${lo.oblique.z}|${lo.pick}|${lo.outline}|${o.outlineColor ?? ''}`;
   let img = cache.get(ck);
   if (!img) { img = withOutlineDepth(render(e.model, lo)); cache.set(ck, img); }
-  let etotal: Float32Array | null = null;
-  if (o.lights) {
-    // Las luces del mundo en los ejes del modelo de la entidad (sin girar)
-    const c = Math.cos((e.yaw * Math.PI) / 180), sn = Math.sin((e.yaw * Math.PI) / 180);
-    const lights: PointLight3D[] = state.lights.map((l) => {
-      const p = resolveLight(l, o.time);
-      const dx = l.x - (X + 0.5), dy = l.y - Y;
-      return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity };
-    }).filter((l) => Math.hypot(l.x, l.y) < l.radius + 20);
-    etotal = lightField3D(e.model, img, camera(lo), lights, o.ambient, { floor: false });
-  }
+  let mid = spriteIds.get(e.model);
+  if (!mid) spriteIds.set(e.model, (mid = nextSpriteId++));
   const offX = X - EOX, offY = Math.round(b.options.originY - a * Y - Z) - EOY - bob;
   const dOff = Y * b.cam.fwd[1] + Z * b.cam.fwd[2];
-  return { img, etotal, offX, offY, dOff, fx, fy, sry };
+  return { e, img, key: `${mid}|${ck}`, offX, offY, dOff, fx, fy, sry, X, Y, Z, bob, ro: lo };
+}
+
+function entityRenderOptions(b: Baked, e: Entity, o: Frame2DOptions) {
+  return { width: EW, height: EH, originX: EOX, originY: EOY, pivot: [0.5, 0, 0] as [number, number, number], yaw: e.yaw,
+    oblique: b.options.oblique ?? { y: 1, z: 1 }, flat: true, outline: o.outline ?? 'none', ...(o.outlineColor ? { outlineColor: o.outlineColor } : {}), pick: o.lights };
+}
+
+// ¿Cae algo de su lienzo (o de su sombra de contacto) en la vista?
+export function onView(d: EntitySprite, o: Frame2DOptions): boolean {
+  return d.offX + EW > o.vx && d.offX < o.vx + o.vw && d.offY + EH > o.vy && d.offY < o.vy + o.vh + 8;
+}
+
+// La luz por píxel de una entidad, iluminada por cara con las fuentes del mundo (en los ejes de su modelo, sin girar)
+export function entityLight(state: WorldState, d: EntitySprite, o: Frame2DOptions): Float32Array {
+  const { e, X, Y, Z, bob } = d;
+  const c = Math.cos((e.yaw * Math.PI) / 180), sn = Math.sin((e.yaw * Math.PI) / 180);
+  const lights: PointLight3D[] = state.lights.map((l) => {
+    const p = resolveLight(l, o.time);
+    const dx = l.x - (X + 0.5), dy = l.y - Y;
+    return { x: dx * c + dy * sn + 0.5, y: -dx * sn + dy * c, z: l.z - bob - Z, radius: p.radius, color: p.color, intensity: p.intensity };
+  }).filter((l) => Math.hypot(l.x, l.y) < l.radius + 20);
+  return lightField3D(e.model, d.img, camera(d.ro), lights, o.ambient, { floor: false });
+}
+
+export function entityDraw(state: WorldState, b: Baked, e: Entity, o: Frame2DOptions): EntityDraw {
+  const d = entitySprite(b, e, o);
+  return { ...d, etotal: o.lights ? entityLight(state, d, o) : null };
 }
 
 // El contorno exterior se pinta en píxeles vacíos, sin profundidad (Infinity): la prueba de profundidad lo
@@ -132,27 +198,39 @@ function withOutlineDepth(img: Rendered): Rendered {
   return { ...img, depth: d };
 }
 
-function drawEntity(d: EntityDraw, view: Uint8ClampedArray, depthBuf: Float32Array, total: Float32Array | null, o: Frame2DOptions): void {
+// El z-buffer de las entidades: su profundidad pasada a [0, 1] con el rango de las de este cuadro. La GPU guarda
+// exactamente este valor (float32) y la CPU compara por él, así desempatan igual.
+export function entityDepthRange(sprites: readonly EntitySprite[]): [number, number] {
+  let lo = Infinity, hi = -Infinity;
+  for (const d of sprites) { const r = spriteDepthRange(d.img); lo = Math.min(lo, r[0] + d.dOff); hi = Math.max(hi, r[1] + d.dOff); }
+  if (lo === Infinity) return [0, 1];
+  return [Math.fround(lo - 1), Math.fround(1 / Math.max(1e-3, hi - lo + 2))];
+}
+export function entityDepthKey(depth: number, [base, scale]: [number, number]): number {
+  return Math.min(1, Math.max(0, Math.fround(Math.fround(depth - base) * scale)));
+}
+const depthRanges = new WeakMap<Rendered, [number, number]>();
+function spriteDepthRange(img: Rendered): [number, number] {
+  let r = depthRanges.get(img);
+  if (!r) {
+    let lo = Infinity, hi = -Infinity;
+    for (const d of img.depth) if (d !== Infinity) { lo = Math.min(lo, d); hi = Math.max(hi, d); }
+    r = lo === Infinity ? [0, 0] : [lo, hi];
+    depthRanges.set(img, r);
+  }
+  return r;
+}
+
+// Sombra de contacto bajo los pies: oscurece la luz del suelo en una elipse
+function contactShadow(d: EntitySprite, total: Float32Array, o: Frame2DOptions): void {
   const { vx, vy, vw, vh } = o;
-  const { img, etotal, offX, offY, dOff, fx, fy, sry } = d;
-  if (total) for (let y = -Math.ceil(sry); y <= Math.ceil(sry); y++) for (let x = -6; x <= 6; x++) {
+  const { fx, fy, sry } = d;
+  for (let y = -Math.ceil(sry); y <= Math.ceil(sry); y++) for (let x = -6; x <= 6; x++) {
     if ((x / 6.5) ** 2 + (y / sry) ** 2 > 1) continue;
     const sx = fx - vx + x, sy = fy - vy + y;
     if (sx < 0 || sy < 0 || sx >= vw || sy >= vh) continue;
     const q = (sy * vw + sx) * 3;
     total[q] = total[q]! * 0.7; total[q + 1] = total[q + 1]! * 0.7; total[q + 2] = total[q + 2]! * 0.72;
-  }
-  for (let j = 0; j < EH; j++) for (let i = 0; i < EW; i++) {
-    const s = j * EW + i;
-    if (!img.rgba[s * 4 + 3]) continue;
-    const sx = i + offX - vx, sy = j + offY - vy;
-    if (sx < 0 || sy < 0 || sx >= vw || sy >= vh) continue;
-    const t = sy * vw + sx;
-    const d = img.depth[s]! + dOff;
-    if (d >= depthBuf[t]! - 0.5) continue;                           // lo que hay delante la tapa
-    depthBuf[t] = d;
-    view[t * 4] = img.rgba[s * 4]!; view[t * 4 + 1] = img.rgba[s * 4 + 1]!; view[t * 4 + 2] = img.rgba[s * 4 + 2]!;
-    if (total && etotal) { total[t * 3] = etotal[s * 3]!; total[t * 3 + 1] = etotal[s * 3 + 1]!; total[t * 3 + 2] = etotal[s * 3 + 2]!; }
   }
 }
 

@@ -19,6 +19,8 @@ export interface PointLight3D {
   intensity: number;
 }
 
+export const RAY_NUDGE = [1 / 1024, 2 / 1024, 3 / 1024] as const;
+
 // Cuánto recibe una cara según su ángulo con la luz: de lado aún recibe algo, de espaldas nada
 const facing = (ndl: number) => (ndl > 0 ? 0.35 + 0.65 * ndl : 0);
 
@@ -36,8 +38,11 @@ export function lightField3D(
   const filled = (x: number, y: number, z: number) => model.get(x, y, z) !== 0;
   const faceCache = new Map<string, [number, number, number]>();
 
-  // ¿Hay un vóxel entre el punto p (en el aire) y la luz? Recorre la rejilla (Amanatides-Woo).
-  function occluded(px: number, py: number, pz: number, l: PointLight3D): boolean {
+  // ¿Hay un vóxel entre el punto p (en el aire) y la luz? Recorre la rejilla (Amanatides-Woo). El rayo sale un poco
+  // desplazado (RAY_NUDGE): desde el centro de una celda pasa a menudo justo por una arista, y ahí el redondeo decide
+  // por qué lado; la GPU (src/view/gpu/shaders.ts) desplaza igual, así las dos rutas dan lo mismo.
+  function occluded(px0: number, py0: number, pz0: number, l: PointLight3D): boolean {
+    const px = px0 + RAY_NUDGE[0], py = py0 + RAY_NUDGE[1], pz = pz0 + RAY_NUDGE[2];
     const dx = l.x - px, dy = l.y - py, dz = l.z - pz;
     let x = Math.floor(px), y = Math.floor(py), z = Math.floor(pz);
     const tx = Math.floor(l.x), ty = Math.floor(l.y), tz = Math.floor(l.z);

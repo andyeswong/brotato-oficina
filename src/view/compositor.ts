@@ -12,6 +12,7 @@ import { GpuCompositor } from './gpu/compositor';
 export interface CompositorStats {
   frameMs: number;             // lo que tardó frame() en el hilo principal (en la GPU: preparar y subir, no dibujar)
   uploadMs: number;            // de eso, las subidas a la GPU (texturas del horneado, agua, entidades, luces)
+  parts?: { baked: number; entities: number; casters: number; water: number; drops: number };   // y por partes (solo la GPU)
 }
 
 export interface Compositor {
@@ -102,6 +103,7 @@ class GpuPath implements Compositor {
       this.gpu.frame(s, b, o);
       this.stats.frameMs = performance.now() - t0;
       this.stats.uploadMs = this.gpu.uploadMs;
+      this.stats.parts = this.gpu.parts;
     } else if (this.cpu) {
       this.cpu.frame(s, b, o);
       this.stats.frameMs = this.cpu.stats.frameMs;
