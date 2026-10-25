@@ -113,6 +113,13 @@ function occluded(b: Baked, px: number, py: number, pz: number, lx: number, ly: 
 
 // ---- pesos de una luz fija: su zona de pantalla y el peso de cada píxel (por cara de vóxel, con sombras)
 function lightWeights(b: Baked, l: WorldLight): BakedLight | null {
+  const z = lightZone(b, l);
+  if (!z) return null;
+  const rows = weightRows(b, z, 0, z.rect.h);
+  return rows;
+}
+
+function lightZone(b: Baked, l: WorldLight): BakedLight | null {
   const p = resolveLight(l, 0);
   const r = p.radius;
   // Zona de la imagen: la proyección de la caja que rodea la esfera de la luz
@@ -124,9 +131,17 @@ function lightWeights(b: Baked, l: WorldLight): BakedLight | null {
   const rx = Math.max(0, Math.floor(x0)), ry = Math.max(0, Math.floor(y0));
   const rect = { x: rx, y: ry, w: Math.min(b.width, Math.ceil(x1)) - rx, h: Math.min(b.height, Math.ceil(y1)) - ry };
   if (rect.w <= 0 || rect.h <= 0) return null;
-  const weight = new Float32Array(rect.w * rect.h);
+  return { light: l, color: p.color, intensity: p.base, rect, weight: new Float32Array(rect.w * rect.h) };
+}
+
+// Calcula las filas [j0, j1) de los pesos de una zona (escribe en zone.weight). La caché por cara solo vale dentro de
+// la llamada: el resultado no depende de cómo se trocee.
+function weightRows(b: Baked, zone: BakedLight, j0: number, j1: number): BakedLight {
+  const { light: l, rect, weight } = zone;
+  const p = resolveLight(l, 0);
+  const r = p.radius;
   const cache = new Map<number, number>();
-  for (let j = 0; j < rect.h; j++) for (let i = 0; i < rect.w; i++) {
+  for (let j = j0; j < j1; j++) for (let i = 0; i < rect.w; i++) {
     const idx = (rect.y + j) * b.width + rect.x + i;
     const k = b.pick[idx]!;
     if (Number.isNaN(k)) continue;
@@ -149,7 +164,7 @@ function lightWeights(b: Baked, l: WorldLight): BakedLight | null {
     }
     weight[j * rect.w + i] = w;
   }
-  return { light: l, color: p.color, intensity: p.base, rect, weight };
+  return zone;
 }
 
 // ---- rehorneado parcial
@@ -157,45 +172,128 @@ function lightWeights(b: Baked, l: WorldLight): BakedLight | null {
 // Rehace el horneado de los trozos dados (índices de StaticVoxels): su recuadro de pantalla, la rejilla de sombras
 // de sus columnas y los pesos de las luces fijas que los alcanzan.
 export function rebake(b: Baked, chunks: readonly number[], lights: readonly WorldLight[]): { pixels: number; lights: number } {
-  if (!chunks.length) return { pixels: 0, lights: 0 };
+  // Lo mismo que los trabajos, de una vez (las pruebas comparan los dos caminos)
+  const jobs = rebakeJobs(b, chunks, lights);
+  for (const j of jobs) while (!j.run(Infinity)) { /* el de luz espera al recuadro, que va antes */ }
+  const { rect } = chunks.length ? chunkRect(b, chunks) : { rect: { x0: 0, x1: -1, y0: 0, y1: -1 } };
+  return { pixels: (rect.x1 - rect.x0 + 1) * (rect.y1 - rect.y0 + 1), lights: jobs.length - (chunks.length ? 1 : 0) };
+}
+
+// ---- el recuadro de pantalla de unos trozos, por franjas de columnas
+// Con la cámara sin girar, la columna de vóxeles x cae exactamente en la columna de píxeles x: cada franja de
+// columnas se puede renderizar por separado (con sus vóxeles, y los vecinos del mundo entero para caras y oclusión)
+// y el resultado es el mismo que de una vez.
+interface ScreenRect { x0: number; x1: number; y0: number; y1: number }
+interface RectBuffers { rgba: Uint8ClampedArray; depth: Float32Array; face: Int8Array; pick: Float64Array; w: number; h: number }
+
+function rectBuffers(r: ScreenRect): RectBuffers {
+  const w = r.x1 - r.x0 + 1, h = r.y1 - r.y0 + 1;
+  return { rgba: new Uint8ClampedArray(w * h * 4), depth: new Float32Array(w * h), face: new Int8Array(w * h), pick: new Float64Array(w * h), w, h };
+}
+
+function chunkRect(b: Baked, chunks: readonly number[]): { rect: ScreenRect; plan: { X0: number; Y0: number; X1: number; Y1: number } } {
   const s = b.source;
-  // Caja en planta de los trozos cambiados
   let cx0 = Infinity, cy0 = Infinity, cx1 = -Infinity, cy1 = -Infinity;
   for (const c of chunks) {
     const cx = c % s.cols, cy = Math.floor(c / s.cols);
     cx0 = Math.min(cx0, cx); cx1 = Math.max(cx1, cx); cy0 = Math.min(cy0, cy); cy1 = Math.max(cy1, cy);
   }
   const X0 = cx0 * CHUNK, Y0 = cy0 * CHUNK, X1 = Math.min(s.width, (cx1 + 1) * CHUNK) - 1, Y1 = Math.min(s.depth, (cy1 + 1) * CHUNK) - 1;
-  fillOcc(b, X0, Y0, X1, Y1);
-
-  // Recuadro de pantalla que pueden ocupar esos vóxeles (toda la altura), más un píxel por las caras vecinas
   const a = b.options.oblique?.y ?? 1, O = b.options.originY;
-  const rx0 = Math.max(0, X0 - 1), rx1 = Math.min(b.width - 1, X1 + 2);
-  const ry0 = Math.max(0, Math.floor(O - a * (Y1 + 1) - (s.zMax + 1)) - 1), ry1 = Math.min(b.height - 1, Math.ceil(O - a * Y0 - s.zMin) + 1);
-  const rw = rx1 - rx0 + 1, rh = ry1 - ry0 + 1;
-  // Todos los vóxeles que pueden caer en ese recuadro (vistos con los vecinos del mundo entero)
-  const yLo = Math.floor((O - ry1 - 1 - s.zMax - 1) / a) - 1, yHi = Math.ceil((O - ry0 - s.zMin) / a) + 1;
-  const region = { x0: rx0 - 1, y0: Math.max(0, yLo), x1: rx1 + 1, y1: Math.min(s.depth - 1, yHi) };
-  const sub: VoxelSource = { palette: s.palette, get: (x, y, z) => s.get(x, y, z), entries: () => s.entries(region) };
-  const img = render(sub, { ...b.options, width: rw, height: rh, originX: (b.options.originX ?? 0) - rx0, originY: O - ry0 });
-  for (let j = 0; j < rh; j++) for (let i = 0; i < rw; i++) {
-    const src = j * rw + i, dst = (ry0 + j) * b.width + rx0 + i;
-    b.depth[dst] = img.depth[src]!; b.face[dst] = img.pickFace![src]!; b.pick[dst] = img.pickKey![src]!;
-    for (let ch = 0; ch < 4; ch++) b.rgba[dst * 4 + ch] = img.rgba[src * 4 + ch]!;
-  }
+  const rect = {
+    x0: Math.max(0, X0 - 1), x1: Math.min(b.width - 1, X1 + 2),
+    y0: Math.max(0, Math.floor(O - a * (Y1 + 1) - (s.zMax + 1)) - 1), y1: Math.min(b.height - 1, Math.ceil(O - a * Y0 - s.zMin) + 1),
+  };
+  return { rect, plan: { X0, Y0, X1, Y1 } };
+}
 
-  // Luces fijas que alcanzan la zona: sus pesos de nuevo (un hueco nuevo puede dejar pasar luz lejos del recuadro)
-  let relit = 0;
+// Renderiza las columnas de píxeles c0..c1 del recuadro en sus búferes
+function renderColumns(b: Baked, r: ScreenRect, buf: RectBuffers, c0: number, c1: number): void {
+  const s = b.source, a = b.options.oblique?.y ?? 1, O = b.options.originY;
+  const yLo = Math.floor((O - r.y1 - 1 - s.zMax - 1) / a) - 1, yHi = Math.ceil((O - r.y0 - s.zMin) / a) + 1;
+  // Solo los vóxeles de esas columnas (el borde de una columna de píxeles es la columna de vóxeles de su x)
+  const region = { x0: c0 - 1, y0: Math.max(0, yLo), x1: c1, y1: Math.min(s.depth - 1, yHi) };
+  const w = c1 - c0 + 1;
+  const sub: VoxelSource = { palette: s.palette, get: (x, y, z) => s.get(x, y, z), entries: () => s.entries(region) };
+  const img = render(sub, { ...b.options, width: w, height: buf.h, originX: (b.options.originX ?? 0) - c0, originY: O - r.y0 });
+  for (let j = 0; j < buf.h; j++) for (let i = 0; i < w; i++) {
+    const src = j * w + i, dst = j * buf.w + (c0 - r.x0) + i;
+    buf.depth[dst] = img.depth[src]!; buf.face[dst] = img.pickFace![src]!; buf.pick[dst] = img.pickKey![src]!;
+    for (let ch = 0; ch < 4; ch++) buf.rgba[dst * 4 + ch] = img.rgba[src * 4 + ch]!;
+  }
+}
+
+function publishRect(b: Baked, r: ScreenRect, buf: RectBuffers): void {
+  for (let j = 0; j < buf.h; j++) for (let i = 0; i < buf.w; i++) {
+    const src = j * buf.w + i, dst = (r.y0 + j) * b.width + r.x0 + i;
+    b.depth[dst] = buf.depth[src]!; b.face[dst] = buf.face[src]!; b.pick[dst] = buf.pick[src]!;
+    for (let ch = 0; ch < 4; ch++) b.rgba[dst * 4 + ch] = buf.rgba[src * 4 + ch]!;
+  }
+}
+
+// ---- rehorneado como trabajos que se reanudan (para la cola con presupuesto de la vista)
+// run(deadline) trabaja hasta que el reloj pasa de `deadline` o acaba, y devuelve true si acabó. Mientras no acaba
+// vale lo viejo; lo nuevo se publica de golpe al terminar (doble búfer). Un trabajo nuevo con la misma key sustituye
+// al viejo (lo hace la cola).
+export interface ViewJob { readonly key: string; run(deadline: number): boolean }
+
+const RECT_BAND = 2;      // columnas de píxeles por paso del recuadro
+const LIGHT_BAND = 4;     // filas de pesos por paso de una luz
+
+export function rebakeJobs(b: Baked, chunks: readonly number[], lights: readonly WorldLight[]): ViewJob[] {
+  if (!chunks.length) return [];
+  const { rect, plan } = chunkRect(b, chunks);
+  // La rejilla de sombras se pone al día ya (es barata): los pesos viejos siguen publicados hasta que se rehagan
+  fillOcc(b, plan.X0, plan.Y0, plan.X1, plan.Y1);
+  const jobs: ViewJob[] = [];
+  // 1) el recuadro, por franjas de columnas
+  const buf = rectBuffers(rect);
+  let col = rect.x0, rectDone = false;
+  jobs.push({
+    key: `rect:${rect.x0},${rect.y0},${rect.x1},${rect.y1}`,
+    run(deadline) {
+      do {
+        const c1 = Math.min(rect.x1, col + RECT_BAND - 1);
+        renderColumns(b, rect, buf, col, c1);
+        col = c1 + 1;
+      } while (col <= rect.x1 && performance.now() < deadline);
+      if (col <= rect.x1) return false;
+      publishRect(b, rect, buf);
+      rectDone = true;
+      return true;
+    },
+  });
+  // 2) las luces fijas que alcanzan la zona, por filas (después del recuadro: leen qué vóxel se ve en cada píxel)
   for (const l of lights) {
     if (l.baked === false) continue;
     const r = resolveLight(l, 0).radius;
-    if (l.x + r < X0 || l.x - r > X1 + 1 || l.y + r < Y0 || l.y - r > Y1 + 1) continue;
-    const i = b.lights.findIndex((bl) => bl.light.id === l.id);
-    const bl = lightWeights(b, l);
-    if (i >= 0) { if (bl) b.lights[i] = bl; else b.lights.splice(i, 1); } else if (bl) b.lights.push(bl);
-    relit++;
+    if (l.x + r < plan.X0 || l.x - r > plan.X1 + 1 || l.y + r < plan.Y0 || l.y - r > plan.Y1 + 1) continue;
+    let zone: BakedLight | null | undefined, row = 0;
+    jobs.push({
+      key: `light:${l.id}`,
+      run(deadline) {
+        if (!rectDone) return false;                       // espera al recuadro
+        if (zone === undefined) zone = lightZone(b, l);
+        if (zone) do {
+          const r1 = Math.min(zone.rect.h, row + LIGHT_BAND);
+          weightRows(b, zone, row, r1);
+          row = r1;
+        } while (row < zone.rect.h && performance.now() < deadline);
+        if (zone && row < zone.rect.h) return false;
+        const i = b.lights.findIndex((bl) => bl.light.id === l.id);
+        if (i >= 0) { if (zone) b.lights[i] = zone; else b.lights.splice(i, 1); } else if (zone) b.lights.push(zone);
+        return true;
+      },
+    });
   }
-  return { pixels: rw * rh, lights: relit };
+  return jobs;
+}
+
+// Los trabajos de lo que haya cambiado (solo vóxeles) desde el último horneado
+export function rebakeChangedJobs(b: Baked, lights: readonly WorldLight[]): ViewJob[] {
+  const jobs = rebakeJobs(b, b.source.changedSince(b.version), lights);
+  b.version = b.source.clock;
+  return jobs;
 }
 
 // Rehornea lo que haya cambiado (solo vóxeles) desde el último horneado

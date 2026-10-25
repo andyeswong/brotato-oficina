@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { material } from '../src/core';
 import { StaticVoxels, WorldState } from '../src/world/state';
-import { bakeWorld, rebakeChanged, type Baked } from '../src/world/bake';
+import { bakeWorld, rebakeChanged, rebakeChangedJobs, type Baked } from '../src/world/bake';
 import type { WorldLight } from '../src/world/build';
 import { generateLayout } from '../src/worldgen';
 import { THEMES } from '../src/content/themes';
@@ -77,3 +77,37 @@ describe('rehorneado por trozos', () => {
     expect(ch).not.toContain(s.chunkOf(48, 10));
   });
 });
+
+describe('rehorneado como trabajos (para la cola con presupuesto)', () => {
+  function edited() {
+    const { s, lights } = yard();
+    const b = bakeWorld({ model: s, lights, width: 80, depth: 64 }, { topZ: 30, incline: 0.5 });
+    const before = { rgba: b.rgba.slice(), weights: b.lights.map((l) => l.weight.slice()) };
+    for (let z = 1; z <= 20; z++) for (let x = 36; x < 44; x++) for (let y = 30; y < 33; y++) s.set(x, y, z, 0);
+    return { s, lights, b, before };
+  }
+
+  it('con el plazo siempre vencido avanzan un paso por llamada, y al acabar da lo mismo que hornear de cero', () => {
+    const { s, lights, b } = edited();
+    const jobs = rebakeChangedJobs(b, lights);
+    expect(jobs.map((j) => j.key.split(':')[0])).toEqual(['rect', 'light']);
+    let calls = 0;
+    for (const j of jobs) while (!j.run(0)) calls++;
+    expect(calls).toBeGreaterThan(5);                            // de verdad se trocea
+    same(b, bakeWorld({ model: s, lights, width: 80, depth: 64 }, { topZ: 30, incline: 0.5 }));
+  });
+
+  it('mientras no acaban, lo publicado es lo viejo (nunca se ve medio recuadro ni media luz)', () => {
+    const { lights, b, before } = edited();
+    const [rect, light] = rebakeChangedJobs(b, lights);
+    expect(light!.run(Infinity)).toBe(false);                    // la luz espera al recuadro y no toca nada
+    expect(b.lights.map((l) => l.weight)).toEqual(before.weights);
+    expect(rect!.run(0)).toBe(false);                            // un paso del recuadro
+    expect(Buffer.from(b.rgba.buffer).equals(Buffer.from(before.rgba.buffer))).toBe(true);
+    while (!rect!.run(0)) { /* hasta acabar */ }
+    expect(Buffer.from(b.rgba.buffer).equals(Buffer.from(before.rgba.buffer))).toBe(false);   // ahora sí, de golpe
+    expect(light!.run(0)).toBe(false);                           // la luz, por filas
+    expect(b.lights.map((l) => l.weight)).toEqual(before.weights);
+  });
+});
+
