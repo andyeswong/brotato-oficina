@@ -5,17 +5,17 @@
 // ?seed=N fija la partida y salta la selección (el mundo sale de la semilla); ?nivel=oficina|medieval|cyberpunk fuerza
 // el tema; ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
 // ?ir=tienda|fin simula sin entrada hasta la primera tienda o hasta el final (para verify y las capturas).
-import { Model, render, type ModelFile, type VoxelSource } from '@core/index';
-import { TILE } from '../../../src/worldgen';
-import { THEMES } from '../../../src/content/themes';
-import { bakeWorld, rebakeChangedJobs, type Baked } from '../../../src/world/bake';
-import { FrameBudget } from '../../../src/view/budget';
-import { createCompositor } from '../../../src/view/compositor';
-import { walkFrames, WALK_FRAME_MS } from '../../../src/anim/walk';
-import { rigFrames } from '../../../src/anim/rig';
+import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
+import { TILE } from '@voxpix/worldgen';
+import { THEMES } from '@voxpix/content/themes';
+import { bakeWorld, rebakeChangedJobs, type Baked } from '@voxpix/world/bake';
+import { FrameBudget } from '@voxpix/view/budget';
+import { createCompositor } from '@voxpix/view/compositor';
+import { walkFrames, WALK_FRAME_MS } from '@voxpix/anim/walk';
+import { rigFrames } from '@voxpix/anim/rig';
 import { RIG_CLIP, RIG_GRAPA, RIG_TAZA } from '../../../src/anim/rigs-brotato';
-import { FixedLoop, type TickInput, type CarryConfig } from '../../../src/game/runtime';
-import { TICK } from '../../../src/world/state';
+import { FixedLoop, type TickInput, type CarryConfig } from '@voxpix/runtime/runtime';
+import { TICK } from '@voxpix/world/state';
 import { discoverContent } from '../../../src/game/brotato/registry/discover';
 import { validateContent } from '../../../src/game/brotato/registry/validate';
 import type { LevelModule, ThemeId } from '../../../src/game/brotato/registry/schemas';
@@ -28,8 +28,8 @@ import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brot
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { drawHud, hudText } from '../../../src/game/brotato/ui/hud';
 import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
-import type { EntityId } from '../../../src/world/state';
-import maiaFile from '../../../models/maia/maia.json';
+import type { EntityId } from '@voxpix/world/state';
+import maiaFile from 'voxpix/models/maia/maia.json';
 
 const VW = 384, VH = 216, TOPZ = 40, INCLINE = 0.5;
 const INK = '#0d0c12';

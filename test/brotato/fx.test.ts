@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Model, material } from '../../src/core';
+import { Model, material } from '@voxpix/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
 import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, FLOAT_PLAYER_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
 import { COLORS, type Painter } from '../../src/game/brotato/ui/paint';
-import { bakeWorld } from '../../src/world/bake';
+import { bakeWorld } from '@voxpix/world/bake';
 import type { WorldFx } from '../../src/game/brotato/sim/World';
 import { buyAll, kite, steer } from './pilot';
 

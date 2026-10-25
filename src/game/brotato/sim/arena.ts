@@ -4,10 +4,10 @@
 // (x este, y norte, z arriba; 1 vóxel = 1 px del juego). Puro y determinista.
 import type { Point } from '../api';
 import type { LevelModule } from '../registry/schemas';
-import { generateLayout, NORTH, TILE, WALL, type Layout } from '../../../worldgen';
-import { buildWorldState, type World } from '../../../world/build';
-import type { WorldState } from '../../../world/state';
-import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '../../body';
+import { generateLayout, NORTH, TILE, WALL, type Layout } from '@voxpix/worldgen';
+import { buildWorldState, type World } from '@voxpix/world/build';
+import type { WorldState } from '@voxpix/world/state';
+import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runtime/body';
 
 // Altura sobre el suelo a la que vuelan los disparos: lo que es sólido ahí (paredes, columnas, muebles) los para
 const SHOT_HEIGHT = 8;

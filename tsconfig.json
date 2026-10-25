@@ -7,6 +7,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "esModuleInterop": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
     "types": [
       "node",
@@ -16,14 +17,13 @@
       "ES2022",
       "DOM"
     ],
-    "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@core/*": [
-        "src/core/*"
+      "@voxpix/*": [
+        "node_modules/voxpix/src/*"
       ],
       "pxl-core": [
-        "vendor/pxl-core.d.ts"
+        "node_modules/voxpix/vendor/pxl-core.d.ts"
       ]
     },
     "noEmit": true
@@ -32,6 +32,6 @@
     "src",
     "test",
     "app/src",
-    "vendor/pxl-core.d.ts"
+    "scripts"
   ]
 }

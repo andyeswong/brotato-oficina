@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SOURCE_PRESETS, type SourceKind } from '../../../lighting/lights';
+import { SOURCE_PRESETS, type SourceKind } from '@voxpix/lighting/lights';
 
 // Los mensajes de zod salen en español: los lee quien escribe contenido, no solo quien programa
 z.config(z.locales.es());

@@ -3,9 +3,9 @@
 //   bichos_anim_x6.gif: los 3 bichos en las 4 vistas, animados (cada uno a su ritmo, en un ciclo común)
 //   npx tsx --tsconfig tsconfig.runtime.json scripts/rig-preview.ts <carpeta> [--contorno]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { Model, render, type ModelFile } from '../src/core';
-import { encodePNG, onBackground } from '../src/core/png';
-import { rigFrames } from '../src/anim/rig';
+import { Model, render, type ModelFile } from '@voxpix/core';
+import { encodePNG, onBackground } from '@voxpix/core/png';
+import { rigFrames } from '@voxpix/anim/rig';
 import { BROTATO_RIGS } from '../src/anim/rigs-brotato';
 import { encodeGIF } from './lib/gif';
 

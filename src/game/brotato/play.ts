@@ -3,16 +3,16 @@
 // y su rig de andar, las armas en su órbita, los disparos y los materiales. Determinista: sin reloj ni azar del
 // navegador (la vista solo pinta y lee la entrada). El tick es uno solo: entrada -> oleada (simulación) -> entidades
 // -> world.step().
-import type { VoxelSource } from '../../core';
-import type { EntityId } from '../../world/state';
-import { TICK } from '../../world/state';
+import type { VoxelSource } from '@voxpix/core';
+import type { EntityId } from '@voxpix/world/state';
+import { TICK } from '@voxpix/world/state';
 import type { Registry } from './registry/validate';
 import type { LevelModule, ThemeId } from './registry/schemas';
 import { Run } from './sim/Run';
 import type { World as Wave, WorldFx } from './sim/World';
 import { pickLevel } from './sim/arena';
 import { lookOf } from './looks';
-import { turn, type CarryConfig, type TickInput } from '../runtime';
+import { turn, type CarryConfig, type TickInput } from '@voxpix/runtime/runtime';
 
 // Lo que la vista le da a la partida para dibujarse: los modelos (por su referencia en models/brotato) y los cuadros
 // de andar de un enemigo (su rig), y el aspecto de MAIA
@@ -47,7 +47,7 @@ export function heading(deg: number): number {
 }
 
 // Los 8 rumbos (los de HEADINGS en el núcleo, que el precalentado usa por defecto)
-export { HEADINGS } from '../../world/frame2d';
+export { HEADINGS } from '@voxpix/world/frame2d';
 
 export class BrotatoGame {
   readonly run: Run;

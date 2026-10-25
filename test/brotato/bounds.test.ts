@@ -3,7 +3,7 @@ import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { pickLevel, type Arena } from '../../src/game/brotato/sim/arena';
 import { Run } from '../../src/game/brotato/sim/Run';
-import { footprint } from '../../src/game/body';
+import { footprint } from '@voxpix/runtime/body';
 
 const { registry } = validateContent(discoverContent());
 

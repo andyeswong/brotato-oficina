@@ -1,7 +1,7 @@
 // Rigs de andar de los bichos del Brotato (NARUTO), sobre los borradores de FERN (models/brotato/*). Las partes se
 // eligen por geometría, no por vóxeles sueltos: si el modelo cambia sin cambiar de forma general (patas a los lados,
 // borde de la taza arriba), el rig sigue valiendo. FERN puede moverlos a su contenido cuando quiera.
-import type { Rig } from './rig';
+import type { Rig } from '@voxpix/anim/rig';
 
 // Grapa: anda como un compás. Las dos puntas son las patas (|x| >= 5, por debajo de la corona); se alternan hacia
 // delante y hacia atrás, y la que pasa se dobla (sube 1).

@@ -1,33 +1,26 @@
 {
-  "name": "voxpix",
-  "version": "0.1.0",
+  "name": "brotato-oficina",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Voxel models to pixel art in the browser: editor, CPU/GPU renderer, 2.5D voxel-world engine and a demo game.",
+  "description": "Brotato de la oficina: un arena-shooter de oleadas sobre el motor de vóxeles VoxPix.",
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "voxpix": "tsx --tsconfig tsconfig.runtime.json src/cli/main.ts",
     "dev": "vite --config app/vite.config.ts",
     "build": "vite build --config app/vite.config.ts",
-    "icons": "node vendor/pxl/bin/pxl.js build app/icons/icons.px.js --no-preview && cp app/icons/out/icons.png app/icons/out/icons.json app/icons/out/sprites/btn*.png app/src/assets/ui/"
+    "preview": "vite preview --config app/vite.config.ts",
+    "rigs": "tsx --tsconfig tsconfig.json scripts/rig-preview.ts"
+  },
+  "dependencies": {
+    "voxpix": "file:../voxpix-limpio",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
-    "@vitejs/plugin-vue": "^5.2.4",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^6.4.5",
-    "vitest": "^3.2.7",
-    "vue": "^3.5.44",
-    "vue-tsc": "^2.2.12"
-  },
-  "dependencies": {
-    "zod": "^4.6.7"
-  },
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/andyeswong/voxpix.git"
+    "vitest": "^3.2.7"
   }
 }

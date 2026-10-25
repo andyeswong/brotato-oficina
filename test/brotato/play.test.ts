@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { Model, material, type VoxelSource } from '../../src/core';
+import { Model, material, type VoxelSource } from '@voxpix/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, CLEARED_TICKS, type Models } from '../../src/game/brotato/play';
 import { Run } from '../../src/game/brotato/sim/Run';
-import { TICK } from '../../src/world/state';
+import { TICK } from '@voxpix/world/state';
 import { runDigest } from '../../src/game/brotato/sim/digest';
-import type { TickInput } from '../../src/game/runtime';
+import type { TickInput } from '@voxpix/runtime/runtime';
 
 // La partida y su reflejo en el mundo (src/game/brotato/play.ts): determinista como la simulación, y cada cosa que
 // se ve de la oleada tiene su entidad (y deja de tenerla cuando se va).

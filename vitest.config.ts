@@ -1,11 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
+// El motor es la dependencia voxpix: @voxpix apunta a su src (en TypeScript, sin compilar)
 export default defineConfig({
   resolve: {
     alias: {
-      'pxl-core': fileURLToPath(new URL('./vendor/pxl/src/core/index.ts', import.meta.url)),
-      '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
+      '@voxpix': fileURLToPath(new URL('./node_modules/voxpix/src', import.meta.url)),
     },
   },
   test: { include: ['test/**/*.test.ts'] },

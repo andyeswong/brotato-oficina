@@ -1,20 +1,18 @@
 import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
 import { fileURLToPath } from 'node:url';
 
+// El juego: app/juego.html. El motor es la dependencia voxpix (@voxpix -> su src, en TypeScript)
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   base: './',
-  plugins: [vue()],
   resolve: {
     alias: {
-      '@core': fileURLToPath(new URL('../src/core', import.meta.url)),
-      'pxl-core': fileURLToPath(new URL('../vendor/pxl/src/core/index.ts', import.meta.url)),
+      '@voxpix': fileURLToPath(new URL('../node_modules/voxpix/src', import.meta.url)),
     },
   },
-  server: { host: '0.0.0.0', port: 5190 },
+  server: { host: '0.0.0.0', port: 5191, fs: { allow: ['..', '../node_modules/voxpix'] } },
   build: {
     outDir: 'dist', emptyOutDir: true,
-    rollupOptions: { input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), escena: fileURLToPath(new URL('./escena.html', import.meta.url)), oraculo: fileURLToPath(new URL('./oraculo.html', import.meta.url)), 'oraculo-render': fileURLToPath(new URL('./oraculo-render.html', import.meta.url)), multitud: fileURLToPath(new URL('./multitud.html', import.meta.url)), juego: fileURLToPath(new URL('./juego.html', import.meta.url)) } },
+    rollupOptions: { input: { juego: fileURLToPath(new URL('./juego.html', import.meta.url)) } },
   },
 });

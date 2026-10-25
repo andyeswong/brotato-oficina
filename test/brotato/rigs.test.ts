@@ -1,9 +1,10 @@
-// Animación genérica por partes (src/anim/rig.ts): el pivote se queda en los pies con cualquier cuerpo.
+// Los rigs de andar de los bichos (src/anim/rigs-brotato.ts) con sus modelos: cumplen las reglas del pivote del rig
+// genérico de VoxPix (src/anim/rig.ts). Venían en test/rig.test.ts del motor; las reglas son las mismas.
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
-import { Model, box, material, type ModelFile } from '../src/core';
-import { rigFrames, type Rig } from '../src/anim/rig';
-import { BROTATO_RIGS } from '../src/anim/rigs-brotato';
+import { Model, type ModelFile } from '@voxpix/core';
+import { rigFrames, type Rig } from '@voxpix/anim/rig';
+import { BROTATO_RIGS } from '../../src/anim/rigs-brotato';
 
 function ground(m: Model): { n: number; cx: number; cy: number } {
   let n = 0, sx = 0, sy = 0;
@@ -41,40 +42,11 @@ function checkRig(name: string, base: Model, rig: Rig): void {
   for (const f of frames) expect(Math.abs(f.size - base.size) / base.size, name).toBeLessThan(0.08);
 }
 
-describe('rig genérico', () => {
-  // Un cuadrúpedo de prueba: un cuerpo de 8x6x4 sobre cuatro patas de 1x1x4
-  const pal = { ramps: [{ name: 'cuerpo', colors: ['#202020', '#606060', '#a0a0a0'] }] };
-  const quad = new Model(pal);
-  box(quad, -4, -3, 4, 3, 2, 7, material(0, 1));
-  for (const [x, y] of [[-4, -3], [3, -3], [-4, 2], [3, 2]] as const) box(quad, x, y, 0, x, y, 3, material(0, 2));
-  const diagonal = (x: number, y: number) => (x < 0) === (y < 0);
-  const rig: Rig = {
-    frameMs: 100,
-    parts: [
-      { name: 'A', has: (x, y, z) => z <= 3 && diagonal(x, y), pivotZ: 3, footZ: 0 },
-      { name: 'B', has: (x, y, z) => z <= 3 && !diagonal(x, y), pivotZ: 3, footZ: 0 },
-    ],
-    frames: [
-      { moves: { A: { stride: 1 }, B: { stride: -1 } } },
-      { moves: { A: { dz: 1 } } },
-      { moves: { A: { stride: -1 }, B: { stride: 1 } } },
-      { moves: { B: { dz: 1 } } },
-    ],
-  };
-
-  it('la zancada mueve el pie y deja la cadera', () => {
-    const [f0] = rigFrames(quad, rig);
-    // pata A delantera-izquierda (-4, -3): el pie (z 0) se adelanta 1 (y -1), la cadera (z 3) no se mueve
-    expect(f0!.get(-4, -4, 0)).toBeTruthy();
-    expect(f0!.get(-4, -3, 0)).toBe(0);
-    expect(f0!.get(-4, -3, 3)).toBeTruthy();
-  });
-
-  it('cumple las reglas del pivote', () => checkRig('cuadrúpedo', quad, rig));
-
+describe('los rigs de los bichos', () => {
   for (const [name, r] of Object.entries(BROTATO_RIGS)) {
     const file = `models/brotato/${name}/${name}.json`;
-    it.skipIf(!existsSync(file))(`${name} (modelo de FERN) cumple las reglas del pivote`, () => {
+    it(`${name} existe y cumple las reglas del pivote`, () => {
+      expect(existsSync(file), file).toBe(true);
       const m = Model.fromJSON(JSON.parse(readFileSync(file, 'utf8')) as ModelFile);
       checkRig(name, m, r);
     });
