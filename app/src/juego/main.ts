@@ -6,6 +6,7 @@
 // el tema; ?camara=clasica|cenital|baja|cerca, la cámara (ui/camera.ts); ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
 // ?ir=tienda|fin simula sin entrada hasta la primera tienda o hasta el final (para verify y las capturas).
 // Para medir (fase 4): ?ola=N empieza en la oleada N e ?inmortal hace que MAIA no caiga; body[data-enemigos] los cuenta.
+// ?dev activa las herramientas de desarrollo: V pausa y enseña el mundo en modo vóxel (./voxel.ts).
 import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
 import { TILE } from '@voxpix/worldgen';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '@voxpix/world/bake';
@@ -35,6 +36,7 @@ import { ACCENTS } from '../../../src/game/brotato/ui/theme';
 import type { Highlight } from '@voxpix/world/frame2d';
 import { TouchStick, isTouch } from './touch';
 import { GameAudio } from './audio';
+import { VoxelInspector } from './voxel';
 import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
@@ -59,6 +61,8 @@ function storedCamera(): string | null {
   try { return localStorage.getItem(CAMERA_KEY); } catch { return null; }
 }
 let camera: CameraPreset = cameraById(q.get('camara') ?? storedCamera());
+// El modo vóxel de desarrollo: solo existe con ?dev
+const inspector = q.has('dev') ? new VoxelInspector() : null;
 
 // ---- contenido y modelos
 const { registry, errors } = validateContent(discoverContent());
@@ -128,6 +132,7 @@ function fit(): void {
   place(compositor.canvas, VW, VH, l);
   place(fxCanvas, VW, VH, l);
   place(ui, UW, UH, lu);
+  inspector?.place(compositor.canvas, VW, VH);
 }
 addEventListener('resize', fit);
 visualViewport?.addEventListener('resize', fit);
@@ -458,7 +463,7 @@ function listen(): void {
   const g = game;
   if (stick.active && (screen !== 'game' || g?.phase !== 'wave')) stick.end();
   const now = screen === 'game' && g ? `${g.phase}|${g.phase === 'wave' ? g.current.status : ''}|${g.run.waveIndex}` : screen;
-  audio.music(screen === 'game' && g?.phase === 'wave' && g.current.status === 'playing');
+  audio.music(screen === 'game' && g?.phase === 'wave' && g.current.status === 'playing' && !inspector?.on);
   if (now === heard) return;
   heard = now;
   if (!g || screen !== 'game') return;
@@ -522,7 +527,8 @@ let last = performance.now();
 function loop(now: number): void {
   const dt = (now - last) / 1000;
   last = now;
-  if (screen === 'game' && game && now >= warmUntil) {
+  // En el modo vóxel la partida no avanza (sin ticks, el reloj fijo no acumula: al volver sigue donde estaba)
+  if (screen === 'game' && game && now >= warmUntil && !inspector?.on) {
     ticks?.advance(dt);
     const over = game.phase === 'victory' || (game.phase === 'dead' && game.phaseTick * TICK >= DEAD_PAUSE_S);
     if (over) { screen = 'end'; endAt = now; award(game); }
@@ -530,7 +536,15 @@ function loop(now: number): void {
   listen();
   effects.update(Math.min(dt, 0.1));
   flashes.update(dt);
-  if (screen !== 'select' && screen !== 'meta') frame(now / 1000);
+  if (inspector?.on && game) {
+    let dx = 0, dy = 0;
+    if (keys.has('a') || keys.has('arrowleft')) dx--;
+    if (keys.has('d') || keys.has('arrowright')) dx++;
+    if (keys.has('w') || keys.has('arrowup')) dy++;
+    if (keys.has('s') || keys.has('arrowdown')) dy--;
+    inspector.pan(dx, dy, Math.min(dt, 0.1));
+    inspector.frame(game.state, now / 1000, { ambient: game.run.arena.ambient, outline: outline.id, outlineColor: outline.color });
+  } else if (screen !== 'select' && screen !== 'meta') frame(now / 1000);
   if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
   const spent = budget.run();
   if (game && bgJobs.length) {
@@ -599,6 +613,14 @@ addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys.add(k);
   audio.unlock();
+  // El modo vóxel (?dev): V entra en la partida; dentro, solo V/Esc (salir) y R (volver a MAIA), el resto es la vista
+  if (inspector && game && screen === 'game' && (inspector.on || k === 'v')) {
+    const me = game.state.entities.get(game.playerId)!;
+    if (k === 'v' || (k === 'escape' && inspector.on)) inspector.toggle(me);
+    else if (k === 'r') inspector.lookAt(me);
+    e.preventDefault();
+    return;
+  }
   if (k === 'm' && screen !== 'select') { audio.toggleMuted(); return; }
   if (screen === 'select') { const a = selectKey(e, registry.characters().length, selected); if (a) act(a); }
   else if (screen === 'meta') { const a = metaKey(e); if (a) { e.preventDefault(); act(a); } }
@@ -618,7 +640,7 @@ ui.addEventListener('pointerdown', (e) => {
 });
 // El joystick: un dedo (no el ratón) que no cayó en un botón, durante la oleada, en cualquier sitio de la página
 addEventListener('pointerdown', (e) => {
-  if (e.pointerType === 'mouse' || e.pointerId === pointerTaken || screen !== 'game' || game?.phase !== 'wave') return;
+  if (e.pointerType === 'mouse' || e.pointerId === pointerTaken || screen !== 'game' || game?.phase !== 'wave' || inspector?.on) return;
   stick.start(e, ACCENTS[theme]);
 });
 addEventListener('pointermove', (e) => stick.move(e));
