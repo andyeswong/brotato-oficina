@@ -4,6 +4,7 @@ import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run } from '../../src/game/brotato/sim/Run';
 import type { World } from '../../src/game/brotato/sim/World';
+import { goTo } from './pilot';
 
 // Cada partida construye su mundo de vóxeles (~250 ms): los ficheros que crean muchas pasan de los 5 s por defecto
 vi.setConfig({ testTimeout: 60_000 });
@@ -17,16 +18,23 @@ function play(seed: number, pilot: (world: World, run: Run) => Point): number {
   const run = new Run(registry, registry.character('maia'), registry.level('oficina'), seed);
   for (;;) {
     const world = run.startWave();
-    while (world.status === 'playing') world.step(1 / 60, pilot(world, run));
-    if (world.status === 'dead' || run.finishWave() === 'victory') return run.waveNumber;
+    // Sin tienda: la oleada limpia (open) cuenta como pasada. Con tope: un piloto que no caza a los que quedan en la
+    // prórroga (el quieto no alcanza al escupidor) no la pasa
+    for (let t = 0; world.status === 'playing' && t < 60 * 600; t++) world.step(1 / 60, pilot(world, run));
+    if (world.status === 'playing' || world.status === 'dead' || run.finishWave() === 'victory') return run.waveNumber;
   }
 }
 
 const still = () => ({ x: 0, y: 0 });
 
-// Un piloto torpe: huye de los enemigos y proyectiles cercanos y no se pega al borde
+// Un piloto torpe: huye de los enemigos y proyectiles cercanos y no se pega al borde. En la prórroga, si nadie está a
+// tiro, va a por el más cercano (huyendo no se acaba nunca)
 function kite(world: World, run: Run): Point {
   const p = world.player;
+  if (world.overtime && world.enemies.length) {
+    const e = world.enemies.reduce((a, b) => (Math.hypot(a.x - p.x, a.y - p.y) <= Math.hypot(b.x - p.x, b.y - p.y) ? a : b));
+    if (Math.hypot(e.x - p.x, e.y - p.y) > 50) return goTo(run, p, e);
+  }
   const { width, height } = run.level.arena;
   const u = width / 1280; // el piloto se diseñó en una arena de 1280: sus distancias escalan con la arena
   let fx = ((width / 2 - p.x) * 0.002) / u;

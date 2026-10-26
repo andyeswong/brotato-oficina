@@ -3,9 +3,20 @@
 import type { Point } from '../../src/game/brotato/api';
 import type { Run } from '../../src/game/brotato/sim/Run';
 import type { World } from '../../src/game/brotato/sim/World';
+import type { BrotatoGame, GameInput } from '../../src/game/brotato/play';
+
+const HUNT_NEAR = 50;
 
 export function kite(world: World, run: Run): Point {
   const p = world.player;
+  // Prórroga (el tiempo acabó y quedan vivos): hay que matarlos, y huyendo no se acaba nunca (el escupidor guarda la
+  // distancia). Va a por el más cercano hasta tenerlo a HUNT_NEAR: estar "a tiro" no basta, el disparo puede dar en un
+  // muro que hay en medio
+  if (world.overtime) {
+    let best: { x: number; y: number } | null = null, bd = Infinity;
+    for (const e of world.enemies) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
+    if (best && bd > HUNT_NEAR) return goTo(run, p, best);
+  }
   const { width, height } = run.level.arena;   // el centro de la arena es el mismo en ejes del modelo
   const u = width / 1280; // el piloto se diseñó en una arena de 1280: sus distancias escalan con la arena
   let fx = ((width / 2 - p.x) * 0.002) / u;
@@ -21,6 +32,63 @@ export function kite(world: World, run: Run): Point {
   }
   const len = Math.hypot(fx, fy);
   return len > 0.05 ? steer(run, p, { x: fx / len, y: fy / len }) : { x: 0, y: 0 };
+}
+
+// Hacia la entrada de la tienda (un punto a su alcance: el centro es sólido)
+export function toShop(world: World, run: Run): Point {
+  return goTo(run, world.player, run.arena.shop);
+}
+
+// Ir a un sitio dando la vuelta a lo que haga falta (en la prórroga hay que llegar al último enemigo aunque esté al
+// otro lado de un muro; el rodeo local de steer se queda pegado). Camino más corto (BFS) sobre una rejilla de celdas
+// de 8 donde cabe el cuerpo; se sigue la celda del camino a 3 pasos, con steer para lo fino. Sin camino, steer recto
+const CELL = 8;
+const grids = new WeakMap<object, { cols: number; rows: number; ok: Uint8Array }>();
+function grid(run: Run) {
+  let g = grids.get(run.arena);
+  if (!g) {
+    const { width, height } = run.level.arena, cols = Math.ceil(width / CELL), rows = Math.ceil(height / CELL);
+    const ok = new Uint8Array(cols * rows);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      ok[j * cols + i] = run.arena.fits(i * CELL + CELL / 2, j * CELL + CELL / 2, run.arena.floorZ, run.body.radius) ? 1 : 0;
+    }
+    g = { cols, rows, ok };
+    grids.set(run.arena, g);
+  }
+  return g;
+}
+export function goTo(run: Run, p: Point & { z: number }, to: Point): Point {
+  const g = grid(run);
+  const cell = (q: Point) => Math.min(g.rows - 1, Math.max(0, Math.floor(q.y / CELL))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.floor(q.x / CELL)));
+  const start = cell(p), goal = cell(to);
+  const straight = () => { const dx = to.x - p.x, dy = to.y - p.y, l = Math.hypot(dx, dy) || 1; return steer(run, p, { x: dx / l, y: dy / l }); };
+  // El destino puede ser sólido (el centro de la fuente): vale cualquier celda libre a 2 o menos de él
+  const near = (k: number) => Math.abs((k % g.cols) - (goal % g.cols)) <= 2 && Math.abs(Math.floor(k / g.cols) - Math.floor(goal / g.cols)) <= 2;
+  const from = new Int32Array(g.cols * g.rows).fill(-1);
+  from[start] = start;
+  const queue = [start];
+  let end = -1;
+  for (let h = 0; h < queue.length && end < 0; h++) {
+    const k = queue[h]!;
+    if (near(k) && (g.ok[k] || k === goal)) { end = k; break; }
+    const x = k % g.cols, y = Math.floor(k / g.cols);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= g.cols || ny >= g.rows) continue;
+      const n = ny * g.cols + nx;
+      if (from[n]! >= 0 || !g.ok[n]) continue;
+      from[n] = k;
+      queue.push(n);
+    }
+  }
+  if (end < 0) return straight();
+  const path: number[] = [];
+  for (let k = end; k !== start; k = from[k]!) path.push(k);
+  if (path.length <= 2) return straight();
+  const wp = path[Math.max(0, path.length - 3)]!;
+  const wx = (wp % g.cols) * CELL + CELL / 2, wy = Math.floor(wp / g.cols) * CELL + CELL / 2;
+  const dx = wx - p.x, dy = wy - p.y, l = Math.hypot(dx, dy) || 1;
+  return steer(run, p, { x: dx / l, y: dy / l });
 }
 
 // Rodeo local: si a 8 o 14 px por delante el cuerpo no cabe (pared, columna, mueble, agua honda), prueba a girar 30°,
@@ -91,7 +159,17 @@ export async function playRunAsync(run: Run, hooks: Hooks = {}): Promise<{ reach
 function wave(run: Run, hooks: Hooks, rows: string[]): boolean {
   {
     const world = run.startWave();
-    while (world.status === 'playing') { world.step(1 / 60, kite(world, run)); hooks.onTick?.(world); }
+    let openT = 0, overT = 0;
+    while (world.status === 'playing' || world.status === 'open') {
+      // Si la prórroga no acaba en dos minutos, el piloto no sabe cazar a alguno: que se vea, no un bucle sin fin
+      if (world.overtime && ++overT > 60 * 120) throw new Error(`s${run.seed} oleada ${run.waveNumber}: la prórroga no acaba (quedan ${world.enemies.length})`);
+      if (world.status === 'open') {
+        // Oleada limpia: a la entrada de la tienda y F (si no llega en un minuto, el mapa o el piloto están mal)
+        if (++openT > 60 * 60) throw new Error(`s${run.seed} oleada ${run.waveNumber}: el piloto no llega a la tienda en 60 s`);
+        world.step(1 / 60, world.atShop ? { x: 0, y: 0 } : toShop(world, run), world.atShop);
+      } else world.step(1 / 60, kite(world, run));
+      hooks.onTick?.(world);
+    }
     hooks.onWave?.(world);
     const line = `s${run.seed} oleada ${String(run.waveNumber).padStart(2)} · ${world.status === 'dead' ? 'MUERE' : 'pasa '} a los ${world.time.toFixed(0).padStart(2)} s · vida ${world.player.hp}/${world.player.maxHp} · bajas ${run.kills} · materiales ${run.materials}`;
     if (world.status === 'dead') { rows.push(line); return true; }
@@ -102,4 +180,17 @@ function wave(run: Run, hooks: Hooks, rows: string[]): boolean {
     rows.push(`${line} · compra: ${bought.join(', ') || '—'} · quedan ${run.materials} · armas ${run.weapons.map((w) => w.id + (w.tier ? `+${w.tier}` : '')).join(',')}`);
     return false;
   }
+}
+
+// La entrada de un tick para una partida con vista (BrotatoGame), con el mismo piloto: huye y caza en la oleada y, con
+// ella limpia, va a la entrada de la tienda y pulsa F
+export function gameInput(g: BrotatoGame): GameInput {
+  const w = g.current;
+  if (w.status === 'open') {
+    if (w.atShop) return { dx: 0, dy: 0, stomp: false, interact: true };
+    const d = toShop(w, g.run);
+    return { dx: d.x, dy: d.y, stomp: false };
+  }
+  const d = kite(w, g.run);
+  return { dx: d.x, dy: d.y, stomp: false };
 }

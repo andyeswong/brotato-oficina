@@ -7,7 +7,7 @@ import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, TELEGRAPH_A
 import { COLORS, type Painter } from '../../src/game/brotato/ui/paint';
 import { bakeWorld } from '@voxpix/world/bake';
 import type { WorldFx } from '../../src/game/brotato/sim/World';
-import { buyAll, kite, steer } from './pilot';
+import { buyAll, gameInput } from './pilot';
 
 // Los efectos de la oleada (src/game/brotato/ui/fx.ts). Lo que vive en el suelo se dibuja proyectado con la cámara
 // del mundo: a inclinación 0,5 sale acortado a la mitad en vertical (regla de MAIA), y se prueba con la cámara de un
@@ -162,7 +162,7 @@ describe('la partida junta los efectos para la vista', () => {
     // Dos partidas iguales: una recoge cada tick (lo que pasó entero), la otra nunca (lo que queda guardado). La
     // segunda deja de dar pasos cuando la primera ya pasó de 256, pero los anunciados siguen siendo los mismos
     // El piloto de la curva (pilot.ts), para que MAIA aguante varias oleadas
-    const drive = (g: BrotatoGame) => { const d = steer(g.run, g.current.player, kite(g.current, g.run)); return { dx: d.x, dy: d.y, stomp: false }; };
+    const drive = (g: BrotatoGame) => gameInput(g);
     const a = new BrotatoGame(registry, 11, models, player, registry.level('medieval'));
     const b = new BrotatoGame(registry, 11, models, player, registry.level('medieval'));
     let all: WorldFx[] = [];
@@ -215,8 +215,7 @@ describe('el destello de un golpe (el tinte de la entidad)', () => {
     // Varias oleadas con el piloto: en la primera todo muere de un golpe (y el golpe que mata no deja entidad)
     for (let t = 0; t < 30_000 && found < 5 && g.phase !== 'dead' && g.phase !== 'victory'; t++) {
       if (g.phase === 'shop') { buyAll(g.run); g.leaveShop(); }
-      const d = steer(g.run, g.current.player, kite(g.current, g.run));
-      g.step({ dx: d.x, dy: d.y, stomp: false });
+      g.step(gameInput(g));
       for (const f of g.takeFx()) {
         if (f.type !== 'enemy-hit') continue;
         const e = g.current.enemies.find((x) => x.uid === f.uid);

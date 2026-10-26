@@ -114,7 +114,10 @@ export type WorldFx =
   | { type: 'pickup'; value: number }
   | { type: 'heal'; amount: number };
 
-export type WorldStatus = 'playing' | 'dead' | 'cleared';
+// playing: se juega (también la prórroga: el tiempo acabó y quedan enemigos vivos, que hay que matar). open: tiempo
+// cumplido y 0 vivos, la oleada está limpia y la entrada a la tienda brilla en el mapa (Andrés, 2026-10-25). cleared:
+// MAIA entró en la tienda (o era la última oleada). dead: cayó.
+export type WorldStatus = 'playing' | 'open' | 'dead' | 'cleared';
 
 export interface WorldDeps {
   registry: Registry;
@@ -123,6 +126,8 @@ export interface WorldDeps {
   spawn: { minDistance: number; edgeMargin: number; ringRadius: number; clusterSpread: number };
   // El mundo de vóxeles de la partida: paredes, columnas, muebles y agua, y dónde sale la jugadora
   arena: Arena;
+  // La última oleada no tiene tienda detrás: limpia, se cierra sola (victoria)
+  final?: boolean;
   body: Body;
   weapons: ReadonlyArray<{ id: string; tier: number }>;
   rng: Rng;
@@ -215,7 +220,33 @@ export class World {
     return { x: this.player.x, y: this.player.y };
   }
 
-  step(dt: number, move: Point): void {
+  // ¿Acabó el tiempo y quedan enemigos por matar?
+  get overtime(): boolean {
+    return this.status === 'playing' && this.time >= this.deps.wave.duration;
+  }
+
+  // ¿Está MAIA lo bastante cerca de la entrada a la tienda para entrar?
+  get atShop(): boolean {
+    const s = this.deps.arena.shop;
+    return Math.hypot(this.player.x - s.x, this.player.y - s.y) <= s.reach;
+  }
+
+  // El enemigo al que mira MAIA: el más cercano al alcance de su arma de más alcance (la misma búsqueda con la que
+  // apuntan las armas). null si no hay ninguno a tiro
+  get aimTarget(): EnemyState | null {
+    let range = 0;
+    for (const w of this.weapons) range = Math.max(range, weaponStats(w.def, w.tier, this.deps.stat).range);
+    return range > 0 ? this.nearestEnemy(this.player.x, this.player.y, range) : null;
+  }
+
+  // interact: la tecla F (o el botón en el Flip). Solo hace algo con la oleada limpia y MAIA junto a la entrada
+  step(dt: number, move: Point, interact = false): void {
+    if (this.status === 'open') {
+      this.time += dt;
+      this.movePlayer(dt, move);
+      if (interact && this.atShop) this.status = 'cleared';
+      return;
+    }
     if (this.status !== 'playing') return;
     this.time += dt;
     this.movePlayer(dt, move);
@@ -228,8 +259,11 @@ export class World {
     this.removeDead();
     this.collectMaterials(dt);
 
-    if (this.status === 'playing' && this.time >= this.deps.wave.duration) {
-      this.status = 'cleared';
+    // Al acabar el tiempo no aparece nadie más (los avisos pendientes se cancelan), pero los vivos siguen ahí: la oleada
+    // queda limpia cuando no queda ninguno
+    if (this.status === 'playing' && this.time >= this.deps.wave.duration) this.telegraphs.length = 0;
+    if (this.status === 'playing' && this.time >= this.deps.wave.duration && this.enemies.length === 0) {
+      this.status = this.deps.final ? 'cleared' : 'open';
       // Lo que quedó en el suelo se recoge solo al acabar la oleada
       const left = this.materials.reduce((sum, m) => sum + m.value, 0);
       if (left > 0) this.deps.onMaterials(left);
@@ -305,7 +339,7 @@ export class World {
   private spawn(dt: number): void {
     const { wave, registry } = this.deps;
     wave.groups.forEach((g, i) => {
-      while (this.time >= this.nextSpawn[i]! && this.nextSpawn[i]! < g.to) {
+      while (this.time >= this.nextSpawn[i]! && this.nextSpawn[i]! < g.to && this.nextSpawn[i]! < wave.duration) {
         const enemy = registry.enemy(g.enemy);
         const center = this.spawnPoint(g.pattern);
         for (let n = 0; n < g.count; n++) {

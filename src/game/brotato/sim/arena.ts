@@ -2,6 +2,7 @@
 // decide el mapa (src/worldgen) y se construye en vóxeles (src/world/build.ts). Sustituye al Obstacles del Brotato
 // (sim/map.ts): la colisión es la del runtime (src/game/body.ts) sobre WorldQuery, y todo va en ejes del modelo
 // (x este, y norte, z arriba; 1 vóxel = 1 px del juego). Puro y determinista.
+import { SHOP_PROP_THEMES, stampShopProp } from './shopprop';
 import type { Point } from '../api';
 import type { LevelModule } from '../registry/schemas';
 import { generateLayout, NORTH, TILE, WALL, type Layout } from '@voxpix/worldgen';
@@ -51,6 +52,12 @@ export class Arena {
   // Interior jugable, en ejes del modelo: dentro de las paredes (la del norte es tapa + fachada)
   readonly inner: { x0: number; y0: number; x1: number; y1: number };
   readonly start: Point;
+  // La entrada a la tienda: el objeto del mapa que brilla con la oleada limpia (la fuente en el medieval; un adorno en
+  // los otros temas, en el mismo tipo de sitio). radius: lo que ocupa; reach: a qué distancia del centro se entra
+  readonly shop: { x: number; y: number; radius: number; reach: number };
+  // La caja del objeto de la tienda en celdas del mundo [x0, y0, z0, x1, y1, z1], desde z = 1 (por encima del suelo):
+  // la que rodea el resalte de VoxPix cuando la oleada queda limpia
+  readonly shopBox: [number, number, number, number, number, number];
   readonly floorZ: number;               // altura del suelo (la cara de arriba de las losetas)
   private free: Point[] = [];
   // Las plantas que puso la vegetación, por tipo (vacío si el tema no la lleva)
@@ -67,11 +74,15 @@ export class Arena {
     // vidrio (ventanas y pantallas, que dejan pasar la luz)
     const veg = opts.foliage !== false && FOLIAGE_THEMES.has(level.theme);
     const glass = opts.glass !== false && GLASS_THEMES.has(level.theme);
+    // Los temas sin fuente llevan su adorno de la tienda (la impresora, el servidor) en el sitio en que iría la fuente
+    const prop = SHOP_PROP_THEMES.has(level.theme) ? shopSpot(this.layout) : null;
+    let propBox: [number, number, number, number, number, number] | null = null;
     const decorate = (w: World) => {
+      if (prop) propBox = stampShopProp(w, level.theme, prop);
       if (veg) this.plants = addFoliage(w, seed, start, { bushes: opts.bushes });
       if (glass) this.glassRamps = addGlass(w);
     };
-    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme, veg || glass ? { decorate } : {}));
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme, veg || glass || prop ? { decorate } : {}));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte
@@ -79,6 +90,13 @@ export class Arena {
     this.inner = { x0: TILE, y0: TILE, x1: (cols - 1) * TILE, y1: D - NORTH * TILE };
     this.start = { x: this.layout.spawn.x, y: my(this.layout.spawn.y) };
     this.floorZ = restZ(this.state, this.start.x, this.start.y, 1);
+    const f = this.world.fountain;
+    const spot = f ? { x: f.x, y: f.y, radius: f.radius + 2 } : { ...(prop ?? shopSpot(this.layout)), radius: SHOP_PROP_RADIUS };
+    this.shop = { ...spot, reach: spot.radius + SHOP_REACH };
+    // La caja del resalte (NARUTO, VoxPix a612e67): la de la fuente con 3 de margen hasta encima del cuenco, o la del adorno
+    const r = f ? f.radius + 3 : 0;
+    this.shopBox = f ? [Math.floor(f.x - r), Math.floor(f.y - r), 1, Math.ceil(f.x + r), Math.ceil(f.y + r), f.bowl.z + 3]
+      : propBox ?? [Math.floor(spot.x - SHOP_PROP_RADIUS), Math.floor(spot.y - SHOP_PROP_RADIUS), 1, Math.ceil(spot.x + SHOP_PROP_RADIUS), Math.ceil(spot.y + SHOP_PROP_RADIUS), 24];
     // Donde puede aparecer alguien: tierra sin nada sólido en ella ni en sus 8 vecinas (el mismo criterio del
     // Brotato, sobre el mismo layout, para que las oleadas salgan en los mismos sitios)
     const solid = (tx: number, ty: number) => tx < 0 || ty < 0 || tx >= cols || ty >= rows
@@ -147,4 +165,32 @@ export class Arena {
     p.x = Math.min(Math.max(p.x, x0 + margin), x1 - margin);
     p.y = Math.min(Math.max(p.y, y0 + margin), y1 - margin);
   }
+}
+
+// A cuánto del borde del objeto de la tienda se puede entrar, y lo que ocupa el adorno de los temas sin fuente
+const SHOP_REACH = 12;
+const SHOP_PROP_RADIUS = 10;
+
+// Dónde va la entrada a la tienda en un tema sin fuente: el mismo criterio con el que VoxPix pone la fuente
+// (buildWorld): el centro de 3×3 losetas sin pared, columna ni agua más cercano a la salida, a 70 o más de ella para que
+// no tape el sitio de pelear. En ejes del modelo
+export function shopSpot(layout: Layout): Point {
+  const { cols, rows } = layout;
+  const free = (cx: number, cy: number) => {
+    if (cx < 1 || cy < 1 || cx >= cols - 1 || cy >= rows - 1) return false;
+    const i = cy * cols + cx;
+    return layout.wall[i] === WALL.none && !layout.pillar[i] && layout.water[cy]?.[cx] !== '~';
+  };
+  let best: Point | null = null, bd = Infinity;
+  for (let cy = NORTH + 1; cy < rows - 2; cy++) for (let cx = 2; cx < cols - 2; cx++) {
+    let ok = true;
+    for (let dy = -1; dy <= 1 && ok; dy++) for (let dx = -1; dx <= 1 && ok; dx++) ok = free(cx + dx, cy + dy);
+    if (!ok) continue;
+    const fx = cx * TILE + 8, fy = cy * TILE + 8;
+    const d = Math.hypot(fx - layout.spawn.x, fy - layout.spawn.y);
+    if (d < 70 || d >= bd) continue;
+    bd = d; best = { x: fx, y: fy };
+  }
+  const p = best ?? { x: layout.spawn.x, y: layout.spawn.y };
+  return { x: p.x + 0.5, y: rows * TILE - 1 - p.y + 0.5 };
 }

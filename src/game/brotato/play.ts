@@ -27,12 +27,20 @@ export interface PlayerLooks {
   carry?: CarryConfig;
 }
 
-// wave: se juega. cleared: oleada superada, un respiro antes de la tienda. shop: la tienda (el mundo sigue debajo).
-// dead / victory: la partida acabó.
-export type Phase = 'wave' | 'cleared' | 'shop' | 'dead' | 'victory';
+// wave: se juega, y también con la oleada limpia (current.status 'open'): MAIA anda hasta la entrada a la tienda y
+// pulsa F. shop: la tienda (el mundo sigue debajo). dead / victory: la partida acabó.
+export type Phase = 'wave' | 'shop' | 'dead' | 'victory';
 
-// El respiro entre la oleada superada y la tienda, en ticks (1,2 s, como el Brotato en Phaser)
-export const CLEARED_TICKS = 72;
+// La entrada de un tick: la de la escena más la tecla de entrar (F, o el botón en el Flip)
+export type GameInput = TickInput & { interact?: boolean };
+
+// Pone a MAIA junto a la entrada de la tienda, por el lado por el que llega (para ?ir= y las pruebas, nunca en una
+// partida normal)
+export function placeAtShop(p: { x: number; y: number }, shop: { x: number; y: number; reach: number }): void {
+  const dx = p.x - shop.x, dy = p.y - shop.y, len = Math.hypot(dx, dy) || 1;
+  p.x = shop.x + (dx / len) * (shop.reach - 1);
+  p.y = shop.y + (dy / len) * (shop.reach - 1);
+}
 
 const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
@@ -136,15 +144,18 @@ export class BrotatoGame {
     return this.wave;
   }
 
-  step(input: TickInput): void {
+  step(input: GameInput): void {
     if (this.phase === 'wave') {
       const len = Math.hypot(input.dx, input.dy);
       this.moving = len > 0;
-      if (this.moving) {
-        this.walked += TICK;
-        this.facing = ((Math.round(Math.atan2(input.dx, -input.dy) / (Math.PI / 4)) % 8) + 8) % 8;
-      }
-      this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 });
+      if (this.moving) this.walked += TICK;
+      this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 }, input.interact ?? false);
+      // MAIA mira a lo que disparan sus armas (el más cercano al alcance de la de más alcance); sin nadie a tiro, hacia
+      // donde anda (Andrés, 2026-10-25). Solo aspecto: no entra en la simulación
+      const target = this.wave.status === 'playing' ? this.wave.aimTarget : null;
+      const p = this.wave.player;
+      const look = target ? { dx: target.x - p.x, dy: target.y - p.y } : this.moving ? input : null;
+      if (look) this.facing = ((Math.round(Math.atan2(look.dx, -look.dy) / (Math.PI / 4)) % 8) + 8) % 8;
       if (this.test.immortal) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead') this.wave.status = 'playing'; }
       this.collectFx();
       this.phaseTick++;
@@ -152,17 +163,14 @@ export class BrotatoGame {
         this.setPhase('dead');
         this.run.lose();
       } else if (this.wave.status === 'cleared') {
-        // Como el Brotato: la oleada se cierra en el acto (y la última es la victoria)
-        this.setPhase(this.run.finishWave() === 'victory' ? 'victory' : 'cleared');
+        // MAIA entró en la tienda (o era la última oleada: la victoria)
+        if (this.run.finishWave() === 'victory') this.setPhase('victory');
+        else { this.run.shop.open(); this.setPhase('shop'); }
       }
       this.sync();
     } else {
       this.moving = false;
       this.phaseTick++;
-      if (this.phase === 'cleared' && this.phaseTick >= CLEARED_TICKS) {
-        this.run.shop.open();
-        this.setPhase('shop');
-      }
     }
     // El mundo sigue (agua, gotas, parpadeo) aunque la oleada esté parada
     this.state.step();

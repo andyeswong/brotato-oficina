@@ -1,25 +1,35 @@
 // El HUD de la oleada (rediseño 2026-10-25, ver theme.ts). Arriba a la izquierda, un panel con el corazón y la barra
 // de vida (la cuenta dentro, como el Brotato) y debajo los materiales y las bajas con su icono; arriba en el centro, la
 // oleada y el tiempo grande; arriba a la derecha, las armas en sus casillas (en pantallas estrechas, bajo la vida).
+// Al acabar el tiempo, «quedan N» hasta matar al último; con la oleada limpia, el aviso de ir a la entrada de la tienda
+// (además de su brillo en el mapa: en el Flip un objeto pequeño pasa desapercibido) y, junto a ella, el botón de entrar.
 // hudText() es la misma información en una línea de texto (para lectores de pantalla y verify).
+import type { ThemeId } from '../registry/schemas';
 import type { BrotatoGame } from '../play';
 import { FONT_SIZE, drawText, textWidth } from './font';
-import type { Painter } from './paint';
-import { ACCENTS, ICON, UI, bar, icon, panel, shadowText } from './theme';
+import type { Painter, Zone } from './paint';
+import { ACCENTS, ICON, UI, bar, button, icon, panel, shadowText } from './theme';
+
+export type HudAction = { type: 'enter' };
+
+// Adónde ir para entrar en la tienda en cada tema (el objeto del mapa que brilla)
+export const SHOP_PROPS: Record<ThemeId, string> = { medieval: 'a la fuente', oficina: 'a la impresora', cyberpunk: 'al servidor' };
 
 export function hudText(game: BrotatoGame): string {
   const w = game.current, run = game.run;
   if (game.phase === 'shop') return `Tienda · oleada ${run.waveIndex} superada · materiales ${run.materials}`;
-  const waveN = game.phase === 'cleared' ? run.waveIndex : run.waveNumber;   // cerrada la oleada, waveIndex ya subió
-  return `Oleada ${waveN}/${run.totalWaves} · ${Math.ceil(w.timeLeft)} s · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}`;
+  const state = w.status === 'open' ? `ronda superada: ve ${SHOP_PROPS[game.theme]}${w.atShop ? ' y pulsa F' : ''}`
+    : w.overtime ? `quedan ${w.enemies.length}` : `${Math.ceil(w.timeLeft)} s`;
+  return `Oleada ${run.waveNumber}/${run.totalWaves} · ${state} · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}`;
 }
 
 const SLOT_W = 18, SLOT_H = 12;   // casilla de un arma en el HUD
 
-export function drawHud(p: Painter, game: BrotatoGame): void {
+export function drawHud(p: Painter, game: BrotatoGame): Zone<HudAction>[] {
+  const zones: Zone<HudAction>[] = [];
   const w = game.current, run = game.run, accent = ACCENTS[game.theme];
   const W = p.width, pad = 3;
-  const waveN = game.phase === 'cleared' ? run.waveIndex : run.waveNumber;
+  const waveN = run.waveNumber;
   const narrow = W < 300;
 
   // Vida, materiales y bajas
@@ -42,7 +52,8 @@ export function drawHud(p: Painter, game: BrotatoGame): void {
   const centered = cx - Math.ceil(textWidth(waveLabel, 1) / 2) >= pad + pw + 4;
   const tx = centered ? cx : W - pad - 1, align: 'center' | 'right' = centered ? 'center' : 'right';
   shadowText(p, tx, pad + 1, waveLabel, accent, { align });
-  shadowText(p, tx, pad + 1 + FONT_SIZE, String(Math.max(0, Math.ceil(w.timeLeft))), UI.text, { scale: 2, align });
+  if (w.overtime) shadowText(p, tx, pad + 1 + FONT_SIZE + 2, `quedan ${w.enemies.length}`, UI.bad, { align });
+  else if (w.status !== 'open') shadowText(p, tx, pad + 1 + FONT_SIZE, String(Math.max(0, Math.ceil(w.timeLeft))), UI.text, { scale: 2, align });
 
   // Armas en sus casillas: a la derecha, o bajo la vida si no caben
   const n = run.weapons.length;
@@ -54,17 +65,19 @@ export function drawHud(p: Painter, game: BrotatoGame): void {
     p.icon({ kind: 'weapon', id: weapon.id }, x + 1, sy + 1, SLOT_W - 2, SLOT_H - 2);
   });
 
-  if (game.phase === 'cleared') {
-    const label = `oleada ${waveN} superada`;
-    const bw = textWidth(label, 2) + 20, bh = FONT_SIZE * 2 + 10;
-    const bx = Math.floor((W - bw) / 2), by = Math.floor(p.height * 0.38);
-    if (bw <= W - 2 * pad) {
-      panel(p, bx, by, bw, bh, { accent });
-      drawText(p, cx, by + 6, label, UI.gold, { scale: 2, align: 'center' });
-    } else {
-      const sw = textWidth(label, 1) + 16;
-      panel(p, Math.floor((W - sw) / 2), by, sw, FONT_SIZE + 8, { accent });
-      drawText(p, cx, by + 4, label, UI.gold, { align: 'center' });
+  // Oleada limpia: el aviso y, junto a la entrada, el botón (F con teclado; con el dedo en el Flip)
+  if (w.status === 'open') {
+    const lines = ['ronda superada', `ve ${SHOP_PROPS[game.theme]}`];
+    const bw = Math.min(W - 2 * pad, Math.max(...lines.map((l) => textWidth(l, 1))) + 16), bh = FONT_SIZE * 2 + 8;
+    // abajo: arriba o en medio taparía el objeto, que sale cerca de la salida, o a MAIA
+    const bx = Math.floor((W - bw) / 2), by = Math.floor(p.height * 0.8) - bh;
+    panel(p, bx, by, bw, bh, { accent });
+    drawText(p, cx, by + 4, lines[0]!, UI.gold, { align: 'center' });
+    drawText(p, cx, by + 4 + FONT_SIZE, lines[1]!, UI.text, { align: 'center' });
+    if (w.atShop) {
+      const label = 'entrar · F', bw2 = textWidth(label, 1) + 16, bh2 = FONT_SIZE + 9;
+      button(p, zones, Math.floor((W - bw2) / 2), p.height - pad - bh2 - 4, label, { type: 'enter' }, { accent, primary: true, w: bw2, h: bh2 });
     }
   }
+  return zones;
 }

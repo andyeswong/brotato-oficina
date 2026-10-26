@@ -23,7 +23,7 @@ describe('armas', () => {
     const world = run.startWave();
     immortal(world);
     for (let t = 0; t < 25 && world.status === 'playing'; t += 1 / 60) world.step(1 / 60, STILL);
-    expect(world.status).toBe('cleared');
+    expect(world.status).toBe('open');
     expect(run.kills).toBeGreaterThan(0);
     expect(run.materials).toBeGreaterThanOrEqual(run.kills); // cada perseguidor suelta 1
   });
@@ -44,7 +44,7 @@ describe('armas', () => {
     world.dropMaterials({ x: 10, y: 10 }, 5); // lejos, fuera del radio de recolección
     world.time = world.duration - 1 / 60;
     world.step(1 / 60, STILL);
-    expect(world.status).toBe('cleared');
+    expect(world.status).toBe('open');
     expect(run.materials).toBeGreaterThanOrEqual(5);
   });
 

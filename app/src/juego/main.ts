@@ -23,13 +23,15 @@ import { discoverContent } from '../../../src/game/brotato/registry/discover';
 import { validateContent } from '../../../src/game/brotato/registry/validate';
 import type { LevelModule, ThemeId } from '../../../src/game/brotato/registry/schemas';
 import { pickLevel } from '../../../src/game/brotato/sim/arena';
-import { BrotatoGame, type Models } from '../../../src/game/brotato/play';
+import { BrotatoGame, placeAtShop, type GameInput, type Models } from '../../../src/game/brotato/play';
 import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
 import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from '../../../src/game/brotato/ui/shop';
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
-import { drawHud, hudText } from '../../../src/game/brotato/ui/hud';
+import { ACCENTS } from '../../../src/game/brotato/ui/theme';
+import type { Highlight } from '@voxpix/world/frame2d';
+import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
 import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
@@ -228,7 +230,8 @@ let budget = new FrameBudget(3);
 let selected = 0;
 let shopMessage: ShopMessage | null = null;
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
-let zones: Zone<ShopAction | SelectAction>[] = [];
+let zones: Zone<ShopAction | SelectAction | HudAction>[] = [];
+let enterQueued = false;        // F pulsada (o el botón de entrar tocado) desde el último tick: se gasta en el siguiente
 const effects = new Effects();
 // El destello de un golpe: el tinte plano de la entidad (NARUTO), solo aspecto, con el reloj de la vista
 const flashes = new Flashes<EntityId>((id, c) => game?.state.entities.setTint(id, c), (id) => !!game?.state.entities.get(id));
@@ -348,9 +351,13 @@ function skipTo(target: string): void {
   const g = game!;
   for (let t = 0; t < 60 * 60 * 30; t++) {
     if (target === 'tienda' && g.phase === 'shop') return;
+    if (target === 'limpia' && g.phase === 'wave' && g.current.status === 'open') return;
     if (g.phase === 'dead' || g.phase === 'victory') return;
     if (g.phase === 'shop') g.leaveShop();
-    g.step({ dx: 0, dy: 0, stomp: false });
+    // Con la oleada limpia, MAIA salta junto a la entrada de la tienda y entra (solo para ?ir=, que es para medir)
+    const open = g.current.status === 'open';
+    if (open) placeAtShop(g.current.player, g.run.arena.shop);
+    g.step({ dx: 0, dy: 0, stomp: false, interact: open });
   }
 }
 
@@ -364,7 +371,7 @@ function toSelect(): void {
   screen = 'select';
 }
 
-function input(): TickInput {
+function input(): GameInput {
   let dx = 0, dy = 0;
   if (keys.has('a') || keys.has('arrowleft')) dx--;
   if (keys.has('d') || keys.has('arrowright')) dx++;
@@ -372,7 +379,9 @@ function input(): TickInput {
   if (keys.has('s') || keys.has('arrowdown')) dy--;
   // La entrada es de la pantalla ("arriba" = lejos de la cámara); la partida la quiere en ejes del mundo
   if (cur) [dx, dy] = inputToWorld(cur.view.camera, dx, dy);
-  return { dx, dy, stomp: false };
+  const interact = enterQueued || keys.has('f');
+  enterQueued = false;
+  return { dx, dy, stomp: false, interact };
 }
 
 function frame(time: number): void {
@@ -409,7 +418,17 @@ function paintFx(vx: number, vy: number): void {
 
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
 function viewOptions(vx: number, vy: number, time: number) {
-  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: THEMES[game!.theme].ambient, outline: outline.id, outlineColor: outline.color };
+  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: THEMES[game!.theme].ambient, outline: outline.id, outlineColor: outline.color, highlight: shopHighlight(time) };
+}
+
+// Con la oleada limpia, la entrada a la tienda brilla con el acento del mundo y late (resalte de VoxPix, a612e67):
+// entre el acento y su 55 %, un ciclo cada 1,2 s. En la caja del objeto pasada a los ejes del giro actual
+function shopHighlight(time: number): Highlight | null {
+  const g = game;
+  if (!g || !cur || g.phase !== 'wave' || g.current.status !== 'open') return null;
+  const hex = ACCENTS[g.theme], k = 0.775 + 0.225 * Math.cos((time * 2 * Math.PI) / 1.2);
+  const color = [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k)) as [number, number, number];
+  return { box: cur.view.viewBox(g.run.arena.shopBox), color, width: 2 };
 }
 
 // La pantalla que toca ahora y su firma
@@ -436,7 +455,7 @@ function drawUi(): void {
   if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name);
   else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat');
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage);
-  else if (game) drawHud(painter, game);
+  else if (game) zones = drawHud(painter, game);
   // El texto de la pantalla, para lectores de pantalla (y verify)
   hud.textContent = screen === 'select' ? 'Elige agente' : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
 }
@@ -474,8 +493,10 @@ function loop(now: number): void {
 // En navegadores sin ventana (capturas) requestAnimationFrame no avanza: ?timer=1 usa temporizadores
 const next = q.has('timer') ? (f: (t: number) => void) => setTimeout(() => f(performance.now()), 16) : requestAnimationFrame;
 
-function act(action: ShopAction | SelectAction): void {
-  if (action.type === 'start') {
+function act(action: ShopAction | SelectAction | HudAction): void {
+  if (action.type === 'enter') {
+    enterQueued = true;
+  } else if (action.type === 'start') {
     if (registry.characters()[action.index]) newRun();
   } else if (action.type === 'move') {
     const n = registry.characters().length;
@@ -498,6 +519,7 @@ addEventListener('keydown', (e) => {
   else if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); }
   else if (game?.phase === 'shop') { const a = shopKey(e, game.run); if (a) { e.preventDefault(); act(a); } }
   else if (game && (k === 'q' || k === 'e')) turn(k === 'e' ? 1 : -1);
+  else if (game && k === 'f') enterQueued = true;
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 ui.addEventListener('pointerdown', (e) => {

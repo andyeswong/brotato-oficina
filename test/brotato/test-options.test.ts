@@ -31,12 +31,14 @@ describe('opciones para medir', () => {
   it('immortal: MAIA aguanta quieta la oleada 10 entera y se juntan cientos de enemigos', { timeout: 120_000 }, () => {
     const g = new BrotatoGame(registry, 4, models, player, registry.level('oficina'), { startWave: 10, immortal: true });
     let most = 0;
-    while (g.phase === 'wave') { g.step(still); most = Math.max(most, g.current.enemies.length); }
-    expect(g.phase).toBe('victory');
+    // Hasta que acaba el tiempo (quieta no caza a los que quedan en la prórroga: eso ya es jugar)
+    while (g.phase === 'wave' && !g.current.overtime && g.current.status === 'playing') { g.step(still); most = Math.max(most, g.current.enemies.length); }
+    expect(g.phase).toBe('wave');
+    expect(g.current.time).toBeGreaterThanOrEqual(g.current.duration);
     expect(most).toBeGreaterThanOrEqual(100);
     // Sin immortal, quieta en la 10, cae
     const h = new BrotatoGame(registry, 4, models, player, registry.level('oficina'), { startWave: 10 });
-    while (h.phase === 'wave') h.step(still);
+    for (let t = 0; h.phase === 'wave' && t < 60 * 120; t++) h.step(still);
     expect(h.phase).toBe('dead');
   });
 });

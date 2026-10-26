@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Model, material, type VoxelSource } from '@voxpix/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
-import { BrotatoGame, CLEARED_TICKS, type Models } from '../../src/game/brotato/play';
+import { BrotatoGame, placeAtShop, type Models } from '../../src/game/brotato/play';
 import { Run } from '../../src/game/brotato/sim/Run';
 import { TICK } from '@voxpix/world/state';
 import { runDigest } from '../../src/game/brotato/sim/digest';
@@ -59,13 +59,19 @@ describe('la partida en el mundo', () => {
     for (const m of seenModels) expect(listed.has(m), 'un modelo visto que no está en preloadModels()').toBe(true);
   });
 
-  it('la oleada superada: un respiro, la tienda (el mundo sigue, la oleada no) y salir empieza la siguiente', { timeout: 60_000 }, () => {
+  it('la oleada limpia: F junto a la entrada abre la tienda (el mundo sigue, la oleada no) y salir empieza la siguiente', { timeout: 60_000 }, () => {
     const g = new BrotatoGame(registry, 3, models, player, registry.level('cyberpunk'));
-    for (let t = 0; t < 60 * 30 && g.phase === 'wave'; t++) g.step(input(t));
-    expect(g.phase).toBe('cleared');
-    expect(g.run.waveIndex).toBe(1);                    // cerrada en el acto, como el Brotato
-    for (let t = 0; t < CLEARED_TICKS; t++) { expect(g.phase).toBe('cleared'); g.step(input(0)); }
+    for (let t = 0; t < 60 * 60 && g.current.status === 'playing'; t++) {
+      g.step(input(t));
+      if (g.current.overtime) for (const e of g.current.enemies) e.hp = 0, e.alive = false;   // la prórroga no es lo que se prueba
+    }
+    expect(g.current.status).toBe('open');
+    expect(g.phase).toBe('wave');
+    expect(g.run.waveIndex).toBe(0);                    // abierta, no cerrada: se cierra al entrar
+    placeAtShop(g.current.player, g.run.arena.shop);
+    g.step({ ...input(0), dx: 0, dy: 0, interact: true });
     expect(g.phase).toBe('shop');
+    expect(g.run.waveIndex).toBe(1);
     expect(g.run.shop.offers.length).toBe(registry.level('cyberpunk').shop.slots);
     const tick = g.tick, time = g.current.time;
     g.step(input(0));
@@ -86,14 +92,18 @@ describe('la partida en el mundo', () => {
     let t = 0, shops = 0;
     for (let round = 0; round < 3 && g.phase !== 'dead' && g.phase !== 'victory'; round++) {
       // Una oleada en los dos, con la misma entrada
-      while (g.phase === 'wave') {
-        const i = input(t++);
-        g.step(i);
+      for (let guard = 0; g.phase === 'wave' && guard < 60 * 120; guard++) {
+        // En la prórroga, los que quedan caen a la vez en los dos (la prórroga no es lo que se prueba)
+        if (g.current.overtime) for (const w of [g.current, wave]) for (const e of w.enemies) e.hp = 0, e.alive = false;
+        // Con la oleada limpia, los dos entran a la tienda igual
+        const open = g.current.status === 'open';
+        if (open) { placeAtShop(g.current.player, g.run.arena.shop); placeAtShop(wave.player, run.arena.shop); }
+        const i = open ? { dx: 0, dy: 0, stomp: false } : input(t++);
+        g.step({ ...i, interact: open });
         const len = Math.hypot(i.dx, i.dy);
-        wave.step(TICK, len > 0 ? { x: i.dx / len, y: i.dy / len } : { x: 0, y: 0 });
+        wave.step(TICK, len > 0 ? { x: i.dx / len, y: i.dy / len } : { x: 0, y: 0 }, open);
       }
-      if (g.phase !== 'cleared') break;
-      while (g.phase === 'cleared') g.step(input(0));
+      if (g.phase !== 'shop') break;
       run.finishWave();
       run.shop.open();
       // Las mismas compras: todo lo que alcance, de izquierda a derecha, y una tirada si sobra
