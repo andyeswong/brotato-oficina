@@ -7,6 +7,7 @@ import type { WorldState } from '@voxpix/world/state';
 
 const PAN_SPEED = 90;          // vóxeles por segundo al mover la vista
 const REDRAW_S = 0.15;         // sin cambios, se repinta a pocos Hz (el agua y las luces se mueven)
+const LABEL_S = 2;             // la etiqueta se ve al entrar y luego se quita (las capturas salen limpias)
 
 export interface VoxelLook {
   ambient: readonly [number, number, number];
@@ -25,6 +26,7 @@ export class VoxelInspector {
   private dirty = true;
   private lastDraw = -Infinity;
   private drag: [number, number] | null = null;
+  private since = 0;
 
   constructor() {
     const c = this.canvas;
@@ -53,7 +55,7 @@ export class VoxelInspector {
   toggle(at: { x: number; y: number }): void {
     this.on = !this.on;
     this.canvas.style.display = this.on ? '' : 'none';
-    if (this.on) this.lookAt(at);
+    if (this.on) { this.since = performance.now() / 1000; this.lookAt(at); }
   }
 
   lookAt(at: { x: number; y: number }): void {
@@ -85,9 +87,11 @@ export class VoxelInspector {
     const center: [number, number] = [Math.round(this.center[0]), Math.round(this.center[1])];
     const out = frame3D(state, { width, height, center, radius, yaw: this.yaw, elevation: this.elevation, zoom: this.zoom, time, lights: true, ...look });
     this.g.putImageData(new ImageData(out as Uint8ClampedArray<ArrayBuffer>, width, height), 0, 0);
-    this.g.font = '8px monospace';
-    this.g.fillStyle = '#ffd08a';
-    this.g.fillText(`vóxel · pausa · ${this.yaw}° ${this.elevation}° x${this.zoom}`, 3, 9);
+    if (time - this.since < LABEL_S) {
+      this.g.font = '8px monospace';
+      this.g.fillStyle = '#ffd08a';
+      this.g.fillText(`vóxel · pausa · ${this.yaw}° ${this.elevation}° x${this.zoom}`, 3, 9);
+    }
     this.dirty = false;
     this.lastDraw = time;
   }
