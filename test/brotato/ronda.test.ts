@@ -7,7 +7,7 @@ import { Run } from '../../src/game/brotato/sim/Run';
 import { placeAtShop } from '../../src/game/brotato/play';
 import { runDigest } from '../../src/game/brotato/sim/digest';
 import { OVERTIME_MAX } from '../../src/game/brotato/sim/World';
-import { kite, playRun } from './pilot';
+import { kite, playRunAsync } from './pilot';
 
 vi.setConfig({ testTimeout: 120_000 });
 const { registry } = validateContent(discoverContent());
@@ -131,9 +131,11 @@ describe('el fin de la oleada', () => {
     }
   });
 
-  it('el piloto va a la entrada y entra: la partida entera es determinista', () => {
-    const play = () => { const r = new Run(registry, maia, registry.level('medieval'), 9); const out = playRun(r); return { out, d: runDigest(r, r.world!, false) }; };
-    const a = play(), b = play();
+  // Asíncrona (cede entre oleadas): dos partidas enteras seguidas sin soltar el hilo tumbaban al trabajador de vitest
+  // en oficina (Timeout calling onTaskUpdate) y el despliegue se paraba con todo en verde
+  it('el piloto va a la entrada y entra: la partida entera es determinista', async () => {
+    const play = async () => { const r = new Run(registry, maia, registry.level('medieval'), 9); const out = await playRunAsync(r); return { out, d: runDigest(r, r.world!, false) }; };
+    const a = await play(), b = await play();
     expect(a.out.reached).toBeGreaterThan(1);   // pasó al menos una tienda
     expect(a.out).toEqual(b.out);
     expect(a.d).toBe(b.d);
