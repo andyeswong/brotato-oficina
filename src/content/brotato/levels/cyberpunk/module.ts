@@ -1,6 +1,7 @@
 import { defineLevel } from '../../../../game/brotato/api';
 import { worldPalette, type WorldLook } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
+import { neonPillar } from '../../../../game/brotato/sim/decor';
 
 // Calle de ciudad de noche: ventanas, tuberías y letreros de neón rosa y cian (arte de NARUTO,
 // arte/escenarios/cyberpunk).
@@ -42,6 +43,11 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     wall: ['#181a2a', '#24283e', '#343a56', '#485072', '#606a8e'],
     cap: ['#20223a', '#2e3250', '#40466a', '#565e86', '#7078a0'],
     column: ['#22263a', '#3a4260', '#525c80', '#6e789c', '#8a94b8'],
-  }), ...SAMPLE_PIECES },
+    // Los charcos, de líquido tóxico verde que brilla solo (Andrés, 2026-10-26: "verde o morado")
+    water: { colors: ['#031406', '#08300f', '#125a1e', '#21903a', '#62d878'], emissive: true },
+    // Los neones brillan solos: las franjas de los pilares y los letreros de la fachada
+    neonPink: { colors: ['#5a1640', '#a02a78', '#e04cb4', '#ff8ad8', '#ffd0f0'], emissive: true },
+    neonCyan: { colors: ['#0e3a4a', '#1a7088', '#28b4d0', '#7fe3ff', '#d0f8ff'], emissive: true },
+  }), ...SAMPLE_PIECES, pillar: neonPillar },
   ambient: [0.42, 0.46, 0.66] as const,
 };

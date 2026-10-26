@@ -17,6 +17,7 @@ export function levelWorld(level: Pick<LevelModule, 'id'>): LevelWorld {
   return w;
 }
 import { FOLIAGE_THEMES, addFoliage } from './foliage';
+import { addCables, addCups, addToxicGlow } from './decor';
 import { GLASS_THEMES, addGlass } from './glass';
 import type { WorldState } from '@voxpix/world/state';
 import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runtime/body';
@@ -81,6 +82,8 @@ export class Arena {
   plants: Record<string, number> = {};
   // Cuántas rampas pasaron a vidrio (0 si el tema no lo lleva)
   glassRamps = 0;
+  // Lo que puso sim/decor.ts: vóxeles de cable, luces sobre el tóxico, tazas (para las pruebas)
+  decor: { cables?: number; glows?: number; cups?: number } = {};
 
   // foliage / glass: false quitan la vegetación o el vidrio (para las pruebas que comparan con y sin ellos)
   constructor(level: LevelModule, seed: number, opts: { foliage?: boolean; glass?: boolean; bushes?: boolean } = {}) {
@@ -99,8 +102,11 @@ export class Arena {
       if (prop) propBox = stampShopProp(w, level.theme, prop);
       if (veg) this.plants = addFoliage(w, seed, start, { bushes: opts.bushes });
       if (glass) this.glassRamps = addGlass(w);
+      // Lo de cada tema que no es columna (sim/decor.ts): cables y luz sobre el tóxico en el cyberpunk, tazas en la oficina
+      if (opts.foliage !== false && level.theme === 'cyberpunk') { this.decor.cables = addCables(w, mix(seed, 31)); this.decor.glows = addToxicGlow(w); }
+      if (opts.foliage !== false && level.theme === 'oficina') this.decor.cups = addCups(w, mix(seed, 32));
     };
-    ({ world: this.world, state: this.state } = buildWorldState(this.layout, levelWorld(level).look, veg || glass || prop ? { decorate } : {}));
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, levelWorld(level).look, { decorate }));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte

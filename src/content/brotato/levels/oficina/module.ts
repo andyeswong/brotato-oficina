@@ -1,6 +1,7 @@
 import { defineLevel } from '../../../../game/brotato/api';
 import { worldPalette, type WorldLook } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
+import { mamparaPillar } from '../../../../game/brotato/sim/decor';
 
 // Oficina de noche: losetas, escritorios con pantalla y apliques junto a las puertas (arte de NARUTO,
 // arte/escenarios/oficina).
@@ -51,6 +52,9 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     wall: ['#262a2e', '#3a4046', '#545c64', '#788088', '#98a0a8'],
     cap: ['#2c2a2a', '#403e3e', '#5c5a58', '#827e7a', '#a29e98'],
     column: ['#343234', '#525052', '#6e6c6c', '#8a8886', '#aaa8a4'],
-  }), ...SAMPLE_PIECES },
+    // Los charcos son café derramado (Andrés, 2026-10-26), opaco; y la tela de las mamparas, azul gris de oficina
+    water: ['#160a04', '#2a160a', '#43260f', '#603a1a', '#8a5a30'],
+    cloth: ['#1c2636', '#2a384e', '#3a4e68', '#506884', '#6a84a2'],
+  }), ...SAMPLE_PIECES, pillar: mamparaPillar },
   ambient: [0.7, 0.72, 0.8] as const,
 };
