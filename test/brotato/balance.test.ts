@@ -37,7 +37,8 @@ describe('balance de F1', () => {
   });
 
   // Cede entre semillas: el piloto que caza juega más oleadas, y de un tirón tumbaba al trabajador de vitest en oficina
-  it('moviéndose, aguanta más que quieta (en media)', async () => {
+  // (donde además tarda más de los 60 s de serie)
+  it('moviéndose, aguanta más que quieta (en media)', { timeout: 240_000 }, async () => {
     const avg = async (pilot: (w: World, r: Run) => Point) => {
       let sum = 0;
       for (const s of SEEDS) { sum += play(s, pilot); await new Promise((r) => setTimeout(r, 0)); }
