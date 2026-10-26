@@ -44,6 +44,12 @@ import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../..
 import type { EntityId } from '@voxpix/world/state';
 import maiaFile from 'voxpix/models/maia/maia.json';
 
+// El commit de la build (app/vite.config.ts): se ve en la portada y en body[data-version]
+declare const __COMMIT__: string;
+const versionEl = document.getElementById('version')!;
+versionEl.textContent = __COMMIT__;
+document.body.dataset.version = __COMMIT__;
+
 const TOPZ = 40;
 const ICON_INCLINE = 0.5;   // los iconos de la interfaz se ven siempre igual, sea cual sea la cámara
 // Lo que se ve, en píxeles del juego: lo decide la regla 216/384 (ui/layout.ts) según la pantalla, en fit()
@@ -520,6 +526,7 @@ function drawUi(): void {
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage, shopPending.swap);
   else if (game) zones = drawHud(painter, game, { touch });
   // El texto de la pantalla, para lectores de pantalla (y verify)
+  versionEl.style.display = screen === 'select' ? '' : 'none';
   hud.textContent = screen === 'select' ? `Brotato de la oficina · jugar · mejoras (${progress.fichas} fichas)` : screen === 'meta' ? `Mejoras · ${progress.fichas} fichas` : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
 }
 

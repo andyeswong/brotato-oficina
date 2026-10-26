@@ -15,6 +15,8 @@
     #hud { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     #lowdetail { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 6px 12px; display: none;
       background: #1a1420e6; color: #ffd08a; border: 1px solid #6a4a2a; border-radius: 4px; font-size: 13px; pointer-events: none; }
+    /* El commit de la build, abajo a la izquierda y solo en la portada */
+    #version { position: fixed; left: 6px; bottom: 4px; font: 11px monospace; color: #8a86a0; opacity: .7; pointer-events: none; z-index: 5; }
     #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(13,12,18,.82); font-size: 16px; }
   </style>
 </head>
@@ -24,6 +26,7 @@
   <canvas id="ui"></canvas>
   <div id="hud" role="status"></div>
   <div id="lowdetail"></div>
+  <div id="version"></div>
   <div id="loading">Construyendo el mundo en vóxeles…</div>
   <script type="module" src="./src/juego/main.ts"></script>
 </body>
