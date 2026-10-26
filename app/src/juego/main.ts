@@ -515,7 +515,7 @@ function drawUi(): void {
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage, shopPending.swap);
   else if (game) zones = drawHud(painter, game, { touch });
   // El texto de la pantalla, para lectores de pantalla (y verify)
-  hud.textContent = screen === 'select' ? 'Elige agente' : screen === 'meta' ? 'Mejoras' : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
+  hud.textContent = screen === 'select' ? `Brotato de la oficina · jugar · mejoras (${progress.fichas} fichas)` : screen === 'meta' ? `Mejoras · ${progress.fichas} fichas` : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
 }
 
 let last = performance.now();
