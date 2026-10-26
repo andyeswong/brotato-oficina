@@ -10,10 +10,10 @@ Cada `.json` de esta carpeta es un modelo de vóxeles de VoxPix que sale de su f
 Para regenerarlos o comprobarlos:
 
 ```sh
-npm run models                 # regenera todos los .json desde sus capas
-npm run models:check           # los importa aparte y comprueba que salen idénticos a los de aquí
+bun run models                 # regenera todos los .json desde sus capas
+bun run models:check           # los importa aparte y comprueba que salen idénticos a los de aquí
 node scripts/import-models.mjs items efectos   # solo esas carpetas
 ```
 
 Usa la CLI de VoxPix instalada (`node_modules/voxpix`, el commit fijado en `package.json`). Para probar con otro VoxPix,
-por ejemplo uno local con cambios sin publicar: `VOXPIX=/ruta/a/voxpix npm run models:check`.
+por ejemplo uno local con cambios sin publicar: `VOXPIX=/ruta/a/voxpix bun run models:check`.

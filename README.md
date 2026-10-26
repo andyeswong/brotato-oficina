@@ -9,11 +9,11 @@ La primera versión, en Phaser, está en la etiqueta `phaser-final`.
 ## Arrancar
 
 ```sh
-npm install
-npm test             # simulación, contenido, pantallas, efectos y rigs
-npm run typecheck
-npm run dev          # http://localhost:5191/juego.html
-npm run build        # app/dist
+bun install           # con bun, no npm (bun.lock)
+bun run test          # simulación, contenido, pantallas, efectos y rigs
+bun run typecheck
+bun run dev           # http://localhost:5191/juego.html
+bun run build         # app/dist
 ```
 
 Parámetros de `juego.html`:

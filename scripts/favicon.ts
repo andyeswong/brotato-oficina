@@ -1,6 +1,6 @@
 // El favicon del juego: la cabeza de MAIA con la cámara de los iconos de la interfaz (app/src/juego/main.ts, iconImage),
 // recortada en cuadrado y ampliada a múltiplos enteros (pixel art) hasta 64x64, sobre transparente.
-//   npx tsx --tsconfig tsconfig.json scripts/favicon.ts   ->  app/public/favicon.png
+//   bunx tsx --tsconfig tsconfig.json scripts/favicon.ts   ->  app/public/favicon.png
 import { readFileSync, writeFileSync } from 'node:fs';
 import { Model, render, type ModelFile } from '@voxpix/core';
 import { encodePNG } from '@voxpix/core/png';

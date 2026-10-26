@@ -151,7 +151,7 @@ export function playRun(run: Run, hooks: Hooks = {}): { reached: number; rows: s
 }
 
 // Lo mismo, soltando el hilo entre oleadas: una prueba que juega partidas enteras sin soltarlo deja al trabajador de
-// vitest sin responder (en oficina, "Timeout calling onTaskUpdate", y npm test falla aunque todo pase)
+// vitest sin responder (en oficina, "Timeout calling onTaskUpdate", y la suite falla aunque todo pase)
 export async function playRunAsync(run: Run, hooks: Hooks = {}): Promise<{ reached: number; rows: string[] }> {
   const rows: string[] = [];
   for (;;) {

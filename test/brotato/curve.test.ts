@@ -1,4 +1,4 @@
-// Informe de balance, no un test: CURVA=1 npx vitest run test/brotato/curve.test.ts (SEEDS=1,2 LEVEL=medieval; sin LEVEL,
+// Informe de balance, no un test: CURVA=1 bunx vitest run test/brotato/curve.test.ts (SEEDS=1,2 LEVEL=medieval; sin LEVEL,
 // la oficina; FILAS=1 enseña cada oleada; META=max, con el árbol de mejoras al máximo). Portado del Brotato (scripts/curve.test.ts): juega partidas completas con
 // el mismo piloto automático y la misma política de compra (test/brotato/pilot.ts) e imprime la oleada alcanzada.
 import { afterAll, describe, it } from 'vitest';

@@ -1,7 +1,7 @@
 // Los bichos del Brotato andando con su rig (src/anim/rigs-brotato.ts), con la cámara del juego, para revisar:
 //   bichos_anim_x6.png: por bicho, 4 vistas (frente, derecha, espalda, izquierda) x sus cuadros
 //   bichos_anim_x6.gif: los 3 bichos en las 4 vistas, animados (cada uno a su ritmo, en un ciclo común)
-//   npx tsx --tsconfig tsconfig.runtime.json scripts/rig-preview.ts <carpeta> [--contorno]
+//   bunx tsx --tsconfig tsconfig.runtime.json scripts/rig-preview.ts <carpeta> [--contorno]
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { Model, render, type ModelFile } from '@voxpix/core';
 import { encodePNG, onBackground } from '@voxpix/core/png';

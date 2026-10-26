@@ -3,7 +3,7 @@ import { formatErrors } from '../../src/game/brotato/registry/ContentError';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 
-// La red de seguridad: todo lo que hay en src/content/ valida. Corre en "npm run validate" y antes de cada build.
+// La red de seguridad: todo lo que hay en src/content/ valida. Corre en "bun run validate" y antes de cada build.
 describe('contenido', () => {
   it('todo el contenido valida', () => {
     const { errors } = validateContent(discoverContent());
