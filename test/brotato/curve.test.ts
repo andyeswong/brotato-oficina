@@ -23,6 +23,14 @@ const META = process.env.META === 'max' ? Object.fromEntries(UPGRADES.map((u) =>
 
 // Se salta en los tests normales; solo corre con CURVA=1. Una prueba por semilla (una sola de minutos bloqueaba al
 // trabajador de vitest) y el resumen al final, con el % de partidas en que el piloto acabó con cada arma u objeto.
+// ESCALA_VIDA / ESCALA_DANO: multiplican hpPerWave y damagePerWave de todos los enemigos (solo para buscar la
+// calibración: lo elegido se escribe en sus módulos)
+for (const e of registry.enemies()) {
+  const m = e as { hpPerWave: number; damagePerWave: number };
+  m.hpPerWave *= Number(process.env.ESCALA_VIDA ?? 1);
+  m.damagePerWave *= Number(process.env.ESCALA_DANO ?? 1);
+}
+
 describe.skipIf(!process.env.CURVA)('curva de balance', () => {
   const rows: string[] = [];
   const reached: number[] = [];
