@@ -1,10 +1,12 @@
 // La vegetación de la arena (decisión de Andrés, 2026-10-25): solo en el tema medieval. Hierba alta y flores sobre las
 // manchas de hierba del suelo, juncos en la orilla y nenúfares en el agua, con planFoliage de VoxPix (el agua de
-// partida la da worldWaterDepth, que funciona dentro de decorate, antes de que exista el WaterLayer). Todo se atraviesa (groundAt,
+// partida la da worldWaterDepth, que funciona dentro de decorate, antes de que exista el WaterLayer). Los nenúfares no
+// son vóxeles sino flotantes (world.floaters): los mueve el agua y los apartan los pisotones. VoxPix garantiza que no
+// bloquean, no gastan el azar del mundo y llevan ids propios (flota-N): la partida es la misma con y sin ellos. Todo se atraviesa (groundAt,
 // solidAt y raycast no la ven): es solo aspecto, así que la colisión, los disparos y la curva F1 no cambian.
 // Los arbustos de VoxPix (blocks) NO van aquí: bloquean el paso y los disparos, y cambiarían la partida (dónde aparecen
 // los enemigos, los caminos, el balance). Si se quieren, van aparte con su curva.
-import { planFoliage, FOLIAGE_RAMPS } from '@voxpix/core';
+import { planFoliage, lilyPadModels, FOLIAGE_RAMPS } from '@voxpix/core';
 import { worldWaterDepth, type World } from '@voxpix/world/build';
 import type { ThemeId } from '../registry/schemas';
 
@@ -30,5 +32,8 @@ export function addFoliage(world: World, seed: number): Record<string, number> {
   // Las plantas de cada tipo (para las pruebas)
   const plants: Record<string, number> = {};
   for (const [k, p] of Object.entries(plans)) { plants[k] = p.plants; for (const [x, y, z, v] of p.voxels) m.set(x, y, z, v); }
+  // Los nenúfares, como flotantes: su forma y un giro que sale de la posición (sin azar)
+  const pads = lilyPadModels(FOLIAGE_RAMPS['nenufar']!);
+  world.floaters = plans.lilies.floats.map(([x, y, k]) => ({ x, y, model: pads[k]!, yaw: ((Math.floor(x) * 7 + Math.floor(y) * 13) % 8) * 45 }));
   return plants;
 }

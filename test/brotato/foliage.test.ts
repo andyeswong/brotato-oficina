@@ -20,6 +20,15 @@ describe('la vegetación', () => {
     }
   });
 
+  it('los nenúfares flotan: son flotantes del agua con ids propios, y oficina y cyberpunk no tienen', { timeout: 60_000 }, () => {
+    for (const seed of [1, 3]) {
+      const st = new Run(registry, registry.character('maia'), registry.level('medieval'), seed).arena.state;
+      expect(st.floaters.list.length, `semilla ${seed}`).toBeGreaterThan(0);
+      expect(st.floaters.list.every((f) => String(f.id).startsWith('flota-') && st.entities.get(f.id))).toBe(true);
+    }
+    expect(new Run(registry, registry.character('maia'), registry.level('oficina'), 1).arena.state.floaters.list.length).toBe(0);
+  });
+
   it('se atraviesa: con y sin ella, la misma partida jugada por el piloto da la misma huella', { timeout: 120_000 }, () => {
     for (const seed of [2, 5]) {
       const runs = [true, false].map((foliage) => new Run(registry, registry.character('maia'), registry.level('medieval'), seed, { foliage }));

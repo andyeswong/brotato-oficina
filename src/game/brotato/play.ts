@@ -123,6 +123,8 @@ export class BrotatoGame {
     }
     add(this.models.model(`efectos/escupitajo-${this.theme}`), false);
     add(this.models.model(`efectos/material-${this.theme}`), false);
+    // Lo que flota en el agua (los nenúfares de la vegetación): no da sombra
+    for (const f of this.run.arena.world.floaters ?? []) add(f.model, false);
     return [...out].map(([model, casts]) => ({ model, casts }));
   }
 

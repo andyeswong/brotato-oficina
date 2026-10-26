@@ -45,10 +45,12 @@ describe('la partida en el mundo', () => {
       const w = g.current;
       seenEnemies = Math.max(seenEnemies, w.enemies.length);
       // MAIA + sus armas + enemigos + disparos + materiales (sin luz en la mano en esta prueba)
-      expect(g.state.entities.length).toBe(1 + w.weapons.length + w.enemies.length + w.projectiles.length + w.materials.length);
+      // Las entidades de la partida; los nenúfares de la vegetación son flotantes del agua (ids flota-N, de VoxPix) y no cuentan
+      const ours = [...g.state.entities].filter((e) => !String(e.id).startsWith('flota-'));
+      expect(ours.length).toBe(1 + w.weapons.length + w.enemies.length + w.projectiles.length + w.materials.length);
       // y todas en uno de los 8 rumbos: un giro continuo es un sprite nuevo en la caché del compositor por cuadro
-      for (const e of g.state.entities) yaws.add(e.yaw);
-      for (const e of g.state.entities) seenModels.add(e.model);
+      for (const e of ours) yaws.add(e.yaw);
+      for (const e of ours) seenModels.add(e.model);
     }
     expect(seenEnemies).toBeGreaterThan(0);
     expect([...yaws].every((y) => y % 45 === 0 && y >= 0 && y < 360), [...yaws].join(' ')).toBe(true);
