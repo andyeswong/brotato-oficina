@@ -469,7 +469,7 @@ function listen(): void {
 }
 
 // Lo que queda detrás del escenario (MAIA o un enemigo pegados a la pared sur, que mide 16 como todas desde VoxPix
-// 857c33d) se ve como una silueta en damero de este color (VoxPix 2d45335, Frame2DOptions.xray)
+// 857c33d) se ve como una silueta en damero de este color (VoxPix 2d45335 y 93db4f1, Frame2DOptions.xray)
 const XRAY = { color: [150, 220, 255] as const };
 
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
