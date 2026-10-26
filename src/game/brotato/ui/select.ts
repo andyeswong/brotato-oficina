@@ -7,7 +7,8 @@ import type { Registry } from '../registry/validate';
 import { describeModifier } from '../stats/describe';
 import { lookOf } from '../looks';
 import { CHAR_W, FONT_SIZE, drawText, wrapText } from './font';
-import { COLORS, stroke, type Painter, type Zone } from './paint';
+import { COLORS, type Painter, type Zone } from './paint';
+import { ACCENTS, UI, button, panel } from './theme';
 
 export type SelectAction = { type: 'start'; index: number } | { type: 'move'; delta: number } | { type: 'camera'; delta: number };
 
@@ -31,15 +32,18 @@ export function drawSelect(p: Painter, registry: Registry, selected: number, the
   const W = p.width, H = p.height;
   const line = FONT_SIZE * u;
   const pad = 6 * u;
-  p.fill(0, 0, W, H, COLORS.bg);
-  drawText(p, Math.floor(W / 2), pad, 'Elige agente', COLORS.text, { scale: u * 2, align: 'center' });
+  const accent = ACCENTS[theme];
+  p.fill(0, 0, W, H, UI.panel);
+  // Título con una línea de acento debajo (rediseño 2026-10-25, ver theme.ts)
+  const tw = drawText(p, Math.floor(W / 2), pad, 'Elige agente', UI.text, { scale: u * 2, align: 'center' });
+  p.fill(Math.floor((W - tw) / 2), pad + line * 2 - 2 * u, tw, u, accent);
   let y = pad + line * 2 + 2 * u;
-  drawText(p, Math.floor(W / 2), y, `mundo: ${THEME_NAMES[theme]}`, COLORS.dim, { scale: u, align: 'center' });
+  drawText(p, Math.floor(W / 2), y, `mundo: ${THEME_NAMES[theme]}`, UI.dim, { scale: u, align: 'center' });
   y += line + 2 * u;
   if (camera) {
     // La cámara, con flechas a los lados: tocar la mitad izquierda va a la anterior y la derecha a la siguiente
     const label = `« cámara: ${camera} »`;
-    const w = drawText(p, Math.floor(W / 2), y, label, COLORS.gold, { scale: u, align: 'center' });
+    const w = drawText(p, Math.floor(W / 2), y, label, accent, { scale: u, align: 'center' });
     const x0 = Math.floor(W / 2) - Math.floor(w / 2) - 4 * u, h = line + 2 * u, half = Math.ceil((w + 8 * u) / 2);
     zones.push({ x: x0, y: y - u, w: half, h, action: { type: 'camera', delta: -1 } });
     zones.push({ x: x0 + half, y: y - u, w: half, h, action: { type: 'camera', delta: 1 } });
@@ -52,7 +56,10 @@ export function drawSelect(p: Painter, registry: Registry, selected: number, the
   registry.characters().forEach((c, i) => {
     y += card(p, zones, registry, c, i, i === selected, theme, x, y, cardW, u) + 4 * u;
   });
-  drawText(p, Math.floor(W / 2), H - pad - line, camera ? 'toca o intro · c: cámara' : 'toca la ficha o pulsa intro', COLORS.dim, { scale: u, align: 'center' });
+  // Abajo, el botón de empezar (con el dedo, en el Flip, es más claro que tocar la ficha); las teclas al lado si caben
+  const btnH = line + 7 * u, btnW = 64 * u;
+  button(p, zones, Math.floor((W - btnW) / 2), H - pad - btnH, 'empezar', { type: 'start', index: selected } as SelectAction, { accent, primary: true, h: btnH, w: btnW });
+  if (camera && W >= 300) drawText(p, W - pad, H - pad - line, 'intro · c: cámara', UI.dim, { scale: u, align: 'right' });
   return zones;
 }
 
@@ -77,8 +84,7 @@ function card(p: Painter, zones: Zone<SelectAction>[], registry: Registry, c: Ch
   const textH = lines.reduce((sum, l) => sum + (l.gap ?? 0) + FONT_SIZE * l.scale, 0);
   const h = Math.max(textH + pad * 2, ph + pad * 2);
 
-  p.fill(x, y, w, h, COLORS.row);
-  stroke(p, x, y, w, h, marked ? COLORS.accent : COLORS.edge, u);
+  panel(p, x, y, w, h, { fill: UI.panelHi, accent: marked ? ACCENTS[theme] : undefined, edge: marked ? ACCENTS[theme] : UI.edge });
   p.icon({ kind: 'character', id: c.id }, x + pad, y + pad, pw, ph);
   let ty = y + pad;
   for (const l of lines) {
