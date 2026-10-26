@@ -158,7 +158,9 @@ const OUTLINES: Record<string, { id: 'outer' | 'both' | 'none'; color?: string; 
 // Por defecto el contorno interior (decisión de Andrés, el estándar de las demos de VoxPix): el exterior más los saltos de
 // profundidad (paredes, columnas), con el tono más oscuro de la rampa vecina y sin color fijo
 const DEFAULT_OUTLINE = 'interior';
-const outline = OUTLINES[q.get('contorno') ?? DEFAULT_OUTLINE] ?? OUTLINES[DEFAULT_OUTLINE]!;
+// Solo las claves propias: ?contorno=__proto__ no puede caer en Object.prototype
+const outlineKey = q.get('contorno') ?? DEFAULT_OUTLINE;
+const outline = (Object.hasOwn(OUTLINES, outlineKey) ? OUTLINES[outlineKey] : undefined) ?? OUTLINES[DEFAULT_OUTLINE]!;
 
 // ---- iconos de la interfaz: el modelo pintado con la cámara del juego, recortado a lo que ocupa
 const g2 = ui.getContext('2d')!;
