@@ -8,7 +8,6 @@
 // Para medir (fase 4): ?ola=N empieza en la oleada N e ?inmortal hace que MAIA no caiga; body[data-enemigos] los cuenta.
 import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
 import { TILE } from '@voxpix/worldgen';
-import { THEMES } from '@voxpix/content/themes';
 import { bakeWorld, rebakeChangedJobs, type Baked } from '@voxpix/world/bake';
 import { WorldView, prepareViewJob, type Quarter } from '@voxpix/world/view';
 import { TurnBackground, inputToWorld, turnQuarter, viewProjector, wallDress, type BgJob } from '../../../src/game/brotato/ui/turn';
@@ -471,7 +470,7 @@ function listen(): void {
 
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
 function viewOptions(vx: number, vy: number, time: number) {
-  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: THEMES[game!.theme].ambient, outline: outline.id, outlineColor: outline.color, highlight: shopHighlight(time) };
+  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: game!.run.arena.ambient, outline: outline.id, outlineColor: outline.color, highlight: shopHighlight(time) };
 }
 
 // Con la oleada limpia, la entrada a la tienda brilla con el acento del mundo y late (resalte de VoxPix, a612e67):

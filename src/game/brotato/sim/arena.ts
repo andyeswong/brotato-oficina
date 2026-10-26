@@ -6,7 +6,16 @@ import { SHOP_PROP_THEMES, stampShopProp } from './shopprop';
 import type { Point } from '../api';
 import type { LevelModule } from '../registry/schemas';
 import { generateLayout, NORTH, TILE, WALL, type Layout } from '@voxpix/worldgen';
-import { buildWorldState, type World } from '@voxpix/world/build';
+import { buildWorldState, type World, type WorldLook } from '@voxpix/world/build';
+
+// El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
+export interface LevelWorld { look: WorldLook; ambient: readonly [number, number, number] }
+const WORLDS = import.meta.glob<LevelWorld>('../../../content/brotato/levels/*/module.ts', { eager: true, import: 'world' });
+export function levelWorld(level: Pick<LevelModule, 'id'>): LevelWorld {
+  const w = Object.entries(WORLDS).find(([path]) => path.includes(`/levels/${level.id}/`))?.[1];
+  if (!w) throw new Error(`el nivel ${level.id} no exporta su world (look y ambient) en su module.ts`);
+  return w;
+}
 import { FOLIAGE_THEMES, addFoliage } from './foliage';
 import { GLASS_THEMES, addGlass } from './glass';
 import type { WorldState } from '@voxpix/world/state';
@@ -62,6 +71,7 @@ export class Arena {
   // la que rodea el resalte de VoxPix cuando la oleada queda limpia
   readonly shopBox: [number, number, number, number, number, number];
   readonly floorZ: number;               // altura del suelo (la cara de arriba de las losetas)
+  readonly ambient: readonly [number, number, number];   // la luz ambiente del nivel (su world)
   private free: Point[] = [];
   // El camino de la prórroga (pathDir): dónde cabe un enemigo en la rejilla de FLOW y la distancia a la celda de MAIA
   private flowOk: Uint8Array | null = null;
@@ -75,6 +85,7 @@ export class Arena {
   // foliage / glass: false quitan la vegetación o el vidrio (para las pruebas que comparan con y sin ellos)
   constructor(level: LevelModule, seed: number, opts: { foliage?: boolean; glass?: boolean; bushes?: boolean } = {}) {
     this.layout = levelLayout(level, seed);
+    this.ambient = levelWorld(level).ambient;
     // Dónde sale la jugadora, en ejes del modelo (las filas del worldgen van hacia abajo): la vegetación deja ahí un claro
     const start = { x: this.layout.spawn.x, y: this.layout.rows * TILE - 1 - this.layout.spawn.y };
     // Lo que cada tema añade entre construir el mundo y crear su estado: la vegetación (solo aspecto, se atraviesa) y el
@@ -89,7 +100,7 @@ export class Arena {
       if (veg) this.plants = addFoliage(w, seed, start, { bushes: opts.bushes });
       if (glass) this.glassRamps = addGlass(w);
     };
-    ({ world: this.world, state: this.state } = buildWorldState(this.layout, level.theme, veg || glass || prop ? { decorate } : {}));
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, levelWorld(level).look, veg || glass || prop ? { decorate } : {}));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte

@@ -1,4 +1,6 @@
 import { defineLevel } from '../../../../game/brotato/api';
+import { worldPalette, type WorldLook } from '@voxpix/world/build';
+import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
 
 // Patio de castillo de noche: antorchas junto a las puertas, estandartes y columnas (arte de NARUTO,
 // arte/escenarios/medieval).
@@ -33,3 +35,12 @@ export default defineLevel({
     pillars: 8,
   },
 });
+
+// El mundo de vóxeles del nivel (VoxPix 857c33d): cómo se ve (WorldLook: paleta, fuente, piezas) y su luz ambiente.
+// Copia de los temas de muestra de VoxPix (samples/themes) tal como estaban: el aspecto no cambia. Va aparte del
+// default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
+export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
+  // Los colores por defecto de VoxPix son los del medieval: piedra, agua azul; con la fuente y las columnas redondas
+  look: { palette: worldPalette(), fountain: true, ...SAMPLE_PIECES },
+  ambient: [0.4, 0.46, 0.64] as const,
+};

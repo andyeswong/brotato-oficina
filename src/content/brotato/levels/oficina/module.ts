@@ -1,4 +1,6 @@
 import { defineLevel } from '../../../../game/brotato/api';
+import { worldPalette, type WorldLook } from '@voxpix/world/build';
+import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
 
 // Oficina de noche: losetas, escritorios con pantalla y apliques junto a las puertas (arte de NARUTO,
 // arte/escenarios/oficina).
@@ -39,3 +41,16 @@ export default defineLevel({
     ],
   },
 });
+
+// El mundo de vóxeles del nivel (VoxPix 857c33d): cómo se ve (WorldLook: paleta, fuente, piezas) y su luz ambiente.
+// Copia de los temas de muestra de VoxPix (samples/themes) tal como estaban: el aspecto no cambia. Va aparte del
+// default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
+export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
+  look: { palette: worldPalette({
+    floor: ['#22262e', '#323844', '#464e5e', '#5e687c', '#76829a'],
+    wall: ['#262a2e', '#3a4046', '#545c64', '#788088', '#98a0a8'],
+    cap: ['#2c2a2a', '#403e3e', '#5c5a58', '#827e7a', '#a29e98'],
+    column: ['#343234', '#525052', '#6e6c6c', '#8a8886', '#aaa8a4'],
+  }), ...SAMPLE_PIECES },
+  ambient: [0.7, 0.72, 0.8] as const,
+};
