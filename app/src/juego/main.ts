@@ -28,6 +28,9 @@ import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
 import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage, type ShopPending } from '../../../src/game/brotato/ui/shop';
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
+import { applyMeta, drawMeta, metaKey, type MetaAction, type MetaMessage } from '../../../src/game/brotato/ui/meta';
+import { loadProgress, saveProgress } from '../../../src/game/brotato/meta/store';
+import { fichasEarned } from '../../../src/game/brotato/meta/upgrades';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { ACCENTS } from '../../../src/game/brotato/ui/theme';
 import type { Highlight } from '@voxpix/world/frame2d';
@@ -193,6 +196,13 @@ const painter: Painter = {
   icon(ref, x, y, w, h) {
     const img = iconImage(ref);
     if (!img) return false;
+    // El retrato de la portada crece a múltiplos enteros hasta llenar su caja (sin suavizar: es pixel art)
+    const k = ref.kind === 'character' ? Math.max(1, Math.floor(Math.min(w / img.width, h / img.height))) : 1;
+    if (k > 1) {
+      g2.imageSmoothingEnabled = false;
+      g2.drawImage(img, x + Math.floor((w - img.width * k) / 2), y + Math.floor((h - img.height * k) / 2), img.width * k, img.height * k);
+      return true;
+    }
     // Centrado; si no cabe, se recorta por el centro (sin escalar: es pixel art)
     const sw = Math.min(img.width, w), sh = Math.min(img.height, h);
     const sx = Math.floor((img.width - sw) / 2), sy = Math.floor((img.height - sh) / 2);
@@ -202,7 +212,7 @@ const painter: Painter = {
 };
 
 // ---- la partida y las pantallas
-type Screen = 'select' | 'game' | 'end';
+type Screen = 'select' | 'meta' | 'game' | 'end';
 let screen: Screen = 'select';
 let seed = Number(q.get('seed') ?? Math.floor(Math.random() * 1e6));
 let level = levelFor(seed);
@@ -233,7 +243,15 @@ let selected = 0;
 let shopMessage: ShopMessage | null = null;
 const shopPending: ShopPending = { swap: null };
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
-let zones: Zone<ShopAction | SelectAction | HudAction>[] = [];
+let zones: Zone<ShopAction | SelectAction | HudAction | MetaAction>[] = [];
+// El progreso entre partidas (roguelite): las fichas y las mejoras, guardadas en este navegador. La partida recibe
+// las mejoras al empezar; lo que gana se suma al acabar (earned, para enseñarlo en el fin)
+function storage(): Storage | null {
+  try { return localStorage; } catch { return null; }
+}
+const progress = loadProgress(storage());
+let earned = 0;
+let metaMessage: MetaMessage | null = null;
 const audio = new GameAudio();
 const touch = isTouch();
 const stick = new TouchStick();
@@ -262,7 +280,7 @@ function newRun(after?: () => void): void {
     theme = level.theme;
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
-      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
+      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels });
     views.clear();
     pending.clear();
     bgJobs = [];
@@ -468,7 +486,8 @@ function shopHighlight(time: number): Highlight | null {
 
 // La pantalla que toca ahora y su firma
 function current(): { name: string; sign: string } {
-  if (screen === 'select') return { name: 'seleccion', sign: `select|${selected}|${theme}|${audio.muted}` };
+  if (screen === 'select') return { name: 'seleccion', sign: `select|${selected}|${theme}|${audio.muted}|${progress.fichas}` };
+  if (screen === 'meta') return { name: 'mejoras', sign: `meta|${theme}|${JSON.stringify(progress)}|${metaMessage?.text ?? ''}` };
   if (screen === 'end' || !game) return { name: 'fin', sign: `end|${seed}` };
   const g = game;
   if (g.phase === 'shop') {
@@ -487,12 +506,13 @@ function drawUi(): void {
   drawn = sign;
   g2.clearRect(0, 0, UW, UH);
   zones = [];
-  if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name, !audio.muted);
-  else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat');
+  if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name, !audio.muted, progress.fichas);
+  else if (screen === 'meta') zones = drawMeta(painter, progress, theme, metaMessage);
+  else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat', earned);
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage, shopPending.swap);
   else if (game) zones = drawHud(painter, game, { touch });
   // El texto de la pantalla, para lectores de pantalla (y verify)
-  hud.textContent = screen === 'select' ? 'Elige agente' : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
+  hud.textContent = screen === 'select' ? 'Elige agente' : screen === 'meta' ? 'Mejoras' : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
 }
 
 let last = performance.now();
@@ -502,12 +522,12 @@ function loop(now: number): void {
   if (screen === 'game' && game && now >= warmUntil) {
     ticks?.advance(dt);
     const over = game.phase === 'victory' || (game.phase === 'dead' && game.phaseTick * TICK >= DEAD_PAUSE_S);
-    if (over) { screen = 'end'; endAt = now; }
+    if (over) { screen = 'end'; endAt = now; award(game); }
   }
   listen();
   effects.update(Math.min(dt, 0.1));
   flashes.update(dt);
-  if (screen !== 'select') frame(now / 1000);
+  if (screen !== 'select' && screen !== 'meta') frame(now / 1000);
   if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
   const spent = budget.run();
   if (game && bgJobs.length) {
@@ -529,8 +549,24 @@ function loop(now: number): void {
 // En navegadores sin ventana (capturas) requestAnimationFrame no avanza: ?timer=1 usa temporizadores
 const next = q.has('timer') ? (f: (t: number) => void) => setTimeout(() => f(performance.now()), 16) : requestAnimationFrame;
 
-function act(action: ShopAction | SelectAction | HudAction): void {
-  if (action.type === 'turn') {
+// Las fichas de la partida que acaba de terminar (no con ?ola ni ?inmortal: son para medir, no para jugar)
+function award(g: BrotatoGame): void {
+  const victory = g.phase === 'victory';
+  earned = q.has('ola') || q.has('inmortal') ? 0 : fichasEarned(victory ? g.run.totalWaves : g.run.waveIndex, g.run.kills, victory);
+  progress.fichas += earned;
+  saveProgress(storage(), progress);
+}
+
+function act(action: ShopAction | SelectAction | HudAction | MetaAction): void {
+  if (action.type === 'meta') {
+    metaMessage = null;
+    screen = 'meta';
+  } else if (action.type === 'back') {
+    screen = 'select';
+  } else if (action.type === 'upgrade') {
+    metaMessage = applyMeta(progress, action);
+    if (metaMessage?.ok) { saveProgress(storage(), progress); audio.play('compra'); }
+  } else if (action.type === 'turn') {
     if (game) turn(action.delta);
   } else if (action.type === 'sound') {
     audio.toggleMuted();
@@ -562,6 +598,7 @@ addEventListener('keydown', (e) => {
   audio.unlock();
   if (k === 'm' && screen !== 'select') { audio.toggleMuted(); return; }
   if (screen === 'select') { const a = selectKey(e, registry.characters().length, selected); if (a) act(a); }
+  else if (screen === 'meta') { const a = metaKey(e); if (a) { e.preventDefault(); act(a); } }
   else if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); }
   else if (game?.phase === 'shop') { const a = shopKey(e, game.run, shopPending.swap); if (a) { e.preventDefault(); act(a); } }
   else if (game && (k === 'q' || k === 'e')) turn(k === 'e' ? 1 : -1);

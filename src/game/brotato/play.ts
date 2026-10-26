@@ -62,6 +62,7 @@ export { HEADINGS } from '@voxpix/world/frame2d';
 export interface TestOptions {
   startWave?: number;   // 1 = la primera
   immortal?: boolean;   // tras cada paso, MAIA recupera toda la vida
+  meta?: Readonly<Record<string, number>>;   // no es de pruebas: las mejoras entre partidas que se compraron
 }
 
 export class BrotatoGame {
@@ -85,7 +86,7 @@ export class BrotatoGame {
   constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule,
     private readonly test: TestOptions = {}) {
     const lv = level ?? pickLevel(registry.levels(), seed);
-    this.run = new Run(registry, registry.character('maia'), lv, seed);
+    this.run = new Run(registry, registry.character('maia'), lv, seed, test.meta ? { meta: test.meta } : {});
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();

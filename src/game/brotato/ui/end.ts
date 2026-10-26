@@ -8,7 +8,8 @@ import { ACCENTS, UI, panel } from './theme';
 
 export const END_GRACE_S = 0.5;
 
-export function drawEnd(p: Painter, run: Run, result: 'victory' | 'defeat'): void {
+// fichas: las que dio la partida para el árbol de mejoras (si quien llama las lleva)
+export function drawEnd(p: Painter, run: Run, result: 'victory' | 'defeat', fichas?: number): void {
   const W = p.width, H = p.height, line = FONT_SIZE, pad = 6;
   const accent = ACCENTS[run.level.theme];
   p.fill(0, 0, W, H, UI.panel);
@@ -16,6 +17,7 @@ export function drawEnd(p: Painter, run: Run, result: 'victory' | 'defeat'): voi
   const detail = result === 'victory' ? `${run.totalWaves} oleadas superadas` : `en la oleada ${run.waveNumber} de ${run.totalWaves}`;
   const maxChars = Math.max(8, Math.floor((Math.min(W - 4 * pad, 260) - 2 * pad) / CHAR_W));
   const lines = wrapText(`${run.character.name} · ${detail} · ${run.kills} bajas`, maxChars);
+  if (fichas !== undefined) lines.push(...wrapText(`+${fichas} fichas para mejoras`, maxChars));
   const pw = Math.min(W - 2 * pad, Math.max(textWidth(title, 2), ...lines.map((l) => textWidth(l, 1))) + 4 * pad);
   const ph = line * 2 + 8 + lines.length * line + 10;
   const px = Math.floor((W - pw) / 2), py = Math.floor((H - ph) / 2) - line;

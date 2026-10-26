@@ -1,4 +1,5 @@
 import type { GameApi, HookFn, Point } from '../api';
+import { metaModifiers, metaStartMaterials } from '../meta/upgrades';
 import { MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type LevelModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
@@ -43,7 +44,8 @@ export class Run {
     readonly character: CharacterModule,
     readonly level: LevelModule,
     readonly seed: number,
-    options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean } = {},
+    // meta: los niveles de las mejoras entre partidas (meta/upgrades.ts); una entrada como la semilla
+    options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>> } = {},
   ) {
     this.rng = createRng(seed);
     this.arena = new Arena(level, seed, { foliage: options.foliage, glass: options.glass, bushes: options.bushes });
@@ -51,6 +53,10 @@ export class Run {
     const defs = new Map<string, StatDef>(registry.stats().map((s) => [s.id, s]));
     this.stats = new StatSheet(defs, character.baseStats, (c) => this.counter(c as CounterId));
     this.stats.setSource(`character:${character.id}`, character.modifiers ?? []);
+    if (options.meta) {
+      this.stats.setSource('meta', metaModifiers(options.meta));
+      this.materials = metaStartMaterials(options.meta);
+    }
     this.startingWeaponIds = (options.weapons ?? character.startingWeapons ?? []).slice(0, 6);
     this.weapons = this.startingWeaponIds.map((id) => ({ id, tier: 0 }));
     this.shop = new Shop(this);
