@@ -10,7 +10,7 @@ import { FONT_SIZE, drawText, textWidth } from './font';
 import type { Painter, Zone } from './paint';
 import { ACCENTS, ICON, UI, bar, button, icon, panel, shadowText } from './theme';
 
-export type HudAction = { type: 'enter' };
+export type HudAction = { type: 'enter' } | { type: 'turn'; delta: 1 | -1 };
 
 // Adónde ir para entrar en la tienda en cada tema (el objeto del mapa que brilla)
 export const SHOP_PROPS: Record<ThemeId, string> = { medieval: 'a la fuente', oficina: 'a la impresora', cyberpunk: 'al servidor' };
@@ -25,7 +25,8 @@ export function hudText(game: BrotatoGame): string {
 
 const SLOT_W = 18, SLOT_H = 12;   // casilla de un arma en el HUD
 
-export function drawHud(p: Painter, game: BrotatoGame): Zone<HudAction>[] {
+// touch: en pantallas táctiles, los botones de girar la cámara (Q y E del teclado), abajo a la derecha
+export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean } = {}): Zone<HudAction>[] {
   const zones: Zone<HudAction>[] = [];
   const w = game.current, run = game.run, accent = ACCENTS[game.theme];
   const W = p.width, pad = 3;
@@ -64,6 +65,12 @@ export function drawHud(p: Painter, game: BrotatoGame): Zone<HudAction>[] {
     panel(p, x, sy, SLOT_W, SLOT_H, { fill: UI.panelHi });
     p.icon({ kind: 'weapon', id: weapon.id }, x + 1, sy + 1, SLOT_W - 2, SLOT_H - 2);
   });
+
+  if (opts.touch) {
+    const bh = FONT_SIZE + 9, bw = 20, by = p.height - pad - bh - 4;
+    button(p, zones, W - pad - 2 * bw - 3, by, '«', { type: 'turn', delta: -1 }, { accent, w: bw, h: bh });
+    button(p, zones, W - pad - bw, by, '»', { type: 'turn', delta: 1 }, { accent, w: bw, h: bh });
+  }
 
   // Oleada limpia: el aviso y, junto a la entrada, el botón (F con teclado; con el dedo en el Flip)
   if (w.status === 'open') {

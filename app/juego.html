@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Brotato · VoxPix</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #0d0c12; color: #d9d7e8; font: 14px system-ui, sans-serif; overflow: hidden; }
+    /* touch-action: arrastrar el joystick no desplaza ni amplía la página */
+    html, body { margin: 0; height: 100%; background: #0d0c12; color: #d9d7e8; font: 14px system-ui, sans-serif; overflow: hidden; touch-action: none; }
     canvas { image-rendering: pixelated; display: block; margin: 0 auto; }
     /* La interfaz se pinta en #ui con la fuente de píxel; #hud repite su texto para lectores de pantalla */
     #ui { position: fixed; margin: 0; touch-action: none; }

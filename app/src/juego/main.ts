@@ -31,6 +31,7 @@ import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brot
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { ACCENTS } from '../../../src/game/brotato/ui/theme';
 import type { Highlight } from '@voxpix/world/frame2d';
+import { TouchStick, isTouch } from './touch';
 import { GameAudio } from './audio';
 import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
@@ -233,6 +234,9 @@ let shopMessage: ShopMessage | null = null;
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
 let zones: Zone<ShopAction | SelectAction | HudAction>[] = [];
 const audio = new GameAudio();
+const touch = isTouch();
+const stick = new TouchStick();
+let pointerTaken = -1;          // el dedo que pulsó un botón de la interfaz (ese no mueve el joystick)
 let heard = '';                // la fase y el estado de la oleada que ya sonaron (limpia, tienda, derrota, victoria)
 let shotSeen = 0;               // el uid del último disparo de MAIA que ya sonó (los uid empiezan de nuevo en cada oleada)
 let shotWave: object | null = null;
@@ -383,6 +387,9 @@ function input(): GameInput {
   if (keys.has('w') || keys.has('arrowup')) dy++;                 // arriba = norte = +y
   if (keys.has('s') || keys.has('arrowdown')) dy--;
   // La entrada es de la pantalla ("arriba" = lejos de la cámara); la partida la quiere en ejes del mundo
+  // El joystick táctil manda si está en uso (una dirección de pantalla, como las flechas)
+  const s = stick.dir();
+  if (s) { dx = s.dx; dy = s.dy; }
   if (cur) [dx, dy] = inputToWorld(cur.view.camera, dx, dy);
   const interact = enterQueued || keys.has('f');
   enterQueued = false;
@@ -430,6 +437,7 @@ function paintFx(vx: number, vy: number): void {
 // Lo que suena al cambiar de fase: la oleada limpia, la tienda, la derrota y la victoria; la música, en las oleadas
 function listen(): void {
   const g = game;
+  if (stick.active && (screen !== 'game' || g?.phase !== 'wave')) stick.end();
   const now = screen === 'game' && g ? `${g.phase}|${g.phase === 'wave' ? g.current.status : ''}|${g.run.waveIndex}` : screen;
   audio.music(screen === 'game' && g?.phase === 'wave' && g.current.status === 'playing');
   if (now === heard) return;
@@ -480,7 +488,7 @@ function drawUi(): void {
   if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name, !audio.muted);
   else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat');
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage);
-  else if (game) zones = drawHud(painter, game);
+  else if (game) zones = drawHud(painter, game, { touch });
   // El texto de la pantalla, para lectores de pantalla (y verify)
   hud.textContent = screen === 'select' ? 'Elige agente' : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
 }
@@ -520,7 +528,9 @@ function loop(now: number): void {
 const next = q.has('timer') ? (f: (t: number) => void) => setTimeout(() => f(performance.now()), 16) : requestAnimationFrame;
 
 function act(action: ShopAction | SelectAction | HudAction): void {
-  if (action.type === 'sound') {
+  if (action.type === 'turn') {
+    if (game) turn(action.delta);
+  } else if (action.type === 'sound') {
     audio.toggleMuted();
     drawn = '';
   } else if (action.type === 'enter') {
@@ -562,8 +572,16 @@ ui.addEventListener('pointerdown', (e) => {
   if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); return; }
   const r = ui.getBoundingClientRect();
   const a = hit(zones, ((e.clientX - r.left) * UW) / r.width, ((e.clientY - r.top) * UH) / r.height);
-  if (a) act(a);
+  if (a) { pointerTaken = e.pointerId; act(a); }
 });
+// El joystick: un dedo (no el ratón) que no cayó en un botón, durante la oleada, en cualquier sitio de la página
+addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' || e.pointerId === pointerTaken || screen !== 'game' || game?.phase !== 'wave') return;
+  stick.start(e, ACCENTS[theme]);
+});
+addEventListener('pointermove', (e) => stick.move(e));
+addEventListener('pointerup', (e) => { stick.end(e); if (e.pointerId === pointerTaken) pointerTaken = -1; });
+addEventListener('pointercancel', (e) => { stick.end(e); if (e.pointerId === pointerTaken) pointerTaken = -1; });
 
 theme = level.theme;
 loading.style.display = 'none';
