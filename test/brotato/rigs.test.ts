@@ -3,8 +3,8 @@
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { Model, type ModelFile } from '@voxpix/core';
-import { rigFrames, type Rig } from '@voxpix/anim/rig';
-import { BROTATO_RIGS } from '../../src/anim/rigs-brotato';
+import { rigFrames, rigFromSpec, type Rig, type RigSpec } from '@voxpix/anim/rig';
+import { BROTATO_RIGS, BROTATO_RIG_SPECS } from '../../src/anim/rigs-brotato';
 
 function ground(m: Model): { n: number; cx: number; cy: number } {
   let n = 0, sx = 0, sy = 0;
@@ -49,6 +49,37 @@ describe('los rigs de los bichos', () => {
       expect(existsSync(file), file).toBe(true);
       const m = Model.fromJSON(JSON.parse(readFileSync(file, 'utf8')) as ModelFile);
       checkRig(name, m, r);
+    });
+  }
+});
+
+// Los rigs como eran antes de RigSpec (VoxPix a6c1723), con has() en código. Los RigSpec tienen que dar, cuadro a
+// cuadro, exactamente los mismos vóxeles; si alguien toca una caja, esto lo dice.
+const tripodA = (x: number, y: number) => (x < 0 ? Math.abs(y) >= 2 : Math.abs(y) < 2);
+const HAS_PARTS: Record<string, Rig['parts']> = {
+  'bicho-grapa': [
+    { name: 'L', has: (x, _y, z) => x <= -5 && z <= 7, pivotZ: 7, footZ: 0 },
+    { name: 'R', has: (x, _y, z) => x >= 5 && z <= 7, pivotZ: 7, footZ: 0 },
+  ],
+  'bicho-clip': [
+    { name: 'A', has: (x, y, z) => z <= 2 && Math.abs(x) >= 4 && tripodA(x, y), pivotZ: 2, footZ: 0 },
+    { name: 'B', has: (x, y, z) => z <= 2 && Math.abs(x) >= 4 && !tripodA(x, y), pivotZ: 2, footZ: 0 },
+  ],
+  'bicho-taza': [{ name: 'top', has: (_x, _y, z) => z >= 6 }],
+};
+
+const voxels = (m: Model) => JSON.stringify([...m.entries()].sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]));
+
+describe('los rigs como RigSpec', () => {
+  for (const [name, spec] of Object.entries(BROTATO_RIG_SPECS)) {
+    it(`${name}: mismos cuadros que con has(), también tras pasar por JSON`, () => {
+      const m = Model.fromJSON(JSON.parse(readFileSync(`models/brotato/${name}/${name}.json`, 'utf8')) as ModelFile);
+      const old = rigFrames(m, { frameMs: spec.frameMs, frames: spec.frames, parts: HAS_PARTS[name]! });
+      const viaJson = rigFromSpec(JSON.parse(JSON.stringify(spec)) as RigSpec);
+      const now = rigFrames(m, viaJson);
+      expect(now.map(voxels)).toEqual(old.map(voxels));
+      // y que el rig mueve algo de verdad: algún cuadro distinto del quieto
+      expect(now.some((f) => voxels(f) !== voxels(m)), name).toBe(true);
     });
   }
 });
