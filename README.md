@@ -23,7 +23,8 @@ Parámetros de `juego.html`:
 - `?ruta=cpu` compone en la CPU.
 - `?camara=clasica|cenital|baja|cerca` elige la cámara (también en la selección, con C o tocando la línea). Son presets fijos:
   la inclinación del suelo (0,5, 1 o 0,35) y el zoom (Cerca, una escala más). La interfaz no cambia de tamaño.
-- `?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no` elige el contorno.
+- `?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no` elige el contorno. Por defecto, `interior` (el
+  estándar de las demos de VoxPix: el exterior más los saltos de profundidad, con el tono oscuro de la rampa vecina).
 - `?ir=tienda|fin` simula sin entrada hasta la primera tienda o hasta el final.
 - En la partida, Q / E giran la cámara en cuartos de vuelta (VoxPix `WorldView`). Arriba es siempre lejos de la cámara.
   El giro actual se hornea al empezar y los otros tres en segundo plano, por pasos; si se gira antes, se termina con
