@@ -152,6 +152,21 @@ export class Run {
     return { ok: true };
   }
 
+  // ¿Entra sin quitar otra? (hay hueco, o una igual del mismo nivel con la que fusionarse)
+  fitsWeapon(id: string, tier = 0): boolean {
+    if (this.weapons.length < MAX_WEAPONS) return true;
+    const maxTier = this.registry.weapon(id).tiers.length - 1;
+    return this.weapons.some((w) => w.id === id && w.tier === tier && w.tier < maxTier);
+  }
+
+  // Con las 6 llenas, la jugadora elige cuál deja (Andrés, 2026-10-26): la nueva ocupa su casilla. Sin devolución
+  replaceWeapon(slot: number, id: string, tier = 0): ShopResult {
+    if (!this.weapons[slot]) return { ok: false, reason: 'Esa casilla está vacía' };
+    this.weapons[slot] = { id, tier };
+    this.stats.invalidate();
+    return { ok: true };
+  }
+
   lose(): void {
     this.emit('onRunEnd', { result: 'defeat' });
   }

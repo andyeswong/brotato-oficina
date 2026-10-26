@@ -26,7 +26,7 @@ import { pickLevel } from '../../../src/game/brotato/sim/arena';
 import { BrotatoGame, placeAtShop, type GameInput, type Models } from '../../../src/game/brotato/play';
 import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
-import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage } from '../../../src/game/brotato/ui/shop';
+import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage, type ShopPending } from '../../../src/game/brotato/ui/shop';
 import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { ACCENTS } from '../../../src/game/brotato/ui/theme';
@@ -231,6 +231,7 @@ let ticks: FixedLoop | null = null;
 let budget = new FrameBudget(3);
 let selected = 0;
 let shopMessage: ShopMessage | null = null;
+const shopPending: ShopPending = { swap: null };
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
 let zones: Zone<ShopAction | SelectAction | HudAction>[] = [];
 const audio = new GameAudio();
@@ -284,6 +285,7 @@ function newRun(after?: () => void): void {
       pending.set(k, { prep, bg, t0: performance.now() });
     }
     shopMessage = null;
+    shopPending.swap = null;
     effects.clear();
     flashes.clear();
     screen = 'game';
@@ -471,7 +473,7 @@ function current(): { name: string; sign: string } {
   const g = game;
   if (g.phase === 'shop') {
     const offers = g.run.shop.offers.map((o) => (o ? `${o.id}${o.locked ? '*' : ''}` : '-')).join(',');
-    return { name: 'tienda', sign: `shop|${g.run.materials}|${offers}|${g.run.weapons.length}|${g.run.items.length}|${shopMessage?.text ?? ''}` };
+    return { name: 'tienda', sign: `shop|${g.run.materials}|${offers}|${g.run.weapons.length}|${g.run.items.length}|${shopMessage?.text ?? ''}|${shopPending.swap}` };
   }
   return { name: 'oleada', sign: `hud|${hudText(g)}|${g.phase}` };
 }
@@ -487,7 +489,7 @@ function drawUi(): void {
   zones = [];
   if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name, !audio.muted);
   else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat');
-  else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage);
+  else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage, shopPending.swap);
   else if (game) zones = drawHud(painter, game, { touch });
   // El texto de la pantalla, para lectores de pantalla (y verify)
   hud.textContent = screen === 'select' ? 'Elige agente' : screen === 'end' ? (game?.phase === 'victory' ? '¡Victoria!' : 'Has caído') : game ? hudText(game) : '';
@@ -546,10 +548,10 @@ function act(action: ShopAction | SelectAction | HudAction): void {
     try { localStorage.setItem(CAMERA_KEY, camera.id); } catch { /* sin almacenamiento: solo esta vez */ }
     fit();
   } else if (game?.phase === 'shop') {
-    if (action.type === 'next') { shopMessage = null; game.leaveShop(); }
+    if (action.type === 'next') { shopMessage = null; shopPending.swap = null; game.leaveShop(); }
     else {
-      shopMessage = applyShop(game.run, action);
-      if (action.type === 'buy' && shopMessage?.text === 'comprado') audio.play('compra');
+      shopMessage = applyShop(game.run, action, shopPending);
+      if ((action.type === 'buy' || action.type === 'replace') && shopMessage?.text === 'comprado') audio.play('compra');
     }
   }
 }
@@ -561,7 +563,7 @@ addEventListener('keydown', (e) => {
   if (k === 'm' && screen !== 'select') { audio.toggleMuted(); return; }
   if (screen === 'select') { const a = selectKey(e, registry.characters().length, selected); if (a) act(a); }
   else if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); }
-  else if (game?.phase === 'shop') { const a = shopKey(e, game.run); if (a) { e.preventDefault(); act(a); } }
+  else if (game?.phase === 'shop') { const a = shopKey(e, game.run, shopPending.swap); if (a) { e.preventDefault(); act(a); } }
   else if (game && (k === 'q' || k === 'e')) turn(k === 'e' ? 1 : -1);
   else if (game && k === 'f') enterQueued = true;
 });

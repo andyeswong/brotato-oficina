@@ -2,6 +2,8 @@
 // el estilo de paneles de la interfaz. Solo pinta y traduce toques y teclas a acciones: las reglas viven en sim/Shop.ts.
 // 4 cartas en fila si caben; si no (el Flip), en rejilla de 2×2. Abajo, las armas en sus casillas y los botones.
 // Teclado: 1–8 compra, Mayús+número pone/quita candado, R vuelve a tirar, Intro o Espacio sigue.
+// Con las 6 armas llenas, comprar un arma que no se fusiona pide antes cuál se deja (Andrés, 2026-10-26): se toca su
+// casilla (o 1–6), y Esc o «cancelar» lo deja como estaba.
 import { MAX_WEAPONS, type ThemeId } from '../registry/schemas';
 import type { Run } from '../sim/Run';
 import type { Offer } from '../sim/Shop';
@@ -10,7 +12,13 @@ import { CHAR_W, FONT_SIZE, drawText, textWidth, wrapText } from './font';
 import type { Painter, Zone } from './paint';
 import { ACCENTS, ICON, UI, button, icon, panel } from './theme';
 
-export type ShopAction = { type: 'buy'; index: number } | { type: 'lock'; index: number } | { type: 'reroll' } | { type: 'next' };
+export type ShopAction = { type: 'buy'; index: number } | { type: 'lock'; index: number } | { type: 'reroll' } | { type: 'next' }
+  | { type: 'replace'; slot: number } | { type: 'cancel' };
+
+// Lo que la pantalla recuerda entre toques: la oferta que espera a que se elija qué arma deja su sitio
+export interface ShopPending {
+  swap: number | null;
+}
 
 export const ICON_W = 24;   // caja de un icono pequeño (las casillas de armas): las armas, de perfil, son más largas
 export const ICON_H = 16;
@@ -23,8 +31,13 @@ export interface ShopMessage {
   color: string;
 }
 
-export function shopKey(e: { code: string; key: string; shiftKey: boolean }, run: Run): ShopAction | null {
+export function shopKey(e: { code: string; key: string; shiftKey: boolean }, run: Run, swap: number | null = null): ShopAction | null {
   const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
+  if (swap !== null) {
+    if (e.key === 'Escape') return { type: 'cancel' };
+    const slot = digit ? Number(digit[2]) - 1 : -1;
+    return run.weapons[slot] ? { type: 'replace', slot } : null;
+  }
   if (digit) {
     const index = Number(digit[2]) - 1;
     if (index < 0 || index >= run.shop.offers.length) return null;
@@ -36,12 +49,28 @@ export function shopKey(e: { code: string; key: string; shiftKey: boolean }, run
 }
 
 // Hace la acción sobre la tienda y devuelve el mensaje que hay que enseñar ('next' lo hace quien llama: salir)
-export function applyShop(run: Run, action: ShopAction): ShopMessage | null {
+// pending: dónde se guarda la oferta que espera casilla (sin él, un arma que no cabe dice que no cabe)
+export function applyShop(run: Run, action: ShopAction, pending?: ShopPending): ShopMessage | null {
+  const swap = pending?.swap ?? null;
+  if (pending) pending.swap = null;
   switch (action.type) {
     case 'buy': {
+      const offer = run.shop.offers[action.index];
+      if (pending && offer?.kind === 'weapon' && !run.fitsWeapon(offer.id, offer.tier) && run.materials >= offer.price) {
+        if (swap === action.index) return null;          // tocar otra vez la misma carta: cancelar
+        pending.swap = action.index;
+        return { text: 'elige el arma que dejas', color: UI.gold };
+      }
       const r = run.shop.buy(action.index);
       return r.ok ? { text: 'comprado', color: UI.gold } : { text: r.reason, color: UI.bad };
     }
+    case 'replace': {
+      if (swap === null) return null;
+      const r = run.shop.buy(swap, action.slot);
+      return r.ok ? { text: 'comprado', color: UI.gold } : { text: r.reason, color: UI.bad };
+    }
+    case 'cancel':
+      return null;
     case 'lock':
       run.shop.toggleLock(action.index);
       return null;
@@ -55,7 +84,8 @@ export function applyShop(run: Run, action: ShopAction): ShopMessage | null {
 }
 
 // Se pinta entera sobre un velo que oscurece el mundo; devuelve las zonas táctiles
-export function drawShop(p: Painter, run: Run, theme: ThemeId, message: ShopMessage | null): Zone<ShopAction>[] {
+// swap: la oferta que espera a que se elija qué arma deja su sitio (las casillas se vuelven botones)
+export function drawShop(p: Painter, run: Run, theme: ThemeId, message: ShopMessage | null, swap: number | null = null): Zone<ShopAction>[] {
   const zones: Zone<ShopAction>[] = [];
   const W = p.width, H = p.height, pad = 4, accent = ACCENTS[theme];
   p.fill(0, 0, W, H, UI.veil);
@@ -89,8 +119,9 @@ export function drawShop(p: Painter, run: Run, theme: ThemeId, message: ShopMess
     slotsY = footTop;
   }
   const nw = button(p, zones, W - pad, footTop, nextLabel, { type: 'next' }, { accent, primary: true, alignRight: true });
-  button(p, zones, W - pad - nw - 4, footTop, rerollLabel, { type: 'reroll' }, { accent, enabled: run.materials >= rerollPrice, alignRight: true });
-  weaponSlots(p, run, pad, slotsY, slotW, slotH);
+  if (swap === null) button(p, zones, W - pad - nw - 4, footTop, rerollLabel, { type: 'reroll' }, { accent, enabled: run.materials >= rerollPrice, alignRight: true });
+  else button(p, zones, W - pad - nw - 4, footTop, 'cancelar', { type: 'cancel' }, { accent, alignRight: true });
+  weaponSlots(p, run, pad, slotsY, slotW, slotH, swap === null ? null : { zones, accent });
   const msgTop = slotsY - FONT_SIZE - 2;
   if (message?.text) drawText(p, pad + 2, msgTop, message.text, message.color);
 
@@ -104,12 +135,12 @@ export function drawShop(p: Painter, run: Run, theme: ThemeId, message: ShopMess
   const ch = Math.floor((bottom - top - gap * (rows - 1)) / rows);
   run.shop.offers.forEach((offer, i) => {
     const cx = pad + (i % cols) * (cw + gap), cy = top + Math.floor(i / cols) * (ch + gap);
-    card(p, zones, run, theme, offer, i, cx, cy, cw, ch);
+    card(p, zones, run, theme, offer, i, cx, cy, cw, ch, swap === i);
   });
   return zones;
 }
 
-function card(p: Painter, zones: Zone<ShopAction>[], run: Run, theme: ThemeId, offer: Offer | null, i: number, x: number, y: number, w: number, h: number): void {
+function card(p: Painter, zones: Zone<ShopAction>[], run: Run, theme: ThemeId, offer: Offer | null, i: number, x: number, y: number, w: number, h: number, chosen = false): void {
   const accent = ACCENTS[theme], line = FONT_SIZE;
   if (!offer) {
     panel(p, x, y, w, h, { fill: UI.panel });
@@ -118,7 +149,8 @@ function card(p: Painter, zones: Zone<ShopAction>[], run: Run, theme: ThemeId, o
   }
   const look = offer.kind === 'weapon' ? lookOf(run.registry.weapon(offer.id), theme) : lookOf(run.registry.item(offer.id), theme);
   const mod = offer.kind === 'weapon' ? run.registry.weapon(offer.id) : run.registry.item(offer.id);
-  panel(p, x, y, w, h, { accent: offer.locked ? UI.gold : accent, edge: offer.locked ? UI.gold : UI.edge });
+  const marked = offer.locked || chosen;
+  panel(p, x, y, w, h, { accent: marked ? UI.gold : accent, edge: marked ? UI.gold : UI.edge });
 
   // Arriba: el número de tecla y el candado
   drawText(p, x + 4, y + 3, String(i + 1), UI.dim);
@@ -163,12 +195,15 @@ function card(p: Painter, zones: Zone<ShopAction>[], run: Run, theme: ThemeId, o
   zones.push({ x: x + w - LOCK_ZONE, y, w: LOCK_ZONE, h: LOCK_ZONE, action: { type: 'lock', index: i } });
 }
 
-// Las armas en sus casillas, como el Brotato: una por hueco (los vacíos, tenues), con el nivel en la esquina
-function weaponSlots(p: Painter, run: Run, x: number, y: number, sw: number, sh: number): void {
+// Las armas en sus casillas, como el Brotato: una por hueco (los vacíos, tenues), con el nivel en la esquina.
+// pick: eligiendo cuál se deja; cada casilla, con el borde del tema, es un botón
+function weaponSlots(p: Painter, run: Run, x: number, y: number, sw: number, sh: number, pick: { zones: Zone<ShopAction>[]; accent: string } | null): void {
   for (let k = 0; k < MAX_WEAPONS; k++) {
     const sx = x + k * (sw + 2), weapon = run.weapons[k];
-    panel(p, sx, y, sw, sh, { fill: weapon ? UI.panelHi : UI.panel });
+    panel(p, sx, y, sw, sh, { fill: weapon ? UI.panelHi : UI.panel, ...(pick && weapon ? { edge: pick.accent } : {}) });
     if (!weapon) continue;
+    // Un poco más grande que la casilla: en el Flip se tocan con el dedo
+    if (pick) pick.zones.push({ x: sx - 1, y: y - 3, w: sw + 2, h: sh + 6, action: { type: 'replace', slot: k } });
     p.icon({ kind: 'weapon', id: weapon.id }, sx + 1, y + 1, sw - 2, sh - 2);
     if (weapon.tier > 0) drawText(p, sx + sw - 2, y + 1, TIERS[weapon.tier]!, UI.gold, { align: 'right' });
   }

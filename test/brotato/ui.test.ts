@@ -5,7 +5,7 @@ import { Run } from '../../src/game/brotato/sim/Run';
 import { lookOf } from '../../src/game/brotato/looks';
 import { FONT_CHARS, normalize } from '../../src/game/brotato/ui/font';
 import { hit, type IconRef, type Painter } from '../../src/game/brotato/ui/paint';
-import { applyShop, drawShop, shopKey } from '../../src/game/brotato/ui/shop';
+import { applyShop, drawShop, shopKey, type ShopPending } from '../../src/game/brotato/ui/shop';
 import { drawSelect } from '../../src/game/brotato/ui/select';
 import { drawEnd } from '../../src/game/brotato/ui/end';
 
@@ -94,12 +94,46 @@ describe('la tienda en pantalla', () => {
     expect(run.shop.offers[0]).not.toBeNull();
   });
 
+  it('con las 6 llenas, un arma que no cabe pide casilla: tocarla la cambia, cancelar la deja', () => {
+    const run = new Run(registry, registry.character('maia'), registry.level('oficina'), 9, { weapons: ['tiro', 'tiro', 'tiro', 'tiro', 'tiro', 'estocada'] });
+    run.startWave();
+    run.finishWave();
+    run.materials = 200;
+    run.shop.open();
+    run.shop.offers[0] = { kind: 'weapon', id: 'rafaga', tier: 0, price: 18, locked: false };
+    const pending: ShopPending = { swap: null };
+    expect(applyShop(run, { type: 'buy', index: 0 }, pending)?.text).toBe('elige el arma que dejas');
+    expect(pending.swap).toBe(0);
+    expect(run.materials).toBe(200);
+
+    // Las casillas pasan a ser botones, y «tirar» a «cancelar»
+    const { p, texts } = recorder(216, 384);
+    const zones = drawShop(p, run, 'oficina', null, pending.swap);
+    expect(texts.map((t) => t.text)).toContain('cancelar');
+    expect(zones.filter((z) => z.action.type === 'reroll')).toEqual([]);
+    const cancel = zones.find((z) => z.action.type === 'cancel')!;
+    expect(applyShop(run, hit(zones, cancel.x + 2, cancel.y + 2)!, pending)).toBeNull();
+    expect(pending.swap).toBeNull();
+    expect(run.shop.offers[0]).not.toBeNull();
+
+    // Otra vez, y ahora la tecla 4 (la casilla 4)
+    applyShop(run, { type: 'buy', index: 0 }, pending);
+    expect(shopKey({ code: 'Digit4', key: '4', shiftKey: false }, run, pending.swap)).toEqual({ type: 'replace', slot: 3 });
+    expect(shopKey({ code: 'Escape', key: 'Escape', shiftKey: false }, run, pending.swap)).toEqual({ type: 'cancel' });
+    const slot = drawShop(recorder(216, 384).p, run, 'oficina', null, pending.swap).find((z) => z.action.type === 'replace' && z.action.slot === 5)!;
+    expect(applyShop(run, hit([slot], slot.x + 2, slot.y + 2)!, pending)?.text).toBe('comprado');
+    expect(run.weapons[5]).toEqual({ id: 'rafaga', tier: 0 });
+    expect(run.shop.offers[0]).toBeNull();
+    expect(pending.swap).toBeNull();
+  });
+
   for (const [name, w, h] of SIZES) {
     it(`nada se sale de la pantalla ni usa letras que la fuente no tiene (${name} ${w}×${h})`, () => {
       for (const theme of ['oficina', 'medieval', 'cyberpunk'] as const) {
         const run = shopRun(theme, 4);
         const screens: Array<(p: Painter) => unknown> = [
           (p) => drawShop(p, run, theme, { text: 'Te faltan 12 materiales', color: '#f00' }),
+          (p) => drawShop(p, run, theme, { text: 'elige el arma que dejas', color: '#f00' }, 0),
           (p) => drawSelect(p, registry, 0, theme),
           (p) => drawSelect(p, registry, 0, theme, 1, 'Clásica', true),
           (p) => drawSelect(p, registry, 0, theme, 1, 'Clásica', false),

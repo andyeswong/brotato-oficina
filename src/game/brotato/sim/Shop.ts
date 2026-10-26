@@ -49,15 +49,19 @@ export class Shop {
     if (offer) offer.locked = !offer.locked;
   }
 
-  buy(index: number): ShopResult {
+  // replace: con las 6 armas llenas y sin una igual con la que fusionarse, la casilla del arma que se deja
+  buy(index: number, replace?: number): ShopResult {
     const offer = this.offers[index];
     if (!offer) return { ok: false, reason: 'Ya está comprado' };
     if (this.run.materials < offer.price) return { ok: false, reason: `Te faltan ${offer.price - this.run.materials} materiales` };
-    const added = offer.kind === 'weapon' ? this.run.addWeapon(offer.id, offer.tier) : this.run.addItem(offer.id);
+    const swap = offer.kind === 'weapon' && replace !== undefined && !this.run.fitsWeapon(offer.id, offer.tier);
+    const left = swap ? this.run.weapons[replace!]?.id : undefined;
+    const added = offer.kind === 'item' ? this.run.addItem(offer.id)
+      : swap ? this.run.replaceWeapon(replace!, offer.id, offer.tier) : this.run.addWeapon(offer.id, offer.tier);
     if (!added.ok) return added;
     this.run.spend(offer.price);
     this.offers[index] = null;
-    this.run.emit('onBuy', { kind: offer.kind, id: offer.id, price: offer.price });
+    this.run.emit('onBuy', { kind: offer.kind, id: offer.id, price: offer.price, ...(left ? { replaced: left } : {}) });
     return { ok: true };
   }
 

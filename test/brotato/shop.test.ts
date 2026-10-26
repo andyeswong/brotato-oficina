@@ -78,6 +78,29 @@ describe('tienda', () => {
     expect(run.addWeapon('rafaga').ok).toBe(false);
   });
 
+  it('con 6 armas, comprar una distinta con casilla la cambia por la de esa casilla, sin devolver nada', () => {
+    const run = new Run(registry, maia, oficina, 1, { weapons: ['tiro', 'tiro', 'tiro', 'tiro', 'tiro', 'estocada'] });
+    run.materials = 100;
+    run.shop.offers = [{ kind: 'weapon', id: 'rafaga', tier: 0, price: 18, locked: false }];
+    expect(run.fitsWeapon('rafaga')).toBe(false);
+    expect(run.fitsWeapon('tiro')).toBe(true);
+    const bought: unknown[] = [];
+    run.emit = ((e: string, d: unknown) => { if (e === 'onBuy') bought.push(d); }) as typeof run.emit;
+    expect(run.shop.buy(0, 5)).toEqual({ ok: true });
+    expect(run.weapons.map((w) => w.id)).toEqual(['tiro', 'tiro', 'tiro', 'tiro', 'tiro', 'rafaga']);
+    expect(run.materials).toBe(82);
+    expect(bought).toEqual([{ kind: 'weapon', id: 'rafaga', price: 18, replaced: 'estocada' }]);
+  });
+
+  it('la casilla solo cuenta si no cabe: con hueco o con una igual, entra como siempre', () => {
+    const run = new Run(registry, maia, oficina, 1, { weapons: ['tiro', 'tiro', 'tiro', 'tiro', 'tiro', 'estocada'] });
+    run.materials = 100;
+    run.shop.offers = [{ kind: 'weapon', id: 'tiro', tier: 0, price: 10, locked: false }];
+    expect(run.shop.buy(0, 5)).toEqual({ ok: true });
+    expect(run.weapons[5]).toEqual({ id: 'estocada', tier: 0 });
+    expect(run.weapons.filter((w) => w.tier === 1)).toHaveLength(1);
+  });
+
   it('el candado guarda la oferta al volver a tirar, y volver a tirar cuesta cada vez más', () => {
     const run = afterWave(2, 1000, 9);
     const kept = run.shop.offers[0]!;
