@@ -1,7 +1,7 @@
 // Entradas a la tienda en vóxeles (FERN, 2026-10-25; encargo de Andrés): el objeto del mapa que brilla cuando la
 // oleada queda limpia y al que MAIA se acerca para entrar en la tienda. En el medieval es la fuente (la pone VoxPix);
 // en los otros dos mundos, un adorno del mismo tamaño de huella (cabe en un círculo de radio 10):
-//   impresora  -> oficina: fotocopiadora grande de pie, con bandejas de papel, escáner y su panel con pantalla
+//   impresora  -> oficina: fotocopiadora grande de pie, con bandejas de papel, salida al costado, escáner y panel
 //   servidor   -> cyberpunk: rack doble de servidores en cromo negro, con luces de neón y cables por arriba
 // Ejes como MAIA: cada capa z es un corte visto desde arriba, norte arriba y abajo el frente; pivote en el centro.
 // Importar: voxpix import-pxl tienda_capas.px.js --stack impresora impresora.json (y servidor)
@@ -21,27 +21,37 @@ ramps("KDMLHW", "bB", "sST", "gG", "kdmlh", "pPQ", "cCI")
 
 const STACKS = {}
 
-// ---- impresora: cuerpo 20x14 (x -10..9, y -7..6), 22 de alto. El frente (y = -7) mira a la cámara
-STACKS.impresora = { w: 20, h: 15, mx: 10, my: 7, layers: 22, voxel(x, y, z) {
+// ---- impresora: cuerpo 18x14 (x -8..9, y -7..6), 22 de alto, y la bandeja de salida asomando por la derecha
+// (x 10..13), con un taco de hojas. El frente (y = -7) mira a la cámara. Revisión de NARUTO (2026-10-25): bandejas
+// con ranura y asa al borde (no cajones de archivador), salida por el costado, panel inclinado y tapa con borde
+STACKS.impresora = { w: 22, h: 15, mx: 8, my: 7, layers: 22, voxel(x, y, z) {
   if (y > 6) return null                                                   // la pila mide 15 (impar); el cuerpo, 14
-  const front = y === -7, side = x === -10 || x === 9, back = y === 6
+  // La bandeja de salida por el costado: una placa con hojas encima
+  if (x >= 10 && x <= 13) {
+    if (y < -4 || y > 3) return null
+    if (z === 11) return "M"
+    if (z >= 12 && z <= 13 && x <= 12 && y >= -3 && y <= 2) return "W"   // un taco de hojas (se ve su grosor)
+    return null
+  }
+  if (x < -8) return null
+  const front = y === -7, side = x === -8 || x === 9, back = y === 6
   // Pies: un zócalo oscuro metido 1
-  if (z === 0) return x > -10 && x < 9 && y > -7 && y < 6 ? "K" : null
-  // Cuerpo de las bandejas (z 1..12)
+  if (z === 0) return x > -8 && x < 9 && y > -7 && y < 6 ? "K" : null
+  // Cuerpo de las bandejas de papel (z 1..12): cada una con su ranura fina y un asa pequeña al borde derecho
   if (z >= 1 && z <= 12) {
     if (front) {
       if (z === 6 || z === 12) return "D"                                 // juntas entre bandejas
-      if ((z === 4 || z === 10) && x >= -3 && x <= 2) return "K"          // tiradores
-      if (x === -10 || x === 9) return "M"
+      if ((z === 3 || z === 9) && x >= -6 && x <= 5) return "D"           // ranura de la bandeja
+      if ((z === 4 || z === 10) && (x === 6 || x === 7)) return "K"       // asa
+      if (side) return "M"
       return z === 1 ? "M" : "H"
     }
     if (side) return z % 4 === 0 ? "M" : "L"                              // rejillas a los lados
     if (back) return "M"
     return "L"
   }
-  // La salida del papel: un hueco oscuro al frente con dos hojas que asoman (z 13..14)
+  // Entre las bandejas y la unidad de arriba (z 13..14)
   if (z >= 13 && z <= 14) {
-    if (front && x >= -7 && x <= 4) return z === 13 ? "W" : "D"
     if (front) return "H"
     return side || back ? "M" : "L"
   }
@@ -51,21 +61,22 @@ STACKS.impresora = { w: 20, h: 15, mx: 10, my: 7, layers: 22, voxel(x, y, z) {
     if (front) return "H"
     return side || back ? "M" : z === 18 ? "W" : "L"
   }
-  // El panel de control, delante a la derecha, con la pantalla y la luz de encendido (z 19)
-  if (z === 19) {
-    if (y >= -7 && y <= -4 && x >= 1 && x <= 8) {
-      if (y >= -6 && y <= -5 && x >= 2 && x <= 5) return x === 2 || y === -5 ? "S" : "T"
-      if (x === 7 && y === -6) return "G"
-      return "D"
-    }
-    // la tapa del escáner, con su borde
-    if (y >= -3) return x === -10 || x === 9 || y === 6 ? "M" : "W"
-    return null
+  // El panel de control, delante a la derecha e inclinado: una escalera de dos (z 19 delante, z 20 detrás), con la
+  // pantalla en la parte alta y la luz de encendido en la baja
+  const panel = x >= 1 && x <= 8
+  if (z === 19 && panel && y >= -7 && y <= -5) return x === 7 && y === -6 ? "G" : "D"
+  if (z === 20 && panel && y >= -4 && y <= -3) return x >= 2 && x <= 6 ? (x === 2 ? "S" : "T") : "D"
+  // La tapa del escáner (z 19), con un borde oscuro y un asa en el canto delantero
+  if (z === 19 && y >= -4) {
+    if (panel && y <= -3) return "D"                                      // bajo el escalón alto del panel
+    if (y === -4 && x >= -4 && x <= -1) return "D"                        // asa
+    return x === -8 || x === 9 || y === -4 || y === 6 ? "D" : "W"
   }
+  if (z === 19 && y >= -7 && y <= -5) return "M"                          // delante de la tapa, sin panel
   // El alimentador de originales, detrás a la izquierda, con hojas encima (z 20..21)
-  if (z >= 20 && z <= 21 && x >= -8 && x <= 0 && y >= 0 && y <= 5) {
-    if (z === 21) return x >= -7 && x <= -1 && y >= 1 && y <= 4 ? "W" : null
-    return x === -8 || x === 0 || y === 5 ? "D" : "M"
+  if (z >= 20 && z <= 21 && x >= -7 && x <= 0 && y >= 0 && y <= 5) {
+    if (z === 21) return x >= -6 && x <= -1 && y >= 1 && y <= 4 ? "W" : null
+    return x === -7 || x === 0 || y === 5 ? "D" : "M"
   }
   return null
 } }

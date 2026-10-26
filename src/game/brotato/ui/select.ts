@@ -1,16 +1,17 @@
 // Elegir agente, portada de la SelectScene del Brotato en Phaser. Un personaje nuevo aparece aquí solo con existir su
 // módulo: la ficha (ventajas, desventajas, arma inicial) se escribe sola desde sus datos. El mundo de la partida ya
 // sale de la semilla, así que la ficha dice cuál es y nombra las armas con su aspecto de ese mundo.
-// Teclado: 1–9 elige, Intro elige el marcado, las flechas lo mueven y C cambia la cámara (ui/camera.ts).
+// Teclado: 1–9 elige, Intro elige el marcado, las flechas lo mueven, C cambia la cámara (ui/camera.ts) y M quita o pone
+// el sonido (el botón de abajo a la izquierda, para el dedo en el Flip).
 import type { CharacterModule, StatModule, ThemeId } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { describeModifier } from '../stats/describe';
 import { lookOf } from '../looks';
-import { CHAR_W, FONT_SIZE, drawText, wrapText } from './font';
+import { CHAR_W, FONT_SIZE, drawText, textWidth, wrapText } from './font';
 import { COLORS, type Painter, type Zone } from './paint';
 import { ACCENTS, UI, button, panel } from './theme';
 
-export type SelectAction = { type: 'start'; index: number } | { type: 'move'; delta: number } | { type: 'camera'; delta: number };
+export type SelectAction = { type: 'start'; index: number } | { type: 'move'; delta: number } | { type: 'camera'; delta: number } | { type: 'sound' };
 
 const MAX_CARD_CHARS = 56;   // ancho máximo de una ficha, en letras
 export const PORTRAIT_W = 32; // caja del retrato a escala x1
@@ -24,10 +25,11 @@ export function selectKey(e: { code: string; key: string }, count: number, selec
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') return { type: 'move', delta: 1 };
   if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') return { type: 'move', delta: -1 };
   if (e.key === 'c' || e.key === 'C') return { type: 'camera', delta: e.key === 'C' ? -1 : 1 };
+  if (e.key === 'm' || e.key === 'M') return { type: 'sound' };
   return null;
 }
 
-export function drawSelect(p: Painter, registry: Registry, selected: number, theme: ThemeId, u = 1, camera?: string): Zone<SelectAction>[] {
+export function drawSelect(p: Painter, registry: Registry, selected: number, theme: ThemeId, u = 1, camera?: string, sound?: boolean): Zone<SelectAction>[] {
   const zones: Zone<SelectAction>[] = [];
   const W = p.width, H = p.height;
   const line = FONT_SIZE * u;
@@ -58,6 +60,8 @@ export function drawSelect(p: Painter, registry: Registry, selected: number, the
   });
   // Abajo, el botón de empezar (con el dedo, en el Flip, es más claro que tocar la ficha); las teclas al lado si caben
   const btnH = line + 7 * u, btnW = 64 * u;
+  // El sonido, abajo a la izquierda junto a empezar (si quien llama lo maneja)
+  if (sound !== undefined) button(p, zones, pad, H - pad - btnH, sound ? 'sonido sí' : 'sonido no', { type: 'sound' } as SelectAction, { accent: ACCENTS[theme], h: btnH, w: textWidth('sonido no', u) + 8 * u });
   button(p, zones, Math.floor((W - btnW) / 2), H - pad - btnH, 'empezar', { type: 'start', index: selected } as SelectAction, { accent, primary: true, h: btnH, w: btnW });
   if (camera && W >= 300) drawText(p, W - pad, H - pad - line, 'intro · c: cámara', UI.dim, { scale: u, align: 'right' });
   return zones;

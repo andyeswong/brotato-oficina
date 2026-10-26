@@ -101,6 +101,8 @@ describe('la tienda en pantalla', () => {
         const screens: Array<(p: Painter) => unknown> = [
           (p) => drawShop(p, run, theme, { text: 'Te faltan 12 materiales', color: '#f00' }),
           (p) => drawSelect(p, registry, 0, theme),
+          (p) => drawSelect(p, registry, 0, theme, 1, 'Clásica', true),
+          (p) => drawSelect(p, registry, 0, theme, 1, 'Clásica', false),
           (p) => drawEnd(p, run, 'defeat'),
         ];
         for (const draw of screens) {

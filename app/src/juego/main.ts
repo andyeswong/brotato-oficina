@@ -31,6 +31,7 @@ import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brot
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { ACCENTS } from '../../../src/game/brotato/ui/theme';
 import type { Highlight } from '@voxpix/world/frame2d';
+import { GameAudio } from './audio';
 import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
@@ -231,6 +232,10 @@ let selected = 0;
 let shopMessage: ShopMessage | null = null;
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
 let zones: Zone<ShopAction | SelectAction | HudAction>[] = [];
+const audio = new GameAudio();
+let heard = '';                // la fase y el estado de la oleada que ya sonaron (limpia, tienda, derrota, victoria)
+let shotSeen = 0;               // el uid del último disparo de MAIA que ya sonó (los uid empiezan de nuevo en cada oleada)
+let shotWave: object | null = null;
 let enterQueued = false;        // F pulsada (o el botón de entrar tocado) desde el último tick: se gasta en el siguiente
 const effects = new Effects();
 // El destello de un golpe: el tinte plano de la entidad (NARUTO), solo aspecto, con el reloj de la vista
@@ -409,11 +414,31 @@ function paintFx(vx: number, vy: number): void {
   const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1) };
   const fx = g.takeFx();
   for (const f of fx) {
-    if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); }
-    else if (f.type === 'player-hit') flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s);
+    if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); audio.play('golpe'); }
+    else if (f.type === 'player-hit') { flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s); audio.play('dano'); }
+    else if (f.type === 'enemy-die') audio.play('muerte');
+    else if (f.type === 'pickup') audio.play('recoger');
   }
+  // Los disparos de MAIA no son un efecto de la partida: se oyen al ver un proyectil suyo nuevo
+  if (shotWave !== g.current) { shotWave = g.current; shotSeen = 0; }
+  for (const pr of g.current.projectiles) if (pr.owner !== 'enemy' && pr.uid > shotSeen) { shotSeen = pr.uid; audio.play('disparo'); }
+  if (Math.hypot(p.vx, p.vy) > 1) audio.play('paso');
   effects.add(fx, scene);
   effects.paint(fxPainter, viewProjector(cur!.view.camera, b.cam), vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
+}
+
+// Lo que suena al cambiar de fase: la oleada limpia, la tienda, la derrota y la victoria; la música, en las oleadas
+function listen(): void {
+  const g = game;
+  const now = screen === 'game' && g ? `${g.phase}|${g.phase === 'wave' ? g.current.status : ''}|${g.run.waveIndex}` : screen;
+  audio.music(screen === 'game' && g?.phase === 'wave' && g.current.status === 'playing');
+  if (now === heard) return;
+  heard = now;
+  if (!g || screen !== 'game') return;
+  if (g.phase === 'wave' && g.current.status === 'open') audio.play('limpia');
+  else if (g.phase === 'shop') audio.play('tienda');
+  else if (g.phase === 'dead') audio.play('derrota');
+  else if (g.phase === 'victory') audio.play('victoria');
 }
 
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
@@ -433,7 +458,7 @@ function shopHighlight(time: number): Highlight | null {
 
 // La pantalla que toca ahora y su firma
 function current(): { name: string; sign: string } {
-  if (screen === 'select') return { name: 'seleccion', sign: `select|${selected}|${theme}` };
+  if (screen === 'select') return { name: 'seleccion', sign: `select|${selected}|${theme}|${audio.muted}` };
   if (screen === 'end' || !game) return { name: 'fin', sign: `end|${seed}` };
   const g = game;
   if (g.phase === 'shop') {
@@ -452,7 +477,7 @@ function drawUi(): void {
   drawn = sign;
   g2.clearRect(0, 0, UW, UH);
   zones = [];
-  if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name);
+  if (screen === 'select') zones = drawSelect(painter, registry, selected, theme, 1, camera.name, !audio.muted);
   else if (screen === 'end' && game) drawEnd(painter, game.run, game.phase === 'victory' ? 'victory' : 'defeat');
   else if (game?.phase === 'shop') zones = drawShop(painter, game.run, theme, shopMessage);
   else if (game) zones = drawHud(painter, game);
@@ -469,6 +494,7 @@ function loop(now: number): void {
     const over = game.phase === 'victory' || (game.phase === 'dead' && game.phaseTick * TICK >= DEAD_PAUSE_S);
     if (over) { screen = 'end'; endAt = now; }
   }
+  listen();
   effects.update(Math.min(dt, 0.1));
   flashes.update(dt);
   if (screen !== 'select') frame(now / 1000);
@@ -494,7 +520,10 @@ function loop(now: number): void {
 const next = q.has('timer') ? (f: (t: number) => void) => setTimeout(() => f(performance.now()), 16) : requestAnimationFrame;
 
 function act(action: ShopAction | SelectAction | HudAction): void {
-  if (action.type === 'enter') {
+  if (action.type === 'sound') {
+    audio.toggleMuted();
+    drawn = '';
+  } else if (action.type === 'enter') {
     enterQueued = true;
   } else if (action.type === 'start') {
     if (registry.characters()[action.index]) newRun();
@@ -508,13 +537,18 @@ function act(action: ShopAction | SelectAction | HudAction): void {
     fit();
   } else if (game?.phase === 'shop') {
     if (action.type === 'next') { shopMessage = null; game.leaveShop(); }
-    else shopMessage = applyShop(game.run, action);
+    else {
+      shopMessage = applyShop(game.run, action);
+      if (action.type === 'buy' && shopMessage?.text === 'comprado') audio.play('compra');
+    }
   }
 }
 
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys.add(k);
+  audio.unlock();
+  if (k === 'm' && screen !== 'select') { audio.toggleMuted(); return; }
   if (screen === 'select') { const a = selectKey(e, registry.characters().length, selected); if (a) act(a); }
   else if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); }
   else if (game?.phase === 'shop') { const a = shopKey(e, game.run); if (a) { e.preventDefault(); act(a); } }
@@ -522,6 +556,8 @@ addEventListener('keydown', (e) => {
   else if (game && k === 'f') enterQueued = true;
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
+// El audio nace con el primer gesto en cualquier sitio de la página (en el Flip abierto, el lienzo es solo una franja)
+addEventListener('pointerdown', () => audio.unlock(), { capture: true });
 ui.addEventListener('pointerdown', (e) => {
   if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); return; }
   const r = ui.getBoundingClientRect();
