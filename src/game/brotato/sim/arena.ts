@@ -16,6 +16,9 @@ import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runti
 const SHOT_HEIGHT = 8;
 // El radio del enemigo más grande (embestidor y escupidor): un punto de aparición tiene que dejarle sitio
 const SPAWN_RADIUS = 6;
+const FLOW = 4;          // lado de la celda del camino de la prórroga
+const PATH_NEAR = 8;     // a cuánto del destino se da por llegado (y desde dónde se cuentan las distancias)
+const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
 export function mix(seed: number, salt: number): number {
   let h = (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(salt, 0x85ebca6b)) >>> 0;
@@ -60,6 +63,10 @@ export class Arena {
   readonly shopBox: [number, number, number, number, number, number];
   readonly floorZ: number;               // altura del suelo (la cara de arriba de las losetas)
   private free: Point[] = [];
+  // El camino de la prórroga (pathDir): dónde cabe un enemigo en la rejilla de FLOW y la distancia a la celda de MAIA
+  private flowOk: Uint8Array | null = null;
+  private flowDist: Int32Array | null = null;
+  private flowGoal = '';
   // Las plantas que puso la vegetación, por tipo (vacío si el tema no la lleva)
   plants: Record<string, number> = {};
   // Cuántas rampas pasaron a vidrio (0 si el tema no lo lleva)
@@ -157,6 +164,65 @@ export class Arena {
       if (d < bestD) { bestD = d; best = f; }
     }
     return { x: best.x, y: best.y };
+  }
+
+  // Hacia dónde ir (unitario) desde `from` para llegar a `to` por el camino más corto, rodeando arbustos, columnas y
+  // paredes; null si ya está al lado (a `near` px o menos) o si no hay camino. Rejilla de FLOW px donde cabe el enemigo
+  // más grande, con las distancias por BFS desde las celdas libres a `near` de `to` (`to` puede ser sólido, como el
+  // centro de la fuente, o un hueco donde el grande no cabe); se rehacen cuando cambia la celda de `to` o `near`. Un
+  // enemigo pequeño encajado donde el grande no cabe sale hacia la celda con camino más cercana (a 2 o menos)
+  pathDir(from: Point, to: Point, near = PATH_NEAR): Point | null {
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), n = cols * rows;
+    if (!this.flowOk) {
+      this.flowOk = new Uint8Array(n);
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+        this.flowOk[j * cols + i] = this.fits(i * FLOW + FLOW / 2, j * FLOW + FLOW / 2, this.floorZ, SPAWN_RADIUS) ? 1 : 0;
+      }
+      this.flowDist = new Int32Array(n);
+    }
+    const ok = this.flowOk, dist = this.flowDist!;
+    const cell = (p: Point) => Math.min(rows - 1, Math.max(0, Math.floor(p.y / FLOW))) * cols + Math.min(cols - 1, Math.max(0, Math.floor(p.x / FLOW)));
+    const goal = `${cell(to)}:${near}`;
+    if (goal !== this.flowGoal) {
+      this.flowGoal = goal;
+      dist.fill(-1);
+      const queue = new Int32Array(n);
+      let head = 0, tail = 0;
+      const span = Math.ceil(near / FLOW), gx = Math.floor(to.x / FLOW), gy = Math.floor(to.y / FLOW);
+      for (let y = gy - span; y <= gy + span; y++) for (let x = gx - span; x <= gx + span; x++) {
+        if (x < 0 || y < 0 || x >= cols || y >= rows) continue;
+        const k = y * cols + x;
+        if (!ok[k] || Math.hypot(x * FLOW + FLOW / 2 - to.x, y * FLOW + FLOW / 2 - to.y) > near) continue;
+        dist[k] = 0;
+        queue[tail++] = k;
+      }
+      while (head < tail) {
+        const k = queue[head++]!, x = k % cols, y = (k - x) / cols;
+        for (const [dx, dy] of NEIGHBORS) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const m = ny * cols + nx;
+          if (dist[m]! >= 0 || !ok[m]) continue;
+          dist[m] = dist[k]! + 1;
+          queue[tail++] = m;
+        }
+      }
+    }
+    // La vecina (de las 8, o a 2 si está encajado) con menos distancia
+    const c = cell(from), cx = c % cols, cy = (c - cx) / cols, here = dist[c]!;
+    if (here === 0) return null;
+    const span = here >= 0 ? 1 : 2;
+    let best = -1, bd = here >= 0 ? here : Infinity;
+    for (let dy = -span; dy <= span; dy++) for (let dx = -span; dx <= span; dx++) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      const d = dist[ny * cols + nx]!;
+      if (d >= 0 && d < bd) { bd = d; best = ny * cols + nx; }
+    }
+    if (best < 0) return null;
+    const tx = (best % cols) * FLOW + FLOW / 2 - from.x, ty = Math.floor(best / cols) * FLOW + FLOW / 2 - from.y;
+    const l = Math.hypot(tx, ty) || 1;
+    return { x: tx / l, y: ty / l };
   }
 
   // Dentro del interior (lo que no se mueve con colisión: los materiales que caen)

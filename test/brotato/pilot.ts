@@ -34,9 +34,14 @@ export function kite(world: World, run: Run): Point {
   return len > 0.05 ? steer(run, p, { x: fx / len, y: fy / len }) : { x: 0, y: 0 };
 }
 
-// Hacia la entrada de la tienda (un punto a su alcance: el centro es sólido)
+// Hacia la entrada de la tienda (un punto a su alcance: el centro es sólido), por el camino fino de la arena (pathDir,
+// el de los enemigos en la prórroga): la rejilla de 8 de goTo no veía los pasos estrechos entre arbustos y el piloto
+// se quedaba sin llegar (medieval s38, s51, s58). Se sigue tal cual, sin steer: las celdas del camino caben a un cuerpo
+// mayor que el de MAIA, y steer, que mira 14 px por delante, veía el borde de la fuente y la hacía oscilar a la puerta
+// (s12). Sin camino, goTo
 export function toShop(world: World, run: Run): Point {
-  return goTo(run, world.player, run.arena.shop);
+  const s = run.arena.shop, d = run.arena.pathDir(world.player, s, s.reach - 3);
+  return d ?? goTo(run, world.player, s);
 }
 
 // Ir a un sitio dando la vuelta a lo que haga falta (en la prórroga hay que llegar al último enemigo aunque esté al

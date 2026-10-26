@@ -6,7 +6,8 @@ import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run } from '../../src/game/brotato/sim/Run';
 import { placeAtShop } from '../../src/game/brotato/play';
 import { runDigest } from '../../src/game/brotato/sim/digest';
-import { playRun } from './pilot';
+import { OVERTIME_MAX } from '../../src/game/brotato/sim/World';
+import { kite, playRun } from './pilot';
 
 vi.setConfig({ testTimeout: 120_000 });
 const { registry } = validateContent(discoverContent());
@@ -36,6 +37,35 @@ describe('el fin de la oleada', () => {
     for (const e of world.enemies) e.hp = 0, e.alive = false;
     world.step(1 / 60, STILL);
     expect(world.status).toBe('open');
+  });
+
+  it('en la prórroga los que quedan llegan hasta MAIA rodeando lo que haya en medio, y pasado el tope se van', () => {
+    // Medieval s30: el que se quedaba tras los arbustos. MAIA sin armas y quieta: o llegan a tocarla, o se van al tope
+    const run = new Run(registry, maia, registry.level('medieval'), 30, { weapons: [] });
+    const world = run.startWave();
+    world.player.maxHp = world.player.hp = 1e9;
+    while (world.time < world.duration) world.step(1 / 60, STILL);
+    const far = () => Math.max(...world.enemies.map((e) => Math.hypot(e.x - world.player.x, e.y - world.player.y)));
+    expect(world.enemies.length).toBeGreaterThan(0);
+    const before = far();
+    for (let t = 0; t < 60 * 10; t++) world.step(1 / 60, STILL);
+    expect(far()).toBeLessThan(Math.min(before, 40));
+    while (world.status === 'playing' && world.time < world.duration + OVERTIME_MAX) world.step(1 / 60, STILL);
+    world.step(1 / 60, STILL);
+    expect(world.enemies).toHaveLength(0);
+    expect(world.status).toBe('open');
+  });
+
+  it('medieval s23: el piloto acaba la oleada 1 (en línea recta un enemigo se quedaba tras los arbustos para siempre)', () => {
+    const run = new Run(registry, maia, registry.level('medieval'), 23);
+    const world = run.startWave();
+    let left = -1;
+    for (let t = 0; world.status === 'playing' && t < 60 * (world.duration + 60); t++) {
+      world.step(1 / 60, kite(world, run));
+      left = world.enemies.length;
+    }
+    expect(world.time, `quedan ${left}`).toBeLessThan(world.duration + OVERTIME_MAX);
+    expect(['open', 'dead']).toContain(world.status);
   });
 
   it('antes de cumplir el tiempo, F junto a la entrada no hace nada', () => {

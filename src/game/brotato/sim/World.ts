@@ -18,6 +18,7 @@ const IFRAMES = 0.6;                   // invulnerabilidad tras un golpe
 const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de disparo
 const MAGNET_SPEED_FACTOR = 3;         // los materiales vuelan a 3× la velocidad base del jugador
 const LIFE_STEAL_COOLDOWN = 0.1;       // como mucho una curación por robo de vida cada 0,1 s
+export const OVERTIME_MAX = 30;        // segundos de prórroga: después, los enemigos que quedan se van
 
 // Regeneración al estilo de Brotato: con N puntos, 1 de vida cada 5 / (1 + (N − 1) / 2,25) segundos
 export function regenInterval(hpRegen: number): number {
@@ -260,8 +261,10 @@ export class World {
     this.collectMaterials(dt);
 
     // Al acabar el tiempo no aparece nadie más (los avisos pendientes se cancelan), pero los vivos siguen ahí: la oleada
-    // queda limpia cuando no queda ninguno
+    // queda limpia cuando no queda ninguno. Con OVERTIME_MAX de prórroga, los que queden se van (sin botín): un enemigo
+    // encajado donde nadie llega no puede dejar la partida sin acabar
     if (this.status === 'playing' && this.time >= this.deps.wave.duration) this.telegraphs.length = 0;
+    if (this.status === 'playing' && this.time >= this.deps.wave.duration + OVERTIME_MAX) this.enemies.length = 0;
     if (this.status === 'playing' && this.time >= this.deps.wave.duration && this.enemies.length === 0) {
       this.status = this.deps.final ? 'cleared' : 'open';
       // Lo que quedó en el suelo se recoge solo al acabar la oleada
@@ -389,6 +392,15 @@ export class World {
         (e.behavior.update as EnemyUpdate)(e, dt, this.enemyApi, e.def.params);
       } catch (cause) {
         throw new Error(`El comportamiento "${e.behavior.id}" del enemigo "${e.def.id}" falló: ${(cause as Error).message}`, { cause });
+      }
+    }
+    // En la prórroga los que quedan van a por MAIA por el camino más corto, a su velocidad: en línea recta se
+    // quedaban tras un arbusto o una pared, y la oleada no acababa (7 de 64 partidas del medieval, 2026-10-26)
+    if (this.overtime) {
+      const { arena } = this.deps;
+      for (const e of this.enemies) {
+        const d = arena.pathDir(e, this.player);
+        if (d) { e.vx = d.x * e.speed; e.vy = d.y * e.speed; }
       }
     }
 

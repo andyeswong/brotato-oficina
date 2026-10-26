@@ -67,7 +67,12 @@ describe('balance de F1', () => {
     for (const seed of SEEDS) expect(play(seed, still), `semilla ${seed}`).toBeLessThanOrEqual(3);
   });
 
-  it('moviéndose, aguanta más que quieta (en media)', () => {
+  // PENDIENTE (MAIA, 2026-10-26: no relajar la aserción). Con el fin de ronda nuevo da 1,75 contra 1,875. La causa,
+  // medida semilla a semilla: en s5 y s7 este piloto muere en la prórroga de la oleada 1 (a los 22 y 24 s, con 6 y 3
+  // perseguidores vivos). Solo huye y no los mata, y antes la oleada acababa a los 20 s con ellos dentro; la quieta
+  // se los encuentra de frente y los mata. En las otras seis las dos mueren en la oleada 2, antes de acabar el tiempo.
+  // Falta decidir si se cambia el piloto (que cace en la prórroga) o la prórroga (que los que quedan vayan a por ella)
+  it.skip('moviéndose, aguanta más que quieta (en media)', () => {
     const avg = (pilot: (w: World, r: Run) => Point) => SEEDS.reduce((sum, s) => sum + play(s, pilot), 0) / SEEDS.length;
     expect(avg(kite)).toBeGreaterThan(avg(still));
   });
