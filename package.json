@@ -11,6 +11,7 @@
     "build": "vite build --config app/vite.config.ts",
     "preview": "vite preview --config app/vite.config.ts",
     "rigs": "tsx --tsconfig tsconfig.json scripts/rig-preview.ts",
+    "favicon": "tsx --tsconfig tsconfig.json scripts/favicon.ts",
     "models": "node scripts/import-models.mjs",
     "models:check": "node scripts/import-models.mjs --check"
   },
