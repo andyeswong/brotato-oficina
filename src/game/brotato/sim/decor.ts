@@ -9,12 +9,13 @@
 import { M, type PillarBuilder, type World } from '@voxpix/world/build';
 
 const COLUMN_H = 34;            // el alto de la columna redonda de VoxPix: las de los temas, igual
-const MAMPARA_H = 20;           // el panel de cubículo, más bajo: se ve por encima
+const MAMPARA_H = 12;           // el panel de cubículo, más bajo que las paredes (16): se ve por encima (NARUTO: 10-12)
 
 const v = (ramp: number, tone: number) => ramp * 16 + tone + 1;
 
-// Una mampara de cubículo en L dentro de su loseta: dos paneles de 2 de grueso con marco de metal y tela dentro. La
-// esquina (de las 4) sale de la posición: el mismo mapa da siempre las mismas
+// Una mampara de cubículo en L dentro de su loseta: dos brazos de 14 de largo y 2 de grueso, con zócalo oscuro, tela
+// clara (más que el suelo, para que la L se lea desde arriba) y tapa de metal claro. La esquina (de las 4) sale de la
+// posición: el mismo mapa da siempre las mismas
 export const mamparaPillar: PillarBuilder = ({ model, x0, y0, x1, y1, noise }) => {
   const corner = Math.floor(noise(x0, y0, 0) * 4);
   const ax = corner & 1 ? x1 - 2 : x0 + 1, ay = corner & 2 ? y1 - 2 : y0 + 1;   // la esquina de la L
@@ -22,8 +23,9 @@ export const mamparaPillar: PillarBuilder = ({ model, x0, y0, x1, y1, noise }) =
     for (let x = Math.min(xa, xb); x <= Math.max(xa, xb); x++) for (let y = Math.min(ya, yb); y <= Math.max(ya, yb); y++) {
       for (let z = 0; z < MAMPARA_H; z++) {
         const end = x === Math.min(xa, xb) || x === Math.max(xa, xb) || y === Math.min(ya, yb) || y === Math.max(ya, yb);
-        const frame = z < 2 || z >= MAMPARA_H - 2 || (end && (xa === xb ? y === ya || y === yb : x === xa || x === xb));
-        model.set(x, y, z, frame ? v(M.metal, z >= MAMPARA_H - 2 ? 3 : 2) : v(M.cloth, 2 + (noise(x, y, z) > 0.8 ? 1 : 0) + (z > MAMPARA_H / 2 ? 1 : 0)));
+        const top = z === MAMPARA_H - 1, base = z < 2, post = end && (xa === xb ? y === ya || y === yb : x === xa || x === xb);
+        const val = top ? v(M.metal, 4) : base ? v(M.metal, 0) : post ? v(M.metal, 3) : v(M.cloth, 2 + (noise(x, y, z) > 0.85 ? 1 : 0) + (z > MAMPARA_H / 2 ? 1 : 0));
+        model.set(x, y, z, val);
       }
     }
   };
@@ -80,28 +82,43 @@ function flat(world: World, x: number, y: number, z: number): boolean {
   return z > 0 && !!world.model.get(x, y, z - 1) && !world.model.get(x, y, z) && floorTop(world, x, y) === z;
 }
 
-// Cables por el suelo del cyberpunk: tiradas de 1 vóxel que avanzan recto y a veces giran 90°, hasta topar con algo.
-// Negros casi todos; alguno de color. Devuelve cuántos vóxeles puso (para las pruebas)
+// Cables por el suelo del cyberpunk (revisión de NARUTO: pocos y largos, de algo a algo): cada uno sale del pie de una
+// pared o de un pilar hacia dentro, sigue recto, gira en L una o dos veces y acaba al topar con otra cosa sólida. Solo
+// se tiende si es largo (MIN_CABLE); si no, se prueba otro sitio. Gris oscuro casi todos (más claro que el suelo);
+// alguno rosa. Devuelve cuántos vóxeles puso (para las pruebas)
+const MIN_CABLE = 40;
 export function addCables(world: World, seed: number): number {
   const base = addRamps(world, [
-    { name: 'cable', colors: ['#07070c', '#101018', '#1a1a26', '#2a2a3c'], material: 'atravesable' },
+    { name: 'cable', colors: ['#1a1a26', '#2a2a3c', '#3c3c56', '#56567a'], material: 'atravesable' },
     { name: 'cable de color', colors: ['#3a1030', '#7a1e5e', '#c0388e', '#f070c0'], material: 'atravesable' },
   ]);
-  const r = rng(seed), count = Math.round((world.width * world.depth) / 7000);
-  let placed = 0;
-  for (let k = 0; k < count; k++) {
+  const r = rng(seed), want = Math.max(3, Math.round((world.width * world.depth) / 30000));
+  const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
+  let placed = 0, laid = 0;
+  for (let tries = 0; tries < want * 40 && laid < want; tries++) {
+    // Un sitio al azar; de ahí, hacia un lado, hasta el pie de lo primero sólido: ese es el arranque, y se sale al revés
     let x = Math.floor(16 + r() * (world.width - 32)), y = Math.floor(16 + r() * (world.depth - 48));
     const z = floorTop(world, x, y);
-    const ramp = base + (r() < 0.2 ? 1 : 0);
+    if (!flat(world, x, y, z)) continue;
     let dir = Math.floor(r() * 4);
-    const len = 30 + Math.floor(r() * 70);
-    for (let s = 0; s < len; s++) {
-      if (!flat(world, x, y, z)) break;
-      world.model.set(x, y, z, v(ramp, s % 7 === 0 ? 2 : 1));
-      placed++;
-      if (r() < 0.05) dir = (dir + (r() < 0.5 ? 1 : 3)) % 4;
-      x += [1, 0, -1, 0][dir]!; y += [0, 1, 0, -1][dir]!;
+    while (flat(world, x + DX[dir]!, y + DY[dir]!, z)) { x += DX[dir]!; y += DY[dir]!; }
+    dir = (dir + 2) % 4;
+    // El trazado: recto, con 1 o 2 giros en L a lo largo del camino, hasta topar
+    const path: Array<[number, number]> = [];
+    let turns = 1 + Math.floor(r() * 2), nextTurn = 25 + Math.floor(r() * 60);
+    while (flat(world, x, y, z) && path.length < 400) {
+      path.push([x, y]);
+      if (path.length === nextTurn && turns > 0) {
+        const side = (dir + (r() < 0.5 ? 1 : 3)) % 4;
+        if (flat(world, x + DX[side]!, y + DY[side]!, z)) { dir = side; turns--; nextTurn += 25 + Math.floor(r() * 60); }
+      }
+      x += DX[dir]!; y += DY[dir]!;
     }
+    if (path.length < MIN_CABLE) continue;
+    const ramp = base + (r() < 0.25 ? 1 : 0);
+    path.forEach(([px, py], s) => world.model.set(px, py, z, v(ramp, s % 9 === 0 ? 3 : 2)));
+    placed += path.length;
+    laid++;
   }
   return placed;
 }

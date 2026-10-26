@@ -53,8 +53,8 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     cap: ['#2c2a2a', '#403e3e', '#5c5a58', '#827e7a', '#a29e98'],
     column: ['#343234', '#525052', '#6e6c6c', '#8a8886', '#aaa8a4'],
     // Los charcos son café derramado (Andrés, 2026-10-26), opaco; y la tela de las mamparas, azul gris de oficina
-    water: ['#160a04', '#2a160a', '#43260f', '#603a1a', '#8a5a30'],
-    cloth: ['#1c2636', '#2a384e', '#3a4e68', '#506884', '#6a84a2'],
+    water: ['#160a04', '#2a160a', '#43260f', '#6a4424', '#c8a070'],   // arriba, la crema (NARUTO: que no parezca tierra)
+    cloth: ['#4a5466', '#5e6a80', '#76849a', '#8e9cb2', '#aab6c8'],
   }), ...SAMPLE_PIECES, pillar: mamparaPillar },
   ambient: [0.7, 0.72, 0.8] as const,
 };

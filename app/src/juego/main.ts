@@ -468,9 +468,13 @@ function listen(): void {
   else if (g.phase === 'victory') audio.play('victoria');
 }
 
+// Lo que queda detrás del escenario (MAIA o un enemigo pegados a la pared sur, que mide 16 como todas desde VoxPix
+// 857c33d) se ve como una silueta en damero de este color (VoxPix 2d45335, Frame2DOptions.xray)
+const XRAY = { color: [150, 220, 255] as const };
+
 // Las opciones de composición del juego (las mismas para el cuadro y para la precarga)
 function viewOptions(vx: number, vy: number, time: number) {
-  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: game!.run.arena.ambient, outline: outline.id, outlineColor: outline.color, highlight: shopHighlight(time) };
+  return { vx, vy, vw: VW, vh: VH, time, lights: true, ambient: game!.run.arena.ambient, outline: outline.id, outlineColor: outline.color, highlight: shopHighlight(time), xray: XRAY };
 }
 
 // Con la oleada limpia, la entrada a la tienda brilla con el acento del mundo y late (resalte de VoxPix, a612e67):

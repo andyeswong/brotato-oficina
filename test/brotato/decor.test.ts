@@ -26,9 +26,10 @@ describe('los adornos de cada tema', () => {
     expect(cables.length).toBe(arena.decor.cables);
     expect(cables.length).toBeGreaterThan(200);
     for (const [x, y, z] of cables) expect(arena.state.solidAt(x, y, z), `${x},${y},${z}`).toBe(false);
-    // Ni suben el suelo: donde hay un cable se apoya igual que al lado
-    const [x, y] = cables[0]!;
-    expect(arena.restZ(x + 0.5, y + 0.5, 1)).toBe(arena.floorZ);
+    // Ni suben el suelo: donde hay un cable (lejos de paredes y pilares, de donde salen) se apoya igual que en el suelo
+    const clear = cables.filter(([x, y, z]) => [-2, -1, 0, 1, 2].every((dy) => [-2, -1, 0, 1, 2].every((dx) => !arena.state.solidAt(x + dx, y + dy, z + 1))));
+    expect(clear.length).toBeGreaterThan(50);
+    for (const [x, y] of clear) expect(arena.restZ(x + 0.5, y + 0.5, 1), `${x},${y}`).toBe(arena.floorZ);
   });
 
   it('oficina: tazas tumbadas junto al café, que tampoco paran nada', () => {
@@ -45,6 +46,7 @@ describe('los adornos de cada tema', () => {
     const water = (id: string) => new Arena(registry.level(id), 1).world.model.palette.ramps.find((r) => r.name === 'agua')!;
     expect(water('oficina').emissive).toBeFalsy();
     expect(water('oficina').colors[2]).toBe('#43260f');
+    expect(water('oficina').colors[4]).toBe('#c8a070');
     expect(water('cyberpunk').emissive).toBe(true);
     expect(water('medieval').colors).toEqual(['#0e1a2e', '#16304a', '#1f4a66', '#2f6a86', '#5a9ab4']);
   });
