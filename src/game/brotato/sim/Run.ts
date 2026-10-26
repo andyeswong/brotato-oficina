@@ -43,10 +43,10 @@ export class Run {
     readonly character: CharacterModule,
     readonly level: LevelModule,
     readonly seed: number,
-    options: { weapons?: string[]; foliage?: boolean; glass?: boolean } = {},
+    options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean } = {},
   ) {
     this.rng = createRng(seed);
-    this.arena = new Arena(level, seed, { foliage: options.foliage, glass: options.glass });
+    this.arena = new Arena(level, seed, { foliage: options.foliage, glass: options.glass, bushes: options.bushes });
     this.body = character.body;
     const defs = new Map<string, StatDef>(registry.stats().map((s) => [s.id, s]));
     this.stats = new StatSheet(defs, character.baseStats, (c) => this.counter(c as CounterId));

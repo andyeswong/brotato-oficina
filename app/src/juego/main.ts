@@ -17,7 +17,7 @@ import { createCompositor } from '@voxpix/view/compositor';
 import { walkFrames, WALK_FRAME_MS } from '@voxpix/anim/walk';
 import { rigFrames } from '@voxpix/anim/rig';
 import { RIG_CLIP, RIG_GRAPA, RIG_TAZA } from '../../../src/anim/rigs-brotato';
-import { FixedLoop, type TickInput, type CarryConfig } from '@voxpix/runtime/runtime';
+import { FixedLoop, type TickInput } from '@voxpix/runtime/runtime';
 import { TICK } from '@voxpix/world/state';
 import { discoverContent } from '../../../src/game/brotato/registry/discover';
 import { validateContent } from '../../../src/game/brotato/registry/validate';
@@ -89,11 +89,6 @@ const maiaWalk = walkFrames(maiaModel);
 const MAIA_H = (maiaModel.bounds()?.maxZ ?? 30) + 1;
 const ENEMY_H = 12;
 
-function carryFor(theme: LevelModule['theme']): CarryConfig | undefined {
-  const c = registry.character('maia').carryLight;
-  const l = c?.[theme] ?? c?.oficina;
-  return l ? { model: model(l.model), kind: l.kind, cone: l.cone, intensity: l.intensity, radius: l.radius, color: l.color, hand: l.hand, emit: l.emit } : undefined;
-}
 
 // ---- lienzos: el del mundo, el de los efectos y, encima, el de la interfaz, a la misma resolución y escala
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -252,7 +247,8 @@ function newRun(after?: () => void): void {
   setTimeout(() => {
     level = levelFor(seed);
     theme = level.theme;
-    game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS, carry: carryFor(level.theme) }, level,
+    // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
+    game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal') });
     views.clear();
     pending.clear();
