@@ -4,7 +4,7 @@ import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run } from '../../src/game/brotato/sim/Run';
 import type { World } from '../../src/game/brotato/sim/World';
-import { goTo } from './pilot';
+import { kite } from './pilot';
 
 // Cada partida construye su mundo de vóxeles (~250 ms): los ficheros que crean muchas pasan de los 5 s por defecto
 vi.setConfig({ testTimeout: 60_000 });
@@ -27,53 +27,22 @@ function play(seed: number, pilot: (world: World, run: Run) => Point): number {
 
 const still = () => ({ x: 0, y: 0 });
 
-// Un piloto torpe: huye de los enemigos y proyectiles cercanos y no se pega al borde. En la prórroga, si nadie está a
-// tiro, va a por el más cercano (huyendo no se acaba nunca)
-function kite(world: World, run: Run): Point {
-  const p = world.player;
-  if (world.overtime && world.enemies.length) {
-    const e = world.enemies.reduce((a, b) => (Math.hypot(a.x - p.x, a.y - p.y) <= Math.hypot(b.x - p.x, b.y - p.y) ? a : b));
-    if (Math.hypot(e.x - p.x, e.y - p.y) > 50) return goTo(run, p, e);
-  }
-  const { width, height } = run.level.arena;
-  const u = width / 1280; // el piloto se diseñó en una arena de 1280: sus distancias escalan con la arena
-  let fx = ((width / 2 - p.x) * 0.002) / u;
-  let fy = ((height / 2 - p.y) * 0.002) / u;
-  for (const e of world.enemies) {
-    const dx = p.x - e.x;
-    const dy = p.y - e.y;
-    const d2 = dx * dx + dy * dy + 1;
-    if (d2 < 200 * 200) {
-      fx += (dx / d2) * 100;
-      fy += (dy / d2) * 100;
-    }
-  }
-  for (const pr of world.projectiles) {
-    if (pr.owner !== 'enemy') continue;
-    const dx = (p.x - pr.x) / u;
-    const dy = (p.y - pr.y) / u;
-    const d2 = dx * dx + dy * dy + 1;
-    if (d2 < 120 * 120) {
-      fx += (dx / d2) * 150;
-      fy += (dy / d2) * 150;
-    }
-  }
-  const len = Math.hypot(fx, fy);
-  return len > 0.05 ? { x: fx / len, y: fy / len } : { x: 0, y: 0 };
-}
+// El que se mueve es el piloto de la curva (test/brotato/pilot.ts): huye rodeando obstáculos y, en la prórroga,
+// caza a los que quedan (MAIA, 2026-10-26: con la ronda nueva hay que matarlos a todos, y un piloto que solo huye ya
+// no juega como un jugador). El torpe que había aquí moría en la prórroga de la oleada 1: 1,75 contra 1,875 de la quieta
 
 describe('balance de F1', () => {
   it('quieta, con el Buzón, MAIA no pasa de la oleada 3', () => {
     for (const seed of SEEDS) expect(play(seed, still), `semilla ${seed}`).toBeLessThanOrEqual(3);
   });
 
-  // PENDIENTE (MAIA, 2026-10-26: no relajar la aserción). Con el fin de ronda nuevo da 1,75 contra 1,875. La causa,
-  // medida semilla a semilla: en s5 y s7 este piloto muere en la prórroga de la oleada 1 (a los 22 y 24 s, con 6 y 3
-  // perseguidores vivos). Solo huye y no los mata, y antes la oleada acababa a los 20 s con ellos dentro; la quieta
-  // se los encuentra de frente y los mata. En las otras seis las dos mueren en la oleada 2, antes de acabar el tiempo.
-  // Falta decidir si se cambia el piloto (que cace en la prórroga) o la prórroga (que los que quedan vayan a por ella)
-  it.skip('moviéndose, aguanta más que quieta (en media)', () => {
-    const avg = (pilot: (w: World, r: Run) => Point) => SEEDS.reduce((sum, s) => sum + play(s, pilot), 0) / SEEDS.length;
-    expect(avg(kite)).toBeGreaterThan(avg(still));
+  // Cede entre semillas: el piloto que caza juega más oleadas, y de un tirón tumbaba al trabajador de vitest en oficina
+  it('moviéndose, aguanta más que quieta (en media)', async () => {
+    const avg = async (pilot: (w: World, r: Run) => Point) => {
+      let sum = 0;
+      for (const s of SEEDS) { sum += play(s, pilot); await new Promise((r) => setTimeout(r, 0)); }
+      return sum / SEEDS.length;
+    };
+    expect(await avg(kite)).toBeGreaterThan(await avg(still));
   });
 });
