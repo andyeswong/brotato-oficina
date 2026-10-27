@@ -50,7 +50,7 @@ export class Run {
     readonly seed: number,
     // meta: los niveles de las mejoras entre partidas (meta/upgrades.ts); una entrada como la semilla
     // floors: false, una sola sala para toda la partida (las pruebas de antes de los pisos)
-    private readonly options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>>; floors?: boolean } = {},
+    private readonly options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>>; floors?: boolean; holdFall?: boolean } = {},
   ) {
     this.rng = createRng(seed);
     this.floors = options.floors !== false;
@@ -113,7 +113,13 @@ export class Run {
   }
 
   startWave(): World {
-    if (this.floors && this.arena.floor !== this.waveIndex) this.arena = this.buildArena(this.waveIndex);
+    if (this.floors && this.arena.floor !== this.waveIndex) {
+      this.arena = this.buildArena(this.waveIndex);
+      // El piso nuevo cae a su sitio. holdFall (la partida con vista): lo avanza BrotatoGame tick a tick mientras espera
+      // a la vista; si no, de golpe
+      this.arena.dropIn();
+      if (!this.options.holdFall) this.arena.settleFall();
+    }
     const wave = this.registry.wave(this.level.waves[this.waveIndex]!);
     this.stats.invalidate();
     this.world = new World({

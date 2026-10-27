@@ -8,6 +8,8 @@ import type { LevelModule } from '../registry/schemas';
 import { floorLayout, generateLayout, NORTH, TILE, WALL, type GeneratorSpec, type Layout, type Side } from '@voxpix/worldgen';
 import { buildWorldState, type World, type WorldLook } from '@voxpix/world/build';
 import { openDoorInWorld } from '@voxpix/world/doors';
+import { VoxelFall } from '@voxpix/world/fall';
+import { countPieces, fallPiece, FALL_MAX_PIECES } from './dropin';
 
 // El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
 export interface LevelWorld { look: WorldLook; ambient: readonly [number, number, number] }
@@ -94,6 +96,8 @@ export class Arena {
   readonly floor: number | null;
   readonly exit: { side: Side; x: number; y: number; reach: number; box: [number, number, number, number, number, number] } | null;
   exitOpen = false;
+  // La caída del piso al llegar (dropIn), hasta que se suelta (releaseFall / settleFall)
+  fall: VoxelFall | null = null;
   private readonly look: WorldLook;
   private readonly decorate: (w: World) => void;
 
@@ -175,6 +179,44 @@ export class Arena {
     this.flowOk = null;
     this.flowGoal = '';
     return touched;
+  }
+
+  // El piso se monta cayendo: lo que hay sobre el suelo se levanta en piezas que caen a su sitio (commit 'end', ver
+  // dropin.ts). Devuelve las piezas; 0 si no hay caída (sin piso, o ni con la pieza más gruesa se baja del tope: el
+  // piso queda como estaba, ya montado)
+  dropIn(): number {
+    if (this.floor === null || this.fall) return 0;
+    const s = this.state.solid;
+    const box = { x0: 0, y0: 0, z0: this.floorZ, x1: s.width - 1, y1: s.depth - 1, z1: s.zMax };
+    const piece = fallPiece((n) => countPieces(s, box, n, FALL_MAX_PIECES));
+    if (piece === null) return 0;
+    this.fall = new VoxelFall(this.state);
+    return this.fall.rebuild(box, { piece, commit: 'end' });
+  }
+
+  // ¿Sigue cayendo (alguna pieza sin llegar)?
+  get falling(): boolean {
+    return !!this.fall && !this.fall.done;
+  }
+
+  // Un tick de la caída
+  stepFall(): void {
+    if (this.fall && !this.fall.done) this.fall.step();
+  }
+
+  // Ya cayó todo y la vista lo tiene horneado: se quitan las piezas que aún se dibujaban encima
+  releaseFall(): void {
+    if (!this.fall || !this.fall.done) return;
+    this.fall.release();
+    this.fall = null;
+  }
+
+  // Sin vista (o con prisa): la caída de golpe. El mundo final es el mismo que a ticks
+  settleFall(): void {
+    if (!this.fall) return;
+    this.fall.finish();
+    this.fall.release();
+    this.fall = null;
   }
 
   // ¿Está (x, y) en la salida abierta?

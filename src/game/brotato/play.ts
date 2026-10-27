@@ -94,7 +94,7 @@ export class BrotatoGame {
   constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule,
     private readonly test: TestOptions = {}) {
     const lv = level ?? pickLevel(registry.levels(), seed);
-    this.run = new Run(registry, registry.character('maia'), lv, seed, test.meta ? { meta: test.meta } : {});
+    this.run = new Run(registry, registry.character('maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}) });
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
@@ -160,8 +160,9 @@ export class BrotatoGame {
 
   step(input: GameInput): void {
     if (this.phase === 'wave' && this.awaitingFloor) {
-      // El piso nuevo está montado y la vista aún no lo ha horneado: nada avanza (ni el reloj de la oleada)
+      // El piso nuevo cae a su sitio y la vista aún no lo ha horneado: nada más avanza (ni el reloj de la oleada)
       this.moving = false;
+      this.run.arena.stepFall();
     } else if (this.phase === 'wave') {
       const len = Math.hypot(input.dx, input.dy);
       this.moving = len > 0;
@@ -229,8 +230,11 @@ export class BrotatoGame {
     this.sync();
   }
 
-  // La vista ya horneó el piso nuevo: la oleada puede empezar
+  // La vista ya horneó el piso nuevo: la oleada puede empezar. Si la caída no ha acabado (?ir=, que no espera), acaba de
+  // golpe; si acabó, se quitan las piezas que aún se dibujaban encima
   floorReady(): void {
+    const a = this.run.arena;
+    if (a.falling) a.settleFall(); else a.releaseFall();
     this.awaitingFloor = false;
   }
 

@@ -48,10 +48,7 @@ export function addFoliage(world: World, seed: number, start: { x: number; y: nu
   }
   // Las plantas de cada tipo (para las pruebas)
   const plants: Record<string, number> = {};
-  // Solo lo que cae dentro del mundo: con una salida de piso abierta al este o al oeste hay suelo en la columna del
-  // borde, y la hierba de ahí se salía un vóxel (planFoliage no recorta al mundo)
-  const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < world.width && y < world.depth;
-  for (const [k, p] of Object.entries(plans)) { plants[k] = p.plants; for (const [x, y, z, v] of p.voxels) if (inside(x, y)) m.set(x, y, z, v); }
+  for (const [k, p] of Object.entries(plans)) { plants[k] = p.plants; for (const [x, y, z, v] of p.voxels) m.set(x, y, z, v); }
   // Los nenúfares, como flotantes: su forma y un giro que sale de la posición (sin azar)
   const pads = lilyPadModels(FOLIAGE_RAMPS['nenufar']!);
   world.floaters = plans.lilies!.floats.map(([x, y, k]) => ({ x, y, model: pads[k]!, yaw: ((Math.floor(x) * 7 + Math.floor(y) * 13) % 8) * 45 }));

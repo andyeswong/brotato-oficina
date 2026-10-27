@@ -26,6 +26,7 @@ import type { LevelModule, ThemeId } from '../../../src/game/brotato/registry/sc
 import { pickLevel } from '../../../src/game/brotato/sim/arena';
 import { BrotatoGame, type GameInput, type Models } from '../../../src/game/brotato/play';
 import { skipTo } from '../../../src/game/brotato/skip';
+import { FallGate, bakeFinal } from '../../../src/game/brotato/fallgate';
 import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
 import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage, type ShopPending } from '../../../src/game/brotato/ui/shop';
@@ -320,7 +321,7 @@ function newRun(after?: () => void): void {
 // Hornea el piso de la partida (al empezar y en cada piso nuevo): el giro actual de golpe, con el letrero a la vista, y
 // los otros 3 en segundo plano. Nunca dentro de una oleada: en un piso nuevo la partida espera quieta (waitFloor)
 let shownArena: unknown = null;   // la arena horneada; si la partida cambia de piso, deja de ser la suya
-function bakeFloor(): void {
+function bakeFloor(): boolean {
   const g = game!;
   views.clear();
   pending.clear();
@@ -333,15 +334,46 @@ function bakeFloor(): void {
   // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
   // cuadro tardaba 86-88 ms
   compositor.prewarm(baked, viewOptions(0, 0, performance.now() / 1000), g.preloadModels());
-  // Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
+  effects.clear();
+  flashes.clear();
+  // Los otros 3 giros: ya, o si el piso está cayendo, cuando acabe (fallgate.ts)
+  return fallGate.baked(g);
+}
+
+// Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
+function bakeBackground(): void {
+  const g = game!;
   for (const k of [turnQuarter(quarter, 1), turnQuarter(quarter, -1), ((quarter + 2) % 4) as Quarter]) {
     const prep = prepareViewJob(g.state, k, bakeOptions(), { dress: wallDress(g.run.arena.layout) });
     const bg: BgJob = { run: (d) => prep.job.run(d), stage: () => prep.stage() };
     bgJobs.push(bg);
     pending.set(k, { prep, bg, t0: performance.now() });
   }
-  effects.clear();
-  flashes.clear();
+}
+const fallGate = new FallGate(bakeBackground, finishFall);
+
+// Ya cayó todo el piso: el giro actual de golpe, detrás del letrero (fallgate.ts)
+function finishFall(done: (pending: number) => void): void {
+  floorBaking = true;
+  const text = loading.textContent;
+  loading.textContent = `Piso ${game!.run.floor + 1}`;
+  loading.style.display = 'flex';
+  setTimeout(() => {
+    if (!game) { floorBaking = false; return; }
+    // Lo que el budget tuviera del rehorneado se tira: el horneado nuevo ya lo incluye
+    budget = new FrameBudget(3);
+    const t0 = performance.now();
+    const f = bakeFinal(game.state, quarter, bakeOptions(), quarter === 0 ? {} : { dress: wallDress(game.run.arena.layout) });
+    views.clear();
+    cur = keep(quarter, { view: f.view, baked: f.baked }, t0, 'final de la caída');
+    baked = cur.baked;
+    for (const job of f.left) budget.push(job);
+    floorBaking = false;
+    // Sin los cuadros de calentamiento: ya se hicieron al entrar en el piso
+    loading.style.display = 'none';
+    loading.textContent = text;
+    done(budget.pending);
+  }, 30);
 }
 
 // La partida cruzó la salida y está en un piso nuevo: el letrero con el número, el horneado y, al acabar, la oleada
@@ -354,8 +386,8 @@ function changeFloor(): void {
   loading.style.display = 'flex';
   setTimeout(() => {
     if (!game) { floorBaking = false; return; }
-    bakeFloor();
-    game.floorReady();
+    // Sin caída, la oleada ya puede empezar; con ella, cuando acabe (fallGate.frame)
+    if (bakeFloor()) game.floorReady();
     floorBaking = false;
     // Unos cuadros de calentamiento detrás del letrero, como al empezar
     warmUntil = performance.now() + WARM_MS;
@@ -396,7 +428,7 @@ function collectViews(): void {
 // Girar: si el giro ya está horneado, al momento; si no, con el letrero «Girando…» mientras se hornea
 let turning = false;
 function turn(step: 1 | -1): void {
-  if (!game || !cur || turning) return;
+  if (!game || !cur || turning || !fallGate.canTurn(game)) return;
   const next = turnQuarter(quarter, step);
   const go = (t: TurnView) => { quarter = next; cur = t; baked = t.baked; };
   collectViews();
@@ -426,6 +458,7 @@ function toSelect(): void {
   level = levelFor(seed);
   theme = level.theme;
   game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear(); bgJobs = []; toUpload = [];
+  fallGate.reset();
   flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
   selected = 0;
   screen = 'select';
@@ -462,6 +495,7 @@ function frame(time: number): void {
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
   compositor.frame(rs, b, viewOptions(vx, vy, time));
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
+  document.body.dataset.caida = game.run.arena.fall ? (game.run.arena.falling ? 'cae' : 'publica') : '';   // para medir la caída del piso
   paintFx(vx, vy);
 }
 
@@ -594,6 +628,7 @@ function loop(now: number): void {
   } else if (screen !== 'select' && screen !== 'meta' && !stale) frame(now / 1000);
   if (game && cur && !stale) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
   const spent = budget.run();
+  if (game && !stale && !floorBaking) fallGate.frame(game, budget.pending);
   if (game && bgJobs.length) {
     // Para medir: los cuadros lentos con lo que se llevó el segundo plano y qué giro estaba trabajando
     const head = [...pending].find(([, p]) => p.bg === bgJobs[0]);
