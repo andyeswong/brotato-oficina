@@ -37,6 +37,7 @@ import type { Highlight } from '@voxpix/world/frame2d';
 import { TouchStick, isTouch } from './touch';
 import { GameAudio } from './audio';
 import { VoxelInspector } from './voxel';
+import { DASH_RECHARGE } from '../../../src/game/brotato/sim/World';
 import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
@@ -272,6 +273,7 @@ let heard = '';                // la fase y el estado de la oleada que ya sonaro
 let shotSeen = 0;               // el uid del último disparo de MAIA que ya sonó (los uid empiezan de nuevo en cada oleada)
 let shotWave: object | null = null;
 let enterQueued = false;        // F pulsada (o el botón de entrar tocado) desde el último tick: se gasta en el siguiente
+let dashQueued = false;         // lo mismo con el dash (espacio, o su botón)
 const effects = new Effects();
 // El destello de un golpe: el tinte plano de la entidad (NARUTO), solo aspecto, con el reloj de la vista
 const flashes = new Flashes<EntityId>((id, c) => game?.state.entities.setTint(id, c), (id) => !!game?.state.entities.get(id));
@@ -425,7 +427,9 @@ function input(): GameInput {
   if (cur) [dx, dy] = inputToWorld(cur.view.camera, dx, dy);
   const interact = enterQueued || keys.has('f');
   enterQueued = false;
-  return { dx, dy, stomp: false, interact };
+  const dash = dashQueued;
+  dashQueued = false;
+  return { dx, dy, stomp: false, interact, dash };
 }
 
 function frame(time: number): void {
@@ -510,7 +514,9 @@ function current(): { name: string; sign: string } {
     const offers = g.run.shop.offers.map((o) => (o ? `${o.id}${o.locked ? '*' : ''}` : '-')).join(',');
     return { name: 'tienda', sign: `shop|${g.run.materials}|${offers}|${g.run.weapons.length}|${g.run.items.length}|${shopMessage?.text ?? ''}|${shopPending.swap}` };
   }
-  return { name: 'oleada', sign: `hud|${hudText(g)}|${g.phase}` };
+  // Las cargas de dash se rellenan poco a poco: la firma lleva cuánto (en los 12 px de su barra)
+  const d = g.current.dash, refill = d.max > 0 ? Math.floor((d.rechargeT / DASH_RECHARGE) * 12) : 0;
+  return { name: 'oleada', sign: `hud|${hudText(g)}|${g.phase}|${refill}` };
 }
 
 function drawUi(): void {
@@ -594,6 +600,8 @@ function act(action: ShopAction | SelectAction | HudAction | MetaAction): void {
     if (metaMessage?.ok) { saveProgress(storage(), progress); audio.play('compra'); }
   } else if (action.type === 'turn') {
     if (game) turn(action.delta);
+  } else if (action.type === 'dash') {
+    dashQueued = true;
   } else if (action.type === 'sound') {
     audio.toggleMuted();
     drawn = '';
@@ -637,6 +645,7 @@ addEventListener('keydown', (e) => {
   else if (game?.phase === 'shop') { const a = shopKey(e, game.run, shopPending.swap); if (a) { e.preventDefault(); act(a); } }
   else if (game && (k === 'q' || k === 'e')) turn(k === 'e' ? 1 : -1);
   else if (game && k === 'f') enterQueued = true;
+  else if (game && k === ' ' && !e.repeat) { dashQueued = true; e.preventDefault(); }
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 // El audio nace con el primer gesto en cualquier sitio de la página (en el Flip abierto, el lienzo es solo una franja)

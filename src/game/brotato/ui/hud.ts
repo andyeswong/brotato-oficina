@@ -9,8 +9,9 @@ import type { BrotatoGame } from '../play';
 import { FONT_SIZE, drawText, textWidth } from './font';
 import type { Painter, Zone } from './paint';
 import { ACCENTS, ICON, UI, bar, button, icon, panel, shadowText } from './theme';
+import { DASH_RECHARGE } from '../sim/World';
 
-export type HudAction = { type: 'enter' } | { type: 'turn'; delta: 1 | -1 };
+export type HudAction = { type: 'enter' } | { type: 'turn'; delta: 1 | -1 } | { type: 'dash' };
 
 // Adónde ir para entrar en la tienda en cada tema (el objeto del mapa que brilla)
 export const SHOP_PROPS: Record<ThemeId, string> = { medieval: 'a la fuente', oficina: 'a la impresora', cyberpunk: 'al servidor' };
@@ -20,12 +21,14 @@ export function hudText(game: BrotatoGame): string {
   if (game.phase === 'shop') return `Tienda · oleada ${run.waveIndex} superada · materiales ${run.materials}`;
   const state = w.status === 'open' ? `ronda superada: ve ${SHOP_PROPS[game.theme]}${w.atShop ? ' y pulsa F' : ''}`
     : w.overtime ? `quedan ${w.enemies.length}` : `${Math.ceil(w.timeLeft)} s`;
-  return `Oleada ${run.waveNumber}/${run.totalWaves} · ${state} · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}`;
+  const dash = w.dash.max > 0 ? ` · dash ${w.dash.charges}/${w.dash.max}` : '';
+  return `Oleada ${run.waveNumber}/${run.totalWaves} · ${state} · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}${dash}`;
 }
 
 const SLOT_W = 18, SLOT_H = 12;   // casilla de un arma en el HUD
 
-// touch: en pantallas táctiles, los botones de girar la cámara (Q y E del teclado), abajo a la derecha
+// touch: en pantallas táctiles, los botones de girar la cámara (Q y E del teclado), abajo a la derecha, y encima el del
+// dash (espacio) si el árbol lo tiene comprado
 export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean } = {}): Zone<HudAction>[] {
   const zones: Zone<HudAction>[] = [];
   const w = game.current, run = game.run, accent = ACCENTS[game.theme];
@@ -34,7 +37,9 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
   const narrow = W < 300;
 
   // Vida, materiales y bajas
-  const pw = 92, ph = 30;
+  // Con dash, una tercera fila con sus cargas: llenas en el acento, la que se recarga a medias
+  const dash = w.dash;
+  const pw = 92, ph = dash.max > 0 ? 38 : 30;
   panel(p, pad, pad, pw, ph, { accent });
   icon(p, 'heart', pad + 4, pad + 5, UI.hp);
   const low = w.player.hp * 3 <= w.player.maxHp;
@@ -46,6 +51,15 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
   const kx = pad + 14 + mw + 10;
   icon(p, 'skull', kx, row2 + 1, UI.dim);
   drawText(p, kx + ICON + 3, row2 + 1, String(run.kills), UI.text);
+  if (dash.max > 0) {
+    const row3 = row2 + FONT_SIZE + 1, cw = 12;
+    for (let k = 0; k < dash.max; k++) {
+      const x = pad + 14 + k * (cw + 2);
+      p.fill(x, row3, cw, 3, UI.hpBack);
+      const f = k < dash.charges ? 1 : k === dash.charges ? dash.rechargeT / DASH_RECHARGE : 0;
+      if (f > 0) p.fill(x, row3, Math.max(1, Math.round(cw * f)), 3, f >= 1 ? accent : UI.dim);
+    }
+  }
 
   // Oleada y tiempo, arriba en el centro; si centrados pisarían el panel de vida (el Flip en vertical), a la derecha
   const cx = Math.floor(W / 2);
@@ -70,6 +84,10 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
     const bh = FONT_SIZE + 9, bw = 20, by = p.height - pad - bh - 4;
     button(p, zones, W - pad - 2 * bw - 3, by, '«', { type: 'turn', delta: -1 }, { accent, w: bw, h: bh });
     button(p, zones, W - pad - bw, by, '»', { type: 'turn', delta: 1 }, { accent, w: bw, h: bh });
+    if (dash.max > 0 && w.status !== 'open') {
+      const dw = 2 * bw + 3, dh = bh + 6;
+      button(p, zones, W - pad - dw, by - dh - 3, 'dash', { type: 'dash' }, { accent, primary: dash.charges > 0, w: dw, h: dh });
+    }
   }
 
   // Oleada limpia: el aviso y, junto a la entrada, el botón (F con teclado; con el dedo en el Flip)

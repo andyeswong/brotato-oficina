@@ -1,5 +1,5 @@
 import type { GameApi, HookFn, Point } from '../api';
-import { metaModifiers, metaStartMaterials } from '../meta/upgrades';
+import { metaDashCharges, metaModifiers, metaStartMaterials } from '../meta/upgrades';
 import { MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type LevelModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
@@ -30,6 +30,8 @@ export class Run {
   world: World | null = null;
   // El mundo de vóxeles de la partida: sale de la semilla y dura todas las oleadas
   readonly arena: Arena;
+  // Cargas de dash que da el árbol de mejoras (0: sin dash); cada oleada empieza con todas
+  readonly dashCharges: number;
 
   // La vista se engancha aquí
   onFloatingText: (text: string, at?: Point) => void = () => {};
@@ -57,6 +59,7 @@ export class Run {
       this.stats.setSource('meta', metaModifiers(options.meta));
       this.materials = metaStartMaterials(options.meta);
     }
+    this.dashCharges = options.meta ? metaDashCharges(options.meta) : 0;
     this.startingWeaponIds = (options.weapons ?? character.startingWeapons ?? []).slice(0, 6);
     this.weapons = this.startingWeaponIds.map((id) => ({ id, tier: 0 }));
     this.shop = new Shop(this);
@@ -97,6 +100,7 @@ export class Run {
       arena: this.arena,
       final: this.isLastWave,
       body: this.body,
+      dashCharges: this.dashCharges,
       weapons: this.weapons,
       rng: this.rng,
       stat: (id, tags) => this.stats.get(id, tags),

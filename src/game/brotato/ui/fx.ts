@@ -162,6 +162,7 @@ export class Effects {
           this.float(String(fx.amount), fx.crit ? COLORS.gold : COLORS.text, { x: fx.x, y: fx.y, z: fx.z + scene.enemyHeight });
           break;
         case 'enemy-die': this.die(fx.x, fx.y, fx.z, scene.enemyHeight); break;
+        case 'dash': this.puffs.push({ x: fx.x, y: fx.y, z: fx.z, t: PUFF_S }); break;   // el polvo de donde salió
         default: break;   // spawn y pickup no se dibujan (el enemigo y el contador ya se ven)
       }
     }

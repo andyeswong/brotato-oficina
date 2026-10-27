@@ -12,6 +12,7 @@ export interface Upgrade {
   readonly requires?: string;       // la mejora de la que cuelga (con nivel 1 o más)
   readonly modifiers?: readonly Modifier[];   // lo que suma cada nivel (se multiplica por el nivel)
   readonly startMaterials?: number;   // materiales de más al empezar, por nivel
+  readonly dashCharges?: number;      // cargas de dash, por nivel
 }
 
 // Las ramas: vida en la raíz; de ella, ataque (afilado), movimiento (zapatillas) y defensa (chaleco)
@@ -25,6 +26,7 @@ export const UPGRADES: readonly Upgrade[] = [
   { id: 'iman', name: 'Imán', description: '+16 de recolección', costs: [8, 16], requires: 'zapatillas', modifiers: [{ stat: 'pickup-range', add: 16 }] },
   { id: 'esquiva', name: 'Juego de pies', description: '+3 % de esquiva', costs: [12, 22], requires: 'zapatillas', modifiers: [{ stat: 'dodge-pct', add: 3 }] },
   { id: 'cafe', name: 'Café de casa', description: '+1 de regeneración', costs: [12, 22], requires: 'chaleco', modifiers: [{ stat: 'hp-regen', add: 1 }] },
+  { id: 'dash', name: 'Esprint', description: '+1 carga de dash', costs: [10, 18, 28], requires: 'esquiva', dashCharges: 1 },
   { id: 'ahorros', name: 'Ahorros', description: '+6 materiales al empezar', costs: [10, 18, 28], requires: 'iman', startMaterials: 6 },
 ];
 
@@ -82,6 +84,11 @@ export function metaModifiers(levels: Readonly<Record<string, number>>): Modifie
 
 export function metaStartMaterials(levels: Readonly<Record<string, number>>): number {
   return UPGRADES.reduce((sum, u) => sum + (u.startMaterials ?? 0) * Math.min(levels[u.id] ?? 0, u.costs.length), 0);
+}
+
+// Las cargas de dash (Andrés, 2026-10-26: "como mejora global el dash, 1, 2 o 3 dashes"); 0 = sin dash
+export function metaDashCharges(levels: Readonly<Record<string, number>>): number {
+  return UPGRADES.reduce((sum, u) => sum + (u.dashCharges ?? 0) * Math.min(levels[u.id] ?? 0, u.costs.length), 0);
 }
 
 // Las fichas que da una partida acabada: 2 por oleada superada, 1 por cada 20 bajas y 10 más si se gana

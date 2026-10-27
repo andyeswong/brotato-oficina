@@ -1,6 +1,6 @@
 // La pantalla de mejoras entre partidas (meta/upgrades.ts): el árbol en filas, cada una con su rama sangrada, su
 // nivel en cuadritos y lo que cuesta el siguiente. Tocar una fila la compra. En 2 columnas si caben (el escritorio y
-// la tapa del Flip), en 1 en el Flip abierto. Teclado: 1–9 y 0 compran por orden, Esc o Intro vuelven.
+// la tapa del Flip), en 1 en el Flip abierto. Teclado: 1–9, 0 y - compran por orden, Esc o Intro vuelven.
 import type { ThemeId } from '../registry/schemas';
 import { UPGRADES, levelOf, nextCost, unlocked, buyUpgrade, type Progress, type Upgrade } from '../meta/upgrades';
 import { CHAR_W, FONT_SIZE, drawText, textWidth, wrapText } from './font';
@@ -29,6 +29,11 @@ export function metaKey(e: { code: string; key: string }): MetaAction | null {
   const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
   if (digit) {
     const k = Number(digit[2]), index = k === 0 ? 9 : k - 1, row = treeOrder()[index];
+    return row ? { type: 'upgrade', id: row.u.id } : null;
+  }
+  // La undécima, con la tecla de después del 0
+  if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+    const row = treeOrder()[10];
     return row ? { type: 'upgrade', id: row.u.id } : null;
   }
   if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') return { type: 'back' };

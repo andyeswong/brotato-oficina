@@ -31,8 +31,9 @@ export interface PlayerLooks {
 // pulsa F. shop: la tienda (el mundo sigue debajo). dead / victory: la partida acabó.
 export type Phase = 'wave' | 'shop' | 'dead' | 'victory';
 
-// La entrada de un tick: la de la escena más la tecla de entrar (F, o el botón en el Flip)
-export type GameInput = TickInput & { interact?: boolean };
+// La entrada de un tick: la de la escena más la tecla de entrar (F, o el botón en el Flip) y la del dash (espacio, o
+// su botón), las dos pulsadas en este tick
+export type GameInput = TickInput & { interact?: boolean; dash?: boolean };
 
 // Pone a MAIA junto a la entrada de la tienda, por el lado por el que llega (para ?ir= y las pruebas, nunca en una
 // partida normal)
@@ -150,7 +151,7 @@ export class BrotatoGame {
       const len = Math.hypot(input.dx, input.dy);
       this.moving = len > 0;
       if (this.moving) this.walked += TICK;
-      this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 }, input.interact ?? false);
+      this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 }, input.interact ?? false, input.dash ?? false);
       // MAIA mira a lo que disparan sus armas (el más cercano al alcance de la de más alcance); sin nadie a tiro, hacia
       // donde anda (Andrés, 2026-10-25). Solo aspecto: no entra en la simulación
       const target = this.wave.status === 'playing' ? this.wave.aimTarget : null;

@@ -30,6 +30,8 @@ interface WorldPrivate {
   uid: number;
   regenT: number;
   stealT: number;
+  faceX: number;
+  faceY: number;
   nextSpawn: number[];
 }
 
@@ -56,6 +58,9 @@ export function runDigest(run: Run, world: World | null = run.world, withWorld =
   const priv = world as unknown as WorldPrivate;
   h.num(priv.uid); h.num(priv.regenT); h.num(priv.stealT);
   for (const t of priv.nextSpawn) h.num(t);
+  // Sin dash comprado no entra: las huellas de las partidas sin él no cambian
+  const d = world.dash;
+  if (d.max > 0) for (const v of [d.max, d.charges, d.rechargeT, d.t, d.dx, d.dy, priv.faceX, priv.faceY]) h.num(v);
   for (const e of world.enemies) {
     h.num(e.uid); h.str(e.def.id);
     for (const v of [e.x, e.y, e.z, e.vx, e.vy, e.hp, e.alive ? 1 : 0]) h.num(v);

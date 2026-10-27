@@ -18,7 +18,13 @@ const IFRAMES = 0.6;                   // invulnerabilidad tras un golpe
 const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de disparo
 const MAGNET_SPEED_FACTOR = 3;         // los materiales vuelan a 3× la velocidad base del jugador
 const LIFE_STEAL_COOLDOWN = 0.1;       // como mucho una curación por robo de vida cada 0,1 s
-export const OVERTIME_MAX = 30;        // segundos de prórroga: después, los enemigos que quedan se van
+export const OVERTIME_MAX = 30;
+// El dash (meta/upgrades.ts, Esprint): un tramo corto y rápido en la dirección en la que se anda (o la última), con
+// invulnerabilidad mientras dura y un poco después. Las cargas se recuperan de una en una
+export const DASH_TIME = 0.15;          // segundos que dura
+export const DASH_DISTANCE = 40;        // vóxeles que recorre sin chocar (unos 0,6 s andando)
+export const DASH_RECHARGE = 2;         // segundos para recuperar una carga
+const DASH_GRACE = 0.1;                 // invulnerabilidad de más al acabar        // segundos de prórroga: después, los enemigos que quedan se van
 
 // Regeneración al estilo de Brotato: con N puntos, 1 de vida cada 5 / (1 + (N − 1) / 2,25) segundos
 export function regenInterval(hpRegen: number): number {
@@ -43,6 +49,16 @@ export interface PlayerState {
   iframes: number;
   vx: number;
   vy: number;
+}
+
+// Las cargas de dash de la oleada; max 0 = sin dash (el árbol no lo tiene comprado)
+export interface DashState {
+  readonly max: number;
+  charges: number;
+  rechargeT: number;   // segundos acumulados hacia la siguiente carga
+  t: number;           // lo que le queda al dash en curso (0: no hay)
+  dx: number;          // su dirección, unitaria
+  dy: number;
 }
 
 export interface EnemyState extends EnemySelf {
@@ -113,7 +129,8 @@ export type WorldFx =
   | { type: 'enemy-hit'; uid: number; x: number; y: number; z: number; amount: number; crit: boolean }
   | { type: 'enemy-die'; x: number; y: number; z: number }
   | { type: 'pickup'; value: number }
-  | { type: 'heal'; amount: number };
+  | { type: 'heal'; amount: number }
+  | { type: 'dash'; x: number; y: number; z: number };
 
 // playing: se juega (también la prórroga: el tiempo acabó y quedan enemigos vivos, que hay que matar). open: tiempo
 // cumplido y 0 vivos, la oleada está limpia y la entrada a la tienda brilla en el mapa (Andrés, 2026-10-25). cleared:
@@ -130,6 +147,7 @@ export interface WorldDeps {
   // La última oleada no tiene tienda detrás: limpia, se cierra sola (victoria)
   final?: boolean;
   body: Body;
+  dashCharges?: number;
   weapons: ReadonlyArray<{ id: string; tier: number }>;
   rng: Rng;
   stat: StatReader;
@@ -158,6 +176,7 @@ export class World {
   status: WorldStatus = 'playing';
   time = 0;
   readonly player: PlayerState;
+  readonly dash: DashState;
   readonly enemies: EnemyState[] = [];
   readonly weapons: WeaponState[];
   readonly projectiles: Projectile[] = [];
@@ -172,6 +191,9 @@ export class World {
   private uid = 0;
   private regenT = 0;
   private stealT = 0;
+  // Hacia dónde andaba la última vez (el dash sin dirección va por ahí); al empezar, hacia la cámara
+  private faceX = 0;
+  private faceY = -1;
   private readonly enemyApi: EnemyApi;
   private readonly weaponApi: WorldWeaponApi;
 
@@ -188,6 +210,8 @@ export class World {
       vx: 0,
       vy: 0,
     };
+    const dash = Math.max(0, Math.floor(deps.dashCharges ?? 0));
+    this.dash = { max: dash, charges: dash, rechargeT: 0, t: 0, dx: 0, dy: 0 };
     this.nextSpawn = deps.wave.groups.map((g) => g.from);
     this.weapons = deps.weapons.map((w, slot) => {
       const def = deps.registry.weapon(w.id);
@@ -240,17 +264,18 @@ export class World {
     return range > 0 ? this.nearestEnemy(this.player.x, this.player.y, range) : null;
   }
 
-  // interact: la tecla F (o el botón en el Flip). Solo hace algo con la oleada limpia y MAIA junto a la entrada
-  step(dt: number, move: Point, interact = false): void {
+  // interact: la tecla F (o el botón en el Flip). Solo hace algo con la oleada limpia y MAIA junto a la entrada.
+  // dash: se pulsó la tecla del dash en este paso (no si se mantiene)
+  step(dt: number, move: Point, interact = false, dash = false): void {
     if (this.status === 'open') {
       this.time += dt;
-      this.movePlayer(dt, move);
+      this.movePlayer(dt, move, dash);
       if (interact && this.atShop) this.status = 'cleared';
       return;
     }
     if (this.status !== 'playing') return;
     this.time += dt;
-    this.movePlayer(dt, move);
+    this.movePlayer(dt, move, dash);
     this.spawn(dt);
     this.moveEnemies(dt);
     this.rebuildHash();
@@ -291,14 +316,25 @@ export class World {
 
   // ---------- jugador ----------
 
-  private movePlayer(dt: number, move: Point): void {
+  private movePlayer(dt: number, move: Point, dash: boolean): void {
     const p = this.player;
     const { body, arena } = this.deps;
-    // El agua frena (MAIA, 2026-10-24: igual a la jugadora que a los enemigos, hasta que Andrés diga otra cosa)
-    const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100) * arena.slowdown(p.x, p.y);
-    p.vx = move.x * speed;
-    p.vy = move.y * speed;
-    arena.move(p, body.radius, p.vx * dt, p.vy * dt);
+    if (move.x || move.y) { this.faceX = move.x; this.faceY = move.y; }
+    this.updateDash(dt, dash);
+    if (this.dash.t > 0) {
+      // El dash no lo frena el agua ni la velocidad: siempre el mismo tramo, y la colisión lo para en la pared
+      const v = DASH_DISTANCE / DASH_TIME, step = Math.min(dt, this.dash.t);
+      p.vx = this.dash.dx * v;
+      p.vy = this.dash.dy * v;
+      arena.move(p, body.radius, p.vx * step, p.vy * step);
+      this.dash.t -= step;
+    } else {
+      // El agua frena (MAIA, 2026-10-24: igual a la jugadora que a los enemigos, hasta que Andrés diga otra cosa)
+      const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100) * arena.slowdown(p.x, p.y);
+      p.vx = move.x * speed;
+      p.vy = move.y * speed;
+      arena.move(p, body.radius, p.vx * dt, p.vy * dt);
+    }
     if (p.iframes > 0) p.iframes -= dt;
     if (this.stealT > 0) this.stealT -= dt;
 
@@ -314,6 +350,24 @@ export class World {
     } else {
       this.regenT = 0;
     }
+  }
+
+  // Recupera cargas y, si se pulsó y queda alguna, empieza un dash (no se encadena: el siguiente, al acabar este)
+  private updateDash(dt: number, pressed: boolean): void {
+    const d = this.dash, p = this.player;
+    if (d.max === 0) return;
+    if (d.charges < d.max) {
+      d.rechargeT += dt;
+      if (d.rechargeT >= DASH_RECHARGE) { d.rechargeT -= DASH_RECHARGE; d.charges++; }
+    } else d.rechargeT = 0;
+    if (!pressed || d.charges === 0 || d.t > 0) return;
+    const len = Math.hypot(this.faceX, this.faceY) || 1;
+    d.dx = this.faceX / len;
+    d.dy = this.faceY / len;
+    d.t = DASH_TIME;
+    d.charges--;
+    p.iframes = Math.max(p.iframes, DASH_TIME + DASH_GRACE);
+    this.fx.push({ type: 'dash', x: p.x, y: p.y, z: p.z });
   }
 
   private hitPlayer(raw: number, source: string): void {
