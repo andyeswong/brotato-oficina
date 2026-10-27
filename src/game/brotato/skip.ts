@@ -9,7 +9,9 @@ export interface SkipResult { reached: boolean; phase: BrotatoGame['phase'] }
 const MAX_TICKS = 60 * 60 * 30;
 
 export function skipTo(g: BrotatoGame, target: string): SkipResult {
-  g.guarded = true;
+  // Salvo ?ir=fin: la pantalla del fin llega con MAIA cayendo; inmortal tendría que ganar las 10 oleadas quieta, y
+  // verify se quedaba sin tiempo (2026-10-27)
+  g.guarded = target !== 'fin';
   try {
     for (let t = 0; t < MAX_TICKS; t++) {
       if (target === 'tienda' && g.phase === 'shop') return { reached: true, phase: g.phase };

@@ -39,6 +39,12 @@ describe('salto de ?ir=', () => {
     expect(g.phase).toBe('dead');
   });
 
+  it('?ir=fin no protege: llega al fin con MAIA cayendo (el de verify)', { timeout: 120_000 }, () => {
+    const g = new BrotatoGame(registry, 5, models, player, registry.level('oficina'), { waitFloor: true });
+    expect(skipTo(g, 'fin')).toEqual({ reached: true, phase: 'dead' });
+    expect(g.run.floor).toBeLessThanOrEqual(1);
+  });
+
   it('sin el salto la partida no cambia (guarded apagado por defecto)', () => {
     const g = new BrotatoGame(registry, 3, models, player, registry.level('medieval'));
     expect(g.guarded).toBe(false);
