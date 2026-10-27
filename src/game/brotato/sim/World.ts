@@ -134,8 +134,9 @@ export type WorldFx =
 
 // playing: se juega (también la prórroga: el tiempo acabó y quedan enemigos vivos, que hay que matar). open: tiempo
 // cumplido y 0 vivos, la oleada está limpia y la entrada a la tienda brilla en el mapa (Andrés, 2026-10-25). cleared:
-// MAIA entró en la tienda (o era la última oleada). dead: cayó.
-export type WorldStatus = 'playing' | 'open' | 'dead' | 'cleared';
+// MAIA entró en la tienda (o era la última oleada). exit: salió de la tienda y la salida del piso está abierta; anda
+// hasta ella. left: la cruzó (lo siguiente es el piso nuevo). dead: cayó.
+export type WorldStatus = 'playing' | 'open' | 'dead' | 'cleared' | 'exit' | 'left';
 
 export interface WorldDeps {
   registry: Registry;
@@ -250,6 +251,11 @@ export class World {
     return this.status === 'playing' && this.time >= this.deps.wave.duration;
   }
 
+  // Tras la tienda, con la salida del piso abierta: MAIA anda hasta ella (Run.openExit)
+  toExit(): void {
+    if (this.status === 'cleared') this.status = 'exit';
+  }
+
   // ¿Está MAIA lo bastante cerca de la entrada a la tienda para entrar?
   get atShop(): boolean {
     const s = this.deps.arena.shop;
@@ -267,6 +273,12 @@ export class World {
   // interact: la tecla F (o el botón en el Flip). Solo hace algo con la oleada limpia y MAIA junto a la entrada.
   // dash: se pulsó la tecla del dash en este paso (no si se mantiene)
   step(dt: number, move: Point, interact = false, dash = false): void {
+    if (this.status === 'exit') {
+      this.time += dt;
+      this.movePlayer(dt, move, dash);
+      if (this.deps.arena.atExit(this.player)) this.status = 'left';
+      return;
+    }
     if (this.status === 'open') {
       this.time += dt;
       this.movePlayer(dt, move, dash);

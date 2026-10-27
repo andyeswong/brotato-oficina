@@ -44,6 +44,12 @@ export function toShop(world: World, run: Run): Point {
   return d ?? goTo(run, world.player, s);
 }
 
+// Tras la tienda, a la salida del piso (abierta): el mismo camino fino que a la tienda
+export function toExit(world: World, run: Run): Point {
+  const e = run.arena.exit!, d = run.arena.pathDir(world.player, e, e.reach - 4);
+  return d ?? goTo(run, world.player, e);
+}
+
 // Ir a un sitio dando la vuelta a lo que haga falta (en la prórroga hay que llegar al último enemigo aunque esté al
 // otro lado de un muro; el rodeo local de steer se queda pegado). Camino más corto (BFS) sobre una rejilla de celdas
 // de 8 donde cabe el cuerpo; se sigue la celda del camino a 3 pasos, con steer para lo fino. Sin camino, steer recto
@@ -183,6 +189,13 @@ function wave(run: Run, hooks: Hooks, rows: string[]): boolean {
     run.shop.open();
     const bought = shop(run);
     rows.push(`${line} · compra: ${bought.join(', ') || '—'} · quedan ${run.materials} · armas ${run.weapons.map((w) => w.id + (w.tier ? `+${w.tier}` : '')).join(',')}`);
+    // Con pisos: a la salida (si no llega en un minuto, el mapa o el piloto están mal)
+    const out = run.openExit();
+    for (let t = 0; out && out.status === 'exit'; t++) {
+      if (t > 60 * 60) throw new Error(`s${run.seed} piso ${run.floor + 1}: el piloto no llega a la salida en 60 s`);
+      out.step(1 / 60, toExit(out, run));
+      hooks.onTick?.(out);
+    }
     return false;
   }
 }
@@ -191,6 +204,10 @@ function wave(run: Run, hooks: Hooks, rows: string[]): boolean {
 // ella limpia, va a la entrada de la tienda y pulsa F
 export function gameInput(g: BrotatoGame): GameInput {
   const w = g.current;
+  if (w.status === 'exit') {
+    const d = toExit(w, g.run);
+    return { dx: d.x, dy: d.y, stomp: false };
+  }
   if (w.status === 'open') {
     if (w.atShop) return { dx: 0, dy: 0, stomp: false, interact: true };
     const d = toShop(w, g.run);

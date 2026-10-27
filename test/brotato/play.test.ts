@@ -114,7 +114,16 @@ describe('la partida en el mundo', () => {
       }
       expect(runDigest(g.run, g.current, false)).toBe(runDigest(run, wave, false));
       g.leaveShop();
+      // Con pisos, los dos cruzan la salida en el mismo paso y suben al piso siguiente
+      run.openExit();
+      const exit = g.run.arena.exit!;
+      expect(run.arena.exit).toEqual(exit);
+      for (const p of [g.current.player, wave.player]) Object.assign(p, { x: exit.x, y: exit.y });
+      g.step({ dx: 0, dy: 0, stomp: false });
+      wave.step(TICK, { x: 0, y: 0 });
+      expect(wave.status).toBe("left");
       wave = run.startWave();
+      expect(g.run.arena.floor).toBe(run.arena.floor);
       shops++;
     }
     expect(shops).toBeGreaterThanOrEqual(1);   // al menos una tienda, y la oleada de después jugada con lo comprado

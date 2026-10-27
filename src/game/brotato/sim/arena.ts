@@ -5,8 +5,9 @@
 import { SHOP_PROP_THEMES, stampShopProp } from './shopprop';
 import type { Point } from '../api';
 import type { LevelModule } from '../registry/schemas';
-import { generateLayout, NORTH, TILE, WALL, type Layout } from '@voxpix/worldgen';
+import { floorLayout, generateLayout, NORTH, TILE, WALL, type GeneratorSpec, type Layout, type Side } from '@voxpix/worldgen';
 import { buildWorldState, type World, type WorldLook } from '@voxpix/world/build';
+import { openDoorInWorld } from '@voxpix/world/doors';
 
 // El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
 export interface LevelWorld { look: WorldLook; ambient: readonly [number, number, number] }
@@ -41,15 +42,18 @@ export function pickLevel(levels: readonly LevelModule[], seed: number): LevelMo
   return levels[mix(seed, 1) % levels.length]!;
 }
 
-// El mapa del nivel para esa partida. Sin materiales sueltos: salen de los enemigos (la economía del Brotato).
-export function levelLayout(level: LevelModule, seed: number): Layout {
-  return generateLayout({
-    ...level.generator,
-    cols: level.arena.width / TILE,
-    rows: level.arena.height / TILE,
-    materials: 0,
-  }, mix(seed, 2));
+// El generador del nivel a su medida. Sin materiales sueltos: salen de los enemigos (la economía del Brotato).
+function levelSpec(level: LevelModule): GeneratorSpec {
+  return { ...level.generator, cols: level.arena.width / TILE, rows: level.arena.height / TILE, materials: 0 };
 }
+
+// El mapa del nivel para esa partida, de una sola sala (sin pisos: las pruebas que comparan contra él)
+export function levelLayout(level: LevelModule, seed: number): Layout {
+  return generateLayout(levelSpec(level), mix(seed, 2));
+}
+
+// A cuánto del punto de dentro del hueco de la salida se da por cruzada
+export const EXIT_REACH = 12;
 
 // Un cuerpo que se mueve por la arena: los pies en (x, y), apoyados a la altura z
 export interface Mover {
@@ -84,10 +88,23 @@ export class Arena {
   glassRamps = 0;
   // Lo que puso sim/decor.ts: vóxeles de cable, luces sobre el tóxico, tazas (para las pruebas)
   decor: { cables?: number; glows?: number; cups?: number } = {};
+  // Los pisos (Andrés, 2026-10-26: "que cada ronda me abra la puerta a un nuevo piso"): el número del piso (0 = el
+  // primero; null sin pisos) y su salida, cerrada hasta que se sale de la tienda. (x, y) es la loseta de suelo justo
+  // dentro del hueco, en ejes del modelo; box, la caja del hueco para el resalte, como shopBox
+  readonly floor: number | null;
+  readonly exit: { side: Side; x: number; y: number; reach: number; box: [number, number, number, number, number, number] } | null;
+  exitOpen = false;
+  private readonly look: WorldLook;
+  private readonly decorate: (w: World) => void;
 
-  // foliage / glass: false quitan la vegetación o el vidrio (para las pruebas que comparan con y sin ellos)
-  constructor(level: LevelModule, seed: number, opts: { foliage?: boolean; glass?: boolean; bushes?: boolean } = {}) {
-    this.layout = levelLayout(level, seed);
+  // foliage / glass: false quitan la vegetación o el vidrio (para las pruebas que comparan con y sin ellos). floor: el
+  // piso (floorLayout de VoxPix: cada uno con su mapa, se entra por el sur y la salida es otro lado); sin él, una sala
+  constructor(level: LevelModule, seed: number, opts: { foliage?: boolean; glass?: boolean; bushes?: boolean; floor?: number } = {}) {
+    const fl = opts.floor === undefined ? null : floorLayout({ ...levelSpec(level), doors: {} }, mix(seed, 2), opts.floor);
+    this.layout = fl ? fl.layout : levelLayout(level, seed);
+    this.floor = fl ? opts.floor! : null;
+    // Lo que se decora con azar (vegetación, cables, tazas) cambia de piso en piso
+    const dseed = fl ? mix(seed, 100 + opts.floor!) : seed;
     this.ambient = levelWorld(level).ambient;
     // Dónde sale la jugadora, en ejes del modelo (las filas del worldgen van hacia abajo): la vegetación deja ahí un claro
     const start = { x: this.layout.spawn.x, y: this.layout.rows * TILE - 1 - this.layout.spawn.y };
@@ -100,13 +117,15 @@ export class Arena {
     let propBox: [number, number, number, number, number, number] | null = null;
     const decorate = (w: World) => {
       if (prop) propBox = stampShopProp(w, level.theme, prop);
-      if (veg) this.plants = addFoliage(w, seed, start, { bushes: opts.bushes });
+      if (veg) this.plants = addFoliage(w, dseed, start, { bushes: opts.bushes });
       if (glass) this.glassRamps = addGlass(w);
       // Lo de cada tema que no es columna (sim/decor.ts): cables y luz sobre el tóxico en el cyberpunk, tazas en la oficina
-      if (opts.foliage !== false && level.theme === 'cyberpunk') { this.decor.cables = addCables(w, mix(seed, 31)); this.decor.glows = addToxicGlow(w); }
-      if (opts.foliage !== false && level.theme === 'oficina') this.decor.cups = addCups(w, mix(seed, 32));
+      if (opts.foliage !== false && level.theme === 'cyberpunk') { this.decor.cables = addCables(w, mix(dseed, 31)); this.decor.glows = addToxicGlow(w); }
+      if (opts.foliage !== false && level.theme === 'oficina') this.decor.cups = addCups(w, mix(dseed, 32));
     };
-    ({ world: this.world, state: this.state } = buildWorldState(this.layout, levelWorld(level).look, { decorate }));
+    this.look = levelWorld(level).look;
+    this.decorate = decorate;
+    ({ world: this.world, state: this.state } = buildWorldState(this.layout, this.look, { decorate }));
     const { cols, rows } = this.layout;
     const D = rows * TILE;
     // Las filas del worldgen van hacia abajo (y = 0 al norte); en el modelo, y crece hacia el norte
@@ -133,6 +152,34 @@ export class Arena {
     }
     // Y que quepa de verdad un enemigo del radio más grande: lo que el layout no sabe (los arbustos de la vegetación)
     this.free = this.free.filter((f) => this.fits(f.x, f.y, this.floorZ, SPAWN_RADIUS));
+
+    if (fl) {
+      const e = fl.exit, side = e.slot.side;
+      // La caja del hueco (en losetas a lo largo del lado; en ejes del modelo), hasta la altura de la pared
+      const a = e.slot.from * TILE, b = (e.slot.to + 1) * TILE - 1;
+      const box: [number, number, number, number, number, number] = side === 'n' ? [a, my(NORTH * TILE - 1), 1, b, D - 1, 32]
+        : side === 'e' ? [(cols - 1) * TILE, my(b), 1, cols * TILE - 1, my(a), 32] : [0, my(b), 1, TILE - 1, my(a), 32];
+      this.exit = { side, x: e.x, y: my(e.y), reach: EXIT_REACH, box };
+    } else this.exit = null;
+  }
+
+  // Abre la salida en el layout y en el mundo (VoxPix openDoorInWorld): la pared del hueco se quita y se pone el suelo.
+  // En esta etapa la caída se acaba de golpe; la animación (que la pared se desmorone) es la etapa 2. Devuelve las
+  // columnas tocadas. Cuesta 50-90 ms: solo al salir de la tienda, nunca en la oleada
+  openExit(): { x0: number; y0: number; x1: number; y1: number } | null {
+    if (!this.exit || this.exitOpen) return null;
+    const { fall, touched } = openDoorInWorld(this.state, this.layout, this.exit.side, this.look, { decorate: this.decorate });
+    fall.finish();
+    this.exitOpen = true;
+    // El camino de la rejilla (pathDir) se rehace: ahora se puede pasar por el hueco
+    this.flowOk = null;
+    this.flowGoal = '';
+    return touched;
+  }
+
+  // ¿Está (x, y) en la salida abierta?
+  atExit(p: Point): boolean {
+    return !!this.exit && this.exitOpen && Math.hypot(p.x - this.exit.x, p.y - this.exit.y) <= this.exit.reach;
   }
 
   // Los puntos donde pueden aparecer enemigos (para las pruebas)

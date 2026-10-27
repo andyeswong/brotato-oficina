@@ -28,8 +28,10 @@ export class Run {
   readonly items: string[] = [];
   readonly shop: Shop;
   world: World | null = null;
-  // El mundo de vóxeles de la partida: sale de la semilla y dura todas las oleadas
-  readonly arena: Arena;
+  // El mundo de vóxeles de la oleada: con pisos, uno por oleada (sale de la semilla y del número de piso); sin ellos,
+  // uno solo para toda la partida
+  arena: Arena;
+  readonly floors: boolean;
   // Cargas de dash que da el árbol de mejoras (0: sin dash); cada oleada empieza con todas
   readonly dashCharges: number;
 
@@ -47,10 +49,12 @@ export class Run {
     readonly level: LevelModule,
     readonly seed: number,
     // meta: los niveles de las mejoras entre partidas (meta/upgrades.ts); una entrada como la semilla
-    options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>> } = {},
+    // floors: false, una sola sala para toda la partida (las pruebas de antes de los pisos)
+    private readonly options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>>; floors?: boolean } = {},
   ) {
     this.rng = createRng(seed);
-    this.arena = new Arena(level, seed, { foliage: options.foliage, glass: options.glass, bushes: options.bushes });
+    this.floors = options.floors !== false;
+    this.arena = this.buildArena(0);
     this.body = character.body;
     const defs = new Map<string, StatDef>(registry.stats().map((s) => [s.id, s]));
     this.stats = new StatSheet(defs, character.baseStats, (c) => this.counter(c as CounterId));
@@ -89,7 +93,27 @@ export class Run {
     }
   }
 
+  private buildArena(floor: number): Arena {
+    const o = this.options;
+    return new Arena(this.level, this.seed, { foliage: o.foliage, glass: o.glass, bushes: o.bushes, ...(this.floors ? { floor } : {}) });
+  }
+
+  // El piso en que se está (0 = el primero): el de la arena construida. OJO: waveIndex sube ya al entrar en la tienda,
+  // y el piso no cambia hasta cruzar la salida
+  get floor(): number {
+    return this.arena.floor ?? 0;
+  }
+
+  // Tras la tienda: abre la salida del piso y la oleada que acabó pasa a 'exit' (MAIA anda hasta ella). Sin pisos, null
+  openExit(): World | null {
+    if (!this.floors || !this.world || this.world.status !== 'cleared') return null;
+    this.arena.openExit();
+    this.world.toExit();
+    return this.world;
+  }
+
   startWave(): World {
+    if (this.floors && this.arena.floor !== this.waveIndex) this.arena = this.buildArena(this.waveIndex);
     const wave = this.registry.wave(this.level.waves[this.waveIndex]!);
     this.stats.invalidate();
     this.world = new World({

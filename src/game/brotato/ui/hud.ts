@@ -19,7 +19,7 @@ export const SHOP_PROPS: Record<ThemeId, string> = { medieval: 'a la fuente', of
 export function hudText(game: BrotatoGame): string {
   const w = game.current, run = game.run;
   if (game.phase === 'shop') return `Tienda · oleada ${run.waveIndex} superada · materiales ${run.materials}`;
-  const state = w.status === 'open' ? `ronda superada: ve ${SHOP_PROPS[game.theme]}${w.atShop ? ' y pulsa F' : ''}`
+  const state = w.status === 'exit' ? `sube al piso ${run.waveNumber}: ve a la salida` : w.status === 'open' ? `ronda superada: ve ${SHOP_PROPS[game.theme]}${w.atShop ? ' y pulsa F' : ''}`
     : w.overtime ? `quedan ${w.enemies.length}` : `${Math.ceil(w.timeLeft)} s`;
   const dash = w.dash.max > 0 ? ` · dash ${w.dash.charges}/${w.dash.max}` : '';
   return `Oleada ${run.waveNumber}/${run.totalWaves} · ${state} · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}${dash}`;
@@ -68,7 +68,7 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
   const tx = centered ? cx : W - pad - 1, align: 'center' | 'right' = centered ? 'center' : 'right';
   shadowText(p, tx, pad + 1, waveLabel, accent, { align });
   if (w.overtime) shadowText(p, tx, pad + 1 + FONT_SIZE + 2, `quedan ${w.enemies.length}`, UI.bad, { align });
-  else if (w.status !== 'open') shadowText(p, tx, pad + 1 + FONT_SIZE, String(Math.max(0, Math.ceil(w.timeLeft))), UI.text, { scale: 2, align });
+  else if (w.status !== 'open' && w.status !== 'exit') shadowText(p, tx, pad + 1 + FONT_SIZE, String(Math.max(0, Math.ceil(w.timeLeft))), UI.text, { scale: 2, align });
 
   // Armas en sus casillas: a la derecha, o bajo la vida si no caben
   const n = run.weapons.length;
@@ -88,6 +88,16 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
       const dw = 2 * bw + 3, dh = bh + 6;
       button(p, zones, W - pad - dw, by - dh - 3, 'dash', { type: 'dash' }, { accent, primary: dash.charges > 0, w: dw, h: dh });
     }
+  }
+
+  // Tras la tienda: el aviso de ir a la salida (que brilla en el mapa); se cruza andando, sin botón
+  if (w.status === 'exit') {
+    const lines = [`piso ${run.waveNumber}`, 've a la salida'];
+    const bw = Math.min(W - 2 * pad, Math.max(...lines.map((l) => textWidth(l, 1))) + 16), bh = FONT_SIZE * 2 + 8;
+    const bx = Math.floor((W - bw) / 2), by = Math.floor(p.height * 0.8) - bh;
+    panel(p, bx, by, bw, bh, { accent });
+    drawText(p, cx, by + 4, lines[0]!, UI.gold, { align: 'center' });
+    drawText(p, cx, by + 4 + FONT_SIZE, lines[1]!, UI.text, { align: 'center' });
   }
 
   // Oleada limpia: el aviso y, junto a la entrada, el botón (F con teclado; con el dedo en el Flip)

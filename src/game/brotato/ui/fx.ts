@@ -290,3 +290,26 @@ export class Effects {
     }
   }
 }
+
+// Adónde ir cuando no se ve (los pisos, 2026-10-27): la salida o la tienda fuera de la vista. Una flecha en el borde, en
+// la dirección del sitio, a POINTER_MARGIN del borde; nada si el sitio está dentro de la vista. (x, y): el sitio en
+// píxeles de la vista. Devuelve dónde se pintó (para las pruebas), o null
+export const POINTER_MARGIN = 10;
+const POINTER_LEN = 6;
+export function paintPointer(p: Painter, x: number, y: number, color: string): [number, number] | null {
+  const W = p.width, H = p.height, m = POINTER_MARGIN;
+  if (x >= m && y >= m && x < W - m && y < H - m) return null;
+  // Del centro de la vista hacia el sitio, cortado en el rectángulo interior
+  const cx = W / 2, cy = H / 2, dx = x - cx, dy = y - cy;
+  const k = Math.min(dx ? Math.abs((W / 2 - m) / dx) : Infinity, dy ? Math.abs((H / 2 - m) / dy) : Infinity);
+  const ax = cx + dx * k, ay = cy + dy * k, l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+  // Un triángulo: la punta hacia el sitio y la base de POINTER_LEN de ancho, con un borde oscuro para que se lea
+  for (let t = 0; t <= POINTER_LEN; t++) {
+    const half = (POINTER_LEN - t) / 2;
+    for (let s = -half; s <= half; s += 0.5) {
+      const px = Math.round(ax + ux * t - uy * s), py = Math.round(ay + uy * t + ux * s);
+      if (px >= 0 && py >= 0 && px < W && py < H) p.fill(px, py, 1, 1, Math.abs(s) > half - 1 ? '#0d0c12' : color);
+    }
+  }
+  return [Math.round(ax), Math.round(ay)];
+}

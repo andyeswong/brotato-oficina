@@ -4,7 +4,8 @@
 // fijos, src/game/runtime.ts.
 // ?seed=N fija la partida y salta la selección (el mundo sale de la semilla); ?nivel=oficina|medieval|cyberpunk fuerza
 // el tema; ?camara=clasica|cenital|baja|cerca, la cámara (ui/camera.ts); ?ruta=cpu, la composición en la CPU; ?contorno=exterior|exterior-negro|interior|interior-negro|entidades|no;
-// ?ir=tienda|fin simula sin entrada hasta la primera tienda o hasta el final (para verify y las capturas).
+// ?ir=tienda|limpia|salida|piso2|fin simula sin entrada hasta ahí: la primera tienda, la oleada limpia, la salida abierta, el
+// segundo piso o el final (para verify y las capturas).
 // Para medir (fase 4): ?ola=N empieza en la oleada N e ?inmortal hace que MAIA no caiga; body[data-enemigos] los cuenta.
 // ?dev activa las herramientas de desarrollo: V pausa y enseña el mundo en modo vóxel (./voxel.ts).
 import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
@@ -41,7 +42,7 @@ import { DASH_RECHARGE, DASH_TIME } from '../../../src/game/brotato/sim/World';
 import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
-import { Effects, Flashes, FLASH_DASH, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
+import { Effects, Flashes, FLASH_DASH, FLASH_ENEMY, FLASH_PLAYER, paintPointer, type FxScene } from '../../../src/game/brotato/ui/fx';
 import type { EntityId } from '@voxpix/world/state';
 import maiaFile from 'voxpix/models/maia/maia.json';
 
@@ -294,28 +295,12 @@ function newRun(after?: () => void): void {
     theme = level.theme;
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
-      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels });
-    views.clear();
-    pending.clear();
-    bgJobs = [];
-    toUpload = [];
+      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true });
     quarter = 0;
     runStart = performance.now();
-    cur = bakeView(0);
-    baked = cur.baked;
-    // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
-    // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
-    // cuadro tardaba 86-88 ms
-    compositor.prewarm(baked, viewOptions(0, 0, performance.now() / 1000), game.preloadModels());
+    bakeFloor();
     ticks = new FixedLoop(game, input, 10);
     budget = new FrameBudget(3);
-    // Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
-    for (const k of [turnQuarter(0, 1), turnQuarter(0, -1), 2 as Quarter]) {
-      const prep = prepareViewJob(game.state, k, bakeOptions(), { dress: wallDress(game.run.arena.layout) });
-      const bg: BgJob = { run: (d) => prep.job.run(d), stage: () => prep.stage() };
-      bgJobs.push(bg);
-      pending.set(k, { prep, bg, t0: performance.now() });
-    }
     shopMessage = null;
     shopPending.swap = null;
     effects.clear();
@@ -328,6 +313,52 @@ function newRun(after?: () => void): void {
     // fijo daba de golpe sus 10 ticks de tope. Mientras se calienta, el reloj sigue al día y la oleada empieza con un dt normal
     warmUntil = performance.now() + WARM_MS;
     setTimeout(() => { loading.style.display = 'none'; }, WARM_MS);
+  }, 30);
+}
+
+// Hornea el piso de la partida (al empezar y en cada piso nuevo): el giro actual de golpe, con el letrero a la vista, y
+// los otros 3 en segundo plano. Nunca dentro de una oleada: en un piso nuevo la partida espera quieta (waitFloor)
+let shownArena: unknown = null;   // la arena horneada; si la partida cambia de piso, deja de ser la suya
+function bakeFloor(): void {
+  const g = game!;
+  views.clear();
+  pending.clear();
+  bgJobs = [];
+  toUpload = [];
+  cur = bakeView(quarter);
+  baked = cur.baked;
+  shownArena = g.run.arena;
+  // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
+  // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
+  // cuadro tardaba 86-88 ms
+  compositor.prewarm(baked, viewOptions(0, 0, performance.now() / 1000), g.preloadModels());
+  // Los otros 3 giros, en segundo plano: primero los vecinos (los que se piden antes)
+  for (const k of [turnQuarter(quarter, 1), turnQuarter(quarter, -1), ((quarter + 2) % 4) as Quarter]) {
+    const prep = prepareViewJob(g.state, k, bakeOptions(), { dress: wallDress(g.run.arena.layout) });
+    const bg: BgJob = { run: (d) => prep.job.run(d), stage: () => prep.stage() };
+    bgJobs.push(bg);
+    pending.set(k, { prep, bg, t0: performance.now() });
+  }
+  effects.clear();
+  flashes.clear();
+}
+
+// La partida cruzó la salida y está en un piso nuevo: el letrero con el número, el horneado y, al acabar, la oleada
+let floorBaking = false;
+function changeFloor(): void {
+  if (!game || floorBaking) return;
+  floorBaking = true;
+  const text = loading.textContent;
+  loading.textContent = `Piso ${game.run.floor + 1}`;
+  loading.style.display = 'flex';
+  setTimeout(() => {
+    if (!game) { floorBaking = false; return; }
+    bakeFloor();
+    game.floorReady();
+    floorBaking = false;
+    // Unos cuadros de calentamiento detrás del letrero, como al empezar
+    warmUntil = performance.now() + WARM_MS;
+    setTimeout(() => { loading.style.display = 'none'; loading.textContent = text; }, WARM_MS);
   }, 30);
 }
 
@@ -395,8 +426,16 @@ function skipTo(target: string): void {
   for (let t = 0; t < 60 * 60 * 30; t++) {
     if (target === 'tienda' && g.phase === 'shop') return;
     if (target === 'limpia' && g.phase === 'wave' && g.current.status === 'open') return;
+    // Los pisos: con la salida abierta (tras la primera tienda), o ya en el segundo piso
+    if (target === 'salida' && g.phase === 'wave' && g.current.status === 'exit') return;
+    if (target === 'piso2' && g.run.floor >= 1) return;
     if (g.phase === 'dead' || g.phase === 'victory') return;
     if (g.phase === 'shop') g.leaveShop();
+    // El piso nuevo se hornea al volver al bucle (aquí no se pinta nada)
+    if (g.awaitingFloor) g.floorReady();
+    // Con la salida abierta, MAIA salta a ella (salvo si se pidió verla)
+    const exit = g.run.arena.exit;
+    if (g.current.status === 'exit' && exit && target !== 'salida') Object.assign(g.current.player, { x: exit.x, y: exit.y });
     // Con la oleada limpia, MAIA salta junto a la entrada de la tienda y entra (solo para ?ir=, que es para medir)
     const open = g.current.status === 'open';
     if (open) placeAtShop(g.current.player, g.run.arena.shop);
@@ -469,7 +508,14 @@ function paintFx(vx: number, vy: number): void {
   if (Math.hypot(p.vx, p.vy) > 1) audio.play('paso');
   effects.add(fx, scene);
   if (g.phase === 'wave' && g.current.dash.t > 0) effects.dashAt(p.x, p.y, p.z);
-  effects.paint(fxPainter, viewProjector(cur!.view.camera, b.cam), vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
+  const cam = viewProjector(cur!.view.camera, b.cam);
+  effects.paint(fxPainter, cam, vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
+  // Con la oleada limpia o la salida abierta, una flecha en el borde si el sitio adonde ir no se ve
+  const goal = g.phase !== 'wave' ? null : g.current.status === 'open' ? g.run.arena.shop : g.current.status === 'exit' ? g.run.arena.exit : null;
+  if (goal) {
+    const [gx, gy] = cam.project(goal.x, goal.y, g.run.arena.floorZ);
+    paintPointer(fxPainter, gx! - vx, gy! - vy, ACCENTS[g.theme]);
+  }
 }
 
 // Lo que suena al cambiar de fase: la oleada limpia, la tienda, la derrota y la victoria; la música, en las oleadas
@@ -500,10 +546,13 @@ function viewOptions(vx: number, vy: number, time: number) {
 // entre el acento y su 55 %, un ciclo cada 1,2 s. En la caja del objeto pasada a los ejes del giro actual
 function shopHighlight(time: number): Highlight | null {
   const g = game;
-  if (!g || !cur || g.phase !== 'wave' || g.current.status !== 'open') return null;
+  if (!g || !cur || g.phase !== 'wave') return null;
+  // Con la oleada limpia, la tienda; tras ella, la salida del piso
+  const box = g.current.status === 'open' ? g.run.arena.shopBox : g.current.status === 'exit' ? g.run.arena.exit?.box : null;
+  if (!box) return null;
   const hex = ACCENTS[g.theme], k = 0.775 + 0.225 * Math.cos((time * 2 * Math.PI) / 1.2);
   const color = [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k)) as [number, number, number];
-  return { box: cur.view.viewBox(g.run.arena.shopBox), color, width: 2 };
+  return { box: cur.view.viewBox(box), color, width: 2 };
 }
 
 // La pantalla que toca ahora y su firma
@@ -550,6 +599,9 @@ function loop(now: number): void {
     const over = game.phase === 'victory' || (game.phase === 'dead' && game.phaseTick * TICK >= DEAD_PAUSE_S);
     if (over) { screen = 'end'; endAt = now; award(game); }
   }
+  // Piso nuevo: lo que hay horneado es del anterior, así que no se pinta nada hasta hornearlo
+  const stale = !!game && game.run.arena !== shownArena;
+  if (stale && screen === 'game') changeFloor();
   listen();
   effects.update(Math.min(dt, 0.1));
   flashes.update(dt);
@@ -561,8 +613,8 @@ function loop(now: number): void {
     if (keys.has('s') || keys.has('arrowdown')) dy--;
     inspector.pan(dx, dy, Math.min(dt, 0.1));
     inspector.frame(game.state, now / 1000, { ambient: game.run.arena.ambient, outline: outline.id, outlineColor: outline.color });
-  } else if (screen !== 'select' && screen !== 'meta') frame(now / 1000);
-  if (game && cur) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
+  } else if (screen !== 'select' && screen !== 'meta' && !stale) frame(now / 1000);
+  if (game && cur && !stale) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
   const spent = budget.run();
   if (game && bgJobs.length) {
     // Para medir: los cuadros lentos con lo que se llevó el segundo plano y qué giro estaba trabajando

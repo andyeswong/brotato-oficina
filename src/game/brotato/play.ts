@@ -64,6 +64,9 @@ export interface TestOptions {
   startWave?: number;   // 1 = la primera
   immortal?: boolean;   // tras cada paso, MAIA recupera toda la vida
   meta?: Readonly<Record<string, number>>;   // no es de pruebas: las mejoras entre partidas que se compraron
+  // Tampoco: con vista (app/src/juego), al llegar a un piso nuevo la partida espera quieta a que la vista lo hornee
+  // (floorReady), para que el horneado no caiga nunca dentro de una oleada (regla de MAIA). Sin vista, sigue sola
+  waitFloor?: boolean;
 }
 
 export class BrotatoGame {
@@ -72,7 +75,9 @@ export class BrotatoGame {
   tick = 0;
   phase: Phase = 'wave';
   phaseTick = 0;                 // ticks dados en esta fase (el del cambio no cuenta)
-  readonly playerId: EntityId;
+  playerId!: EntityId;           // cambia con cada piso (otro mundo, otras entidades)
+  // Piso nuevo montado y sin hornear todavía por la vista: la oleada no avanza (waitFloor)
+  awaitingFloor = false;
   private wave: Wave;
   private facing = 0;            // 8 direcciones, como el runtime de la escena: sur 0, este 2, norte 4
   private walked = 0;            // segundos andando: elige el cuadro del walk
@@ -91,7 +96,14 @@ export class BrotatoGame {
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
-    const p = this.wave.player;
+    this.addMaia();
+    this.placeWeapons();
+    this.sync();
+  }
+
+  // MAIA (y lo que lleve en la mano, con su luz) en el mundo de la oleada: al empezar y en cada piso nuevo
+  private addMaia(): void {
+    const p = this.wave.player, player = this.player;
     const state = this.state;
     this.playerId = state.entities.add({ model: player.model, x: Math.round(p.x), y: Math.round(p.y), z: p.z, facing: 0, castsShadow: 'always' });
     const carry = player.carry;
@@ -106,8 +118,6 @@ export class BrotatoGame {
         follow: { entity: this.playerId, offset, ...(carry.cone ? { dir: [0, -1, -0.3] as const } : {}) },
       });
     }
-    this.placeWeapons();
-    this.sync();
   }
 
   // Todo lo que esta partida puede poner en el mundo, para Compositor.prewarm (NARUTO): cada modelo se ve solo en los
@@ -147,7 +157,10 @@ export class BrotatoGame {
   }
 
   step(input: GameInput): void {
-    if (this.phase === 'wave') {
+    if (this.phase === 'wave' && this.awaitingFloor) {
+      // El piso nuevo está montado y la vista aún no lo ha horneado: nada avanza (ni el reloj de la oleada)
+      this.moving = false;
+    } else if (this.phase === 'wave') {
       const len = Math.hypot(input.dx, input.dy);
       this.moving = len > 0;
       if (this.moving) this.walked += TICK;
@@ -168,6 +181,10 @@ export class BrotatoGame {
         // MAIA entró en la tienda (o era la última oleada: la victoria)
         if (this.run.finishWave() === 'victory') this.setPhase('victory');
         else { this.run.shop.open(); this.setPhase('shop'); }
+      } else if (this.wave.status === 'left') {
+        // Cruzó la salida: el piso siguiente y su oleada
+        this.nextFloor();
+        return;
       }
       this.sync();
     } else {
@@ -200,13 +217,37 @@ export class BrotatoGame {
     if (this.fx.length > FX_KEEP) this.fx.splice(0, this.fx.length - FX_KEEP);
   }
 
-  // Salir de la tienda: la siguiente oleada, con las armas que haya ahora
+  // Salir de la tienda: con pisos, se abre la salida y MAIA anda hasta ella (la oleada sigue en 'exit'); sin ellos, la
+  // siguiente oleada en el mismo mapa. Con las armas que haya ahora
   leaveShop(): void {
     if (this.phase !== 'shop') return;
-    this.wave = this.run.startWave();
     this.setPhase('wave');
+    if (!this.run.openExit()) this.wave = this.run.startWave();
     this.placeWeapons();
     this.sync();
+  }
+
+  // La vista ya horneó el piso nuevo: la oleada puede empezar
+  floorReady(): void {
+    this.awaitingFloor = false;
+  }
+
+  // El piso siguiente: otro mundo de vóxeles, así que todo lo que se veía se vuelve a poner en él. El paso en que se
+  // cruzó la salida acaba aquí; la oleada nueva empieza en el siguiente (o cuando la vista lo haya horneado)
+  private nextFloor(): void {
+    this.wave = this.run.startWave();
+    this.weaponIds = [];
+    this.enemyIds.clear();
+    this.shotIds.clear();
+    this.materialIds.clear();
+    this.carryId = null;
+    this.addMaia();
+    this.placeWeapons();
+    this.awaitingFloor = !!this.test.waitFloor;
+    this.phaseTick = 0;
+    this.sync();
+    this.state.step();
+    this.tick++;
   }
 
   private setPhase(phase: Phase): void {
