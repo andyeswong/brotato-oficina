@@ -369,10 +369,11 @@ function finishFall(done: (pending: number) => void): void {
     baked = cur.baked;
     for (const job of f.left) budget.push(job);
     floorBaking = false;
-    // Sin los cuadros de calentamiento: ya se hicieron al entrar en el piso
-    loading.style.display = 'none';
-    loading.textContent = text;
     done(budget.pending);
+    // Los cuadros de calentamiento también aquí: las piezas de la caída pueden haber desalojado del atlas lo precalentado.
+    // Sin ellos, en la tapa del Flip el primer segundo de la oleada perdía 1-2 cuadros (2026-10-27)
+    warmUntil = performance.now() + WARM_MS;
+    setTimeout(() => { loading.style.display = 'none'; loading.textContent = text; }, WARM_MS);
   }, 30);
 }
 
