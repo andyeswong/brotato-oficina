@@ -28,6 +28,8 @@ export class Furniture {
   private readonly size = new Map<number, { w: number; d: number }>();
   // Algo se movió, despertó o rompió desde la última vez que se miró (el camino de la prórroga se rehace)
   changed = false;
+  // Cuántas veces se movió o rompió algo (para quien guarde su propia rejilla de caminos: el piloto de la curva)
+  version = 0;
 
   // zones: lo que no se puede tapar, ya ensanchado en KEEP_CLEAR. shotZ: la altura a la que vuelan los disparos
   constructor(private readonly state: WorldState, private readonly zones: readonly Rect[], private readonly shotZ: number,
@@ -62,7 +64,7 @@ export class Furniture {
   push(id: number, dx: number, dy: number, force: number, dt: number, maxSpeed: number): number {
     if (!this.canPush(id, dx, dy, maxSpeed * dt)) return 0;
     const r = this.state.objects.push(id, dx, dy, force, dt, { maxSpeed });
-    if (r.moved > 0) this.changed = true;
+    if (r.moved > 0) { this.changed = true; this.version++; }
     return r.moved;
   }
 
@@ -93,6 +95,7 @@ export class Furniture {
     if (!r.destroyed) return false;
     this.size.delete(id);
     this.changed = true;
+    this.version++;
     if (!fall.done) this.debris.push(fall);
     return true;
   }

@@ -54,19 +54,25 @@ export function toExit(world: World, run: Run): Point {
 // otro lado de un muro; el rodeo local de steer se queda pegado). Camino más corto (BFS) sobre una rejilla de celdas
 // de 8 donde cabe el cuerpo; se sigue la celda del camino a 3 pasos, con steer para lo fino. Sin camino, steer recto
 const CELL = 8;
-const grids = new WeakMap<object, { cols: number; rows: number; ok: Uint8Array }>();
+// Se rehace si un mueble se movió o se rompió desde que se hizo (furniture.version)
+const grids = new WeakMap<object, { cols: number; rows: number; ok: Uint8Array; version: number }>();
 function grid(run: Run) {
   let g = grids.get(run.arena);
-  if (!g) {
+  if (!g || g.version !== run.arena.furniture.version) {
     const { width, height } = run.level.arena, cols = Math.ceil(width / CELL), rows = Math.ceil(height / CELL);
     const ok = new Uint8Array(cols * rows);
     for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
       ok[j * cols + i] = run.arena.fits(i * CELL + CELL / 2, j * CELL + CELL / 2, run.arena.floorZ, run.body.radius) ? 1 : 0;
     }
-    g = { cols, rows, ok };
+    g = { cols, rows, ok, version: run.arena.furniture.version };
     grids.set(run.arena, g);
   }
   return g;
+}
+// ¿Cree el piloto que en (x, y) cabe? (su rejilla de goTo, para las pruebas)
+export function pilotFree(run: Run, x: number, y: number): boolean {
+  const g = grid(run);
+  return !!g.ok[Math.min(g.rows - 1, Math.max(0, Math.floor(y / CELL))) * g.cols + Math.min(g.cols - 1, Math.max(0, Math.floor(x / CELL)))];
 }
 export function goTo(run: Run, p: Point & { z: number }, to: Point): Point {
   const g = grid(run);
