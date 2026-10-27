@@ -7,7 +7,7 @@
 //     compartido con la oleada); con el tope lleno, un mueble dormido hace de pared;
 //   - un mueble no se puede empujar a menos de KEEP_CLEAR de la salida, la entrada a la tienda ni el sitio donde se
 //     aparece: la partida no puede quedarse sin camino;
-//   - los disparos que dan en un mueble le quitan vida y, a 0, se desmorona (escombro que desaparece). Solo donde ya
+//   - los disparos de MAIA que dan en un mueble le quitan vida y, a 0, se desmorona (escombro que desaparece). Solo donde ya
 //     paraban (MAIA: que el balance no cambie): la mampara entera, pero del escritorio solo las patas (vuelan a 8 de
 //     altura y el tablero está a 10; medido el 2026-10-27: el 1 % de su planta).
 import { VoxelFall } from '@voxpix/world/fall';

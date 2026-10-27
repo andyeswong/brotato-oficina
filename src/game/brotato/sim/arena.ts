@@ -202,9 +202,10 @@ export class Arena {
     return false;
   }
 
-  // Un disparo para en (x, y): si es un mueble, le quita vida. true si lo rompe
-  hitShot(x: number, y: number, damage: number): boolean {
-    return this.furniture.hit(x, y, damage);
+  // Un disparo para en (x, y): si es un mueble, le quita vida. true si lo rompe. Solo los de MAIA (MAIA, 2026-10-27:
+  // Andrés pidió "se rompen con disparos" pensando en el jugador; que los escupidores abran camino nadie lo pidió)
+  hitShot(x: number, y: number, damage: number, owner: 'player' | 'enemy' = 'player'): boolean {
+    return owner === 'player' && this.furniture.hit(x, y, damage);
   }
 
   // Abre la salida en el layout y en el mundo (VoxPix openDoorInWorld): la pared del hueco se quita y se pone el suelo.

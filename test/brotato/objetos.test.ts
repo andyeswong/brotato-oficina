@@ -101,7 +101,7 @@ describe('los muebles', () => {
     }
   });
 
-  it('los disparos rompen una mampara (no una columna) y el camino de la prórroga pasa por donde estaba', () => {
+  it('los disparos de MAIA rompen una mampara (no los de los enemigos, ni una columna) y el camino de la prórroga pasa por donde estaba', () => {
     const a = new Arena(registry.level('oficina'), 7, { floor: 0 });
     const mamparas = [...a.state.objects].filter((o) => o.kind === 'pillar');
     expect(mamparas.length).toBeGreaterThan(0);
@@ -114,8 +114,11 @@ describe('los muebles', () => {
     expect(a.fits(west.x, west.y, a.floorZ, 5) && a.fits(east.x, east.y, a.floorZ, 5)).toBe(true);
     const around = a.pathDir(west, east, 4)!;
     expect(Math.abs(around.y)).toBeGreaterThan(0.3);   // rodea la mampara
+    // Las balas de los enemigos no le hacen nada; las de MAIA, sí
+    for (let k = 0; k < 100; k++) expect(a.hitShot(hx, hy, 10, 'enemy')).toBe(false);
+    expect(a.state.objects.get(id)!.hp).toBe(FURNITURE_HP);
     let broke = false, hits = 0;
-    while (!broke && hits < 100) { broke = a.hitShot(hx, hy, 10); hits++; }
+    while (!broke && hits < 100) { broke = a.hitShot(hx, hy, 10, 'player'); hits++; }
     expect(broke).toBe(true);
     expect(hits).toBe(FURNITURE_HP / 10);
     expect(a.state.objects.get(id)).toBeUndefined();

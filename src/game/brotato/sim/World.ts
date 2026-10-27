@@ -637,8 +637,8 @@ export class World {
       p.y += p.vy * dt;
       p.travel -= Math.hypot(p.vx, p.vy) * dt;
       let gone = p.travel <= 0 || arena.shotBlocked(p.x, p.y); // fuera, o paredes, columnas y muebles
-      // Lo que para en un mueble le quita vida (los disparos de MAIA y los de los enemigos)
-      if (gone && p.travel > 0) arena.hitShot(p.x, p.y, p.damage);
+      // Lo que para en un mueble le quita vida
+      if (gone && p.travel > 0) arena.hitShot(p.x, p.y, p.damage, p.owner);
 
       if (!gone && p.owner === 'player') {
         for (const e of [...this.hash.query(p.x, p.y, p.radius + this.maxEnemyRadius * 2, this.near)]) {
