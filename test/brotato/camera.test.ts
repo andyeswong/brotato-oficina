@@ -53,6 +53,27 @@ describe('los presets de cámara', () => {
       expect(Math.abs(Math.max(...ys) - Math.min(...ys) - 24 * cam.incline), cam.id).toBeLessThanOrEqual(1);
     }
   });
+
+  // Andrés, 2026-10-26: con la Baja (0,35) el suelo desaparecía. El contorno interior marcaba cada fila del suelo como
+  // un salto de profundidad (umbral fijo de 2,5) y lo pintaba entero del tono del borde. VoxPix c39773d escala el
+  // umbral con la inclinación; aquí, con cada cámara y el contorno del juego, casi nada del suelo sale marcado
+  it('con cada cámara y el contorno interior, el suelo se ve: casi ninguna cara de arriba sale como contorno', { timeout: 120_000 }, () => {
+    for (const level of ['oficina', 'medieval']) {
+      const g = new BrotatoGame(registry, 5, models, player, registry.level(level));
+      for (const cam of CAMERAS) {
+        const plain = bakeWorld(g.run.arena.world, { topZ: 40, incline: cam.incline, outline: 'none' });
+        const inner = bakeWorld(g.run.arena.world, { topZ: 40, incline: cam.incline, outline: 'both' });
+        let tops = 0, marked = 0;
+        for (let i = 0; i < inner.face.length; i++) {
+          if (inner.face[i] !== 4 || plain.face[i] !== 4) continue;
+          tops++;
+          if (inner.rgba[i * 4] !== plain.rgba[i * 4] || inner.rgba[i * 4 + 1] !== plain.rgba[i * 4 + 1] || inner.rgba[i * 4 + 2] !== plain.rgba[i * 4 + 2]) marked++;
+        }
+        expect(tops, `${level} ${cam.id}`).toBeGreaterThan(1000);
+        expect(marked / tops, `${level} ${cam.id}`).toBeLessThan(0.05);
+      }
+    }
+  });
 });
 
 describe('la cámara en la selección', () => {
