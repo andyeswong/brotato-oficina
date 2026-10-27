@@ -48,6 +48,6 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     // Los neones brillan solos: las franjas de los pilares y los letreros de la fachada
     neonPink: { colors: ['#5a1640', '#a02a78', '#e04cb4', '#ff8ad8', '#ffd0f0'], emissive: true },
     neonCyan: { colors: ['#0e3a4a', '#1a7088', '#28b4d0', '#7fe3ff', '#d0f8ff'], emissive: true },
-  }), ...SAMPLE_PIECES, pillar: neonPillar },
+  }), ...SAMPLE_PIECES, pillar: neonPillar, objects: true },
   ambient: [0.42, 0.46, 0.66] as const,
 };

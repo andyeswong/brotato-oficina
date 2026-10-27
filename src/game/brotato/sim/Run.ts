@@ -1,5 +1,5 @@
 import type { GameApi, HookFn, Point } from '../api';
-import { metaDashCharges, metaModifiers, metaStartMaterials } from '../meta/upgrades';
+import { metaDashCharges, metaModifiers, metaPushForce, metaStartMaterials } from '../meta/upgrades';
 import { MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type LevelModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
@@ -7,6 +7,11 @@ import { Arena } from './arena';
 import { createRng, type Rng } from './rng';
 import { Shop, type ShopResult } from './Shop';
 import { World, type Body } from './World';
+
+// Lo que empuja MAIA sin mejoras, en N: mueve hasta unos 160 kg (MU 0,5 de VoxPix). Un escritorio de la oficina pesa
+// 55 kg y va a unos 15 vóxeles/s, un cuarto del paso de MAIA (con 400 N iba a 4: no se notaba que se moviera). Columnas
+// y pilares (1-2,6 t, de 5 200 N para arriba) no se mueven ni con la mejora al máximo (1 250 N)
+export const PUSH_FORCE = 800;
 
 interface HookSource {
   id: string; // "character:maia", "item:cafe#2"…
@@ -34,6 +39,7 @@ export class Run {
   readonly floors: boolean;
   // Cargas de dash que da el árbol de mejoras (0: sin dash); cada oleada empieza con todas
   readonly dashCharges: number;
+  readonly pushForce: number;
 
   // La vista se engancha aquí
   onFloatingText: (text: string, at?: Point) => void = () => {};
@@ -64,6 +70,7 @@ export class Run {
       this.materials = metaStartMaterials(options.meta);
     }
     this.dashCharges = options.meta ? metaDashCharges(options.meta) : 0;
+    this.pushForce = PUSH_FORCE + (options.meta ? metaPushForce(options.meta) : 0);
     this.startingWeaponIds = (options.weapons ?? character.startingWeapons ?? []).slice(0, 6);
     this.weapons = this.startingWeaponIds.map((id) => ({ id, tier: 0 }));
     this.shop = new Shop(this);
@@ -131,6 +138,7 @@ export class Run {
       final: this.isLastWave,
       body: this.body,
       dashCharges: this.dashCharges,
+      pushForce: this.pushForce,
       weapons: this.weapons,
       rng: this.rng,
       stat: (id, tags) => this.stats.get(id, tags),

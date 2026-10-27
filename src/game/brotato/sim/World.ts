@@ -149,6 +149,8 @@ export interface WorldDeps {
   final?: boolean;
   body: Body;
   dashCharges?: number;
+  // Newtons con que MAIA empuja lo que tiene delante (muebles: arena.move); 0 o sin poner, no empuja
+  pushForce?: number;
   weapons: ReadonlyArray<{ id: string; tier: number }>;
   rng: Rng;
   stat: StatReader;
@@ -273,6 +275,7 @@ export class World {
   // interact: la tecla F (o el botón en el Flip). Solo hace algo con la oleada limpia y MAIA junto a la entrada.
   // dash: se pulsó la tecla del dash en este paso (no si se mantiene)
   step(dt: number, move: Point, interact = false, dash = false): void {
+    this.deps.arena.stepObjects();
     if (this.status === 'exit') {
       this.time += dt;
       this.movePlayer(dt, move, dash);
@@ -345,8 +348,10 @@ export class World {
       const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100) * arena.slowdown(p.x, p.y);
       p.vx = move.x * speed;
       p.vy = move.y * speed;
-      arena.move(p, body.radius, p.vx * dt, p.vy * dt);
+      const force = this.deps.pushForce ?? 0;
+      arena.move(p, body.radius, p.vx * dt, p.vy * dt, force > 0 ? { force, dt, maxSpeed: speed } : undefined);
     }
+    arena.crushUnder(p.x, p.y, body.radius);
     if (p.iframes > 0) p.iframes -= dt;
     if (this.stealT > 0) this.stealT -= dt;
 
@@ -632,6 +637,8 @@ export class World {
       p.y += p.vy * dt;
       p.travel -= Math.hypot(p.vx, p.vy) * dt;
       let gone = p.travel <= 0 || arena.shotBlocked(p.x, p.y); // fuera, o paredes, columnas y muebles
+      // Lo que para en un mueble le quita vida (los disparos de MAIA y los de los enemigos)
+      if (gone && p.travel > 0) arena.hitShot(p.x, p.y, p.damage);
 
       if (!gone && p.owner === 'player') {
         for (const e of [...this.hash.query(p.x, p.y, p.radius + this.maxEnemyRadius * 2, this.near)]) {

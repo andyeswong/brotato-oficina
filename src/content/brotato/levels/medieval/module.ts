@@ -41,6 +41,6 @@ export default defineLevel({
 // default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
 export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
   // Los colores por defecto de VoxPix son los del medieval: piedra, agua azul; con la fuente y las columnas redondas
-  look: { palette: worldPalette(), fountain: true, ...SAMPLE_PIECES },
+  look: { palette: worldPalette(), fountain: true, ...SAMPLE_PIECES, objects: true },
   ambient: [0.4, 0.46, 0.64] as const,
 };

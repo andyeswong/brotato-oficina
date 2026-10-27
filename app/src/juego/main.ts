@@ -654,6 +654,8 @@ function loop(now: number): void {
   } else if (screen !== 'select' && screen !== 'meta' && !stale) frame(now / 1000);
   if (game && cur && !stale) for (const job of rebakeChangedJobs(cur.baked, cur.view.lights)) budget.push(job);
   const spent = budget.run();
+  // Un mueble que se durmió se sigue dibujando (fantasma) hasta que su rehorneado está publicado
+  if (game && cur && !stale && budget.pending === 0) game.state.objects.dropGhosts(cur.baked.version);
   if (game && !stale && !floorBaking) fallGate.frame(game, budget.pending);
   if (game && bgJobs.length) {
     // Para medir: los cuadros lentos con lo que se llevó el segundo plano y qué giro estaba trabajando

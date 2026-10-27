@@ -1,5 +1,5 @@
 import { defineLevel } from '../../../../game/brotato/api';
-import { worldPalette, type WorldLook } from '@voxpix/world/build';
+import { DEFAULT_WORLD_RAMPS, worldPalette, type WorldLook } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
 import { mamparaPillar } from '../../../../game/brotato/sim/decor';
 
@@ -55,6 +55,11 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     // Los charcos son café derramado (Andrés, 2026-10-26), opaco; y la tela de las mamparas, azul gris de oficina
     water: ['#160a04', '#2a160a', '#43260f', '#6a4424', '#c8a070'],   // arriba, la crema (NARUTO: que no parezca tierra)
     cloth: ['#5c5a5e', '#76747a', '#908e96', '#aaa8b0', '#c6c4cc'],
-  }), ...SAMPLE_PIECES, pillar: mamparaPillar },
+    // Los muebles se empujan (Andrés, 2026-10-27): el peso sale de estas densidades (kg/m³). Macizos de madera, metal y
+    // vidrio, un escritorio pesaba 430 kg y una mampara 826; así, unos 55 y 46 (aglomerado, tubo hueco, pantalla plana)
+    wood: { colors: DEFAULT_WORLD_RAMPS.wood, props: { density: 150 } },
+    metal: { colors: DEFAULT_WORLD_RAMPS.metal, props: { density: 300 } },
+    screen: { colors: DEFAULT_WORLD_RAMPS.screen, props: { density: 600 } },
+  }), ...SAMPLE_PIECES, pillar: mamparaPillar, objects: true },
   ambient: [0.7, 0.72, 0.8] as const,
 };

@@ -9,7 +9,9 @@ import { floorLayout, generateLayout, NORTH, TILE, WALL, type GeneratorSpec, typ
 import { buildWorldState, type World, type WorldLook } from '@voxpix/world/build';
 import { openDoorInWorld } from '@voxpix/world/doors';
 import { VoxelFall } from '@voxpix/world/fall';
+import { crushAt } from '@voxpix/world/crush';
 import { countPieces, fallPiece, FALL_MAX_PIECES } from './dropin';
+import { Furniture, KEEP_CLEAR, type Rect } from './furniture';
 
 // El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
 export interface LevelWorld { look: WorldLook; ambient: readonly [number, number, number] }
@@ -23,13 +25,14 @@ import { FOLIAGE_THEMES, addFoliage } from './foliage';
 import { addCables, addCups, addToxicGlow } from './decor';
 import { GLASS_THEMES, addGlass } from './glass';
 import type { WorldState } from '@voxpix/world/state';
-import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runtime/body';
+import { DEFAULT_RULES, fits, moveBody, objectAhead, restZ, waterFactor } from '@voxpix/runtime/body';
 
 // Altura sobre el suelo a la que vuelan los disparos: lo que es sólido ahí (paredes, columnas, muebles) los para
 const SHOT_HEIGHT = 8;
 // El radio del enemigo más grande (embestidor y escupidor): un punto de aparición tiene que dejarle sitio
 const SPAWN_RADIUS = 6;
-const FLOW = 4;          // lado de la celda del camino de la prórroga
+const FLOW = 4;
+const FLOW_REFRESH = 15;  // ticks entre rehacer el camino de la prórroga mientras se empujan muebles (1/4 s)          // lado de la celda del camino de la prórroga
 const PATH_NEAR = 8;     // a cuánto del destino se da por llegado (y desde dónde se cuentan las distancias)
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
 
@@ -98,6 +101,10 @@ export class Arena {
   exitOpen = false;
   // La caída del piso al llegar (dropIn), hasta que se suelta (releaseFall / settleFall)
   fall: VoxelFall | null = null;
+  // Los muebles que se empujan y se rompen (furniture.ts)
+  readonly furniture: Furniture;
+  private ticks = 0;
+  private flowAt = 0;
   private readonly look: WorldLook;
   private readonly decorate: (w: World) => void;
 
@@ -165,6 +172,39 @@ export class Arena {
         : side === 'e' ? [(cols - 1) * TILE, my(b), 1, cols * TILE - 1, my(a), 32] : [0, my(b), 1, TILE - 1, my(a), 32];
       this.exit = { side, x: e.x, y: my(e.y), reach: EXIT_REACH, box };
     } else this.exit = null;
+    // Lo que un mueble empujado no puede tapar: la salida, la entrada a la tienda y donde se aparece
+    const around = (x: number, y: number, r: number): Rect => ({ x0: x - r, y0: y - r, x1: x + r, y1: y + r });
+    const zones: Rect[] = [
+      around(this.shop.x, this.shop.y, this.shop.reach + KEEP_CLEAR),
+      around(this.start.x, this.start.y, SPAWN_RADIUS + KEEP_CLEAR),
+    ];
+    if (this.exit) {
+      const [x0, y0, , x1, y1] = this.exit.box;
+      zones.push({ x0: x0 - KEEP_CLEAR, y0: y0 - KEEP_CLEAR, x1: x1 + KEEP_CLEAR, y1: y1 + KEEP_CLEAR });
+    }
+    this.furniture = new Furniture(this.state, zones, this.floorZ + SHOT_HEIGHT);
+  }
+
+  // Un tick de los muebles (los escombros caen) y del reloj con que se rehace el camino de la prórroga
+  stepObjects(): void {
+    this.furniture.step();
+    this.ticks++;
+  }
+
+  // La vegetación que pisa un cuerpo de radio r en (x, y) se queda tumbada (Andrés: no se empuja, se aplasta al pasar).
+  // Solo las columnas bajo el cuerpo (r - 1): ahí no puede haber arbusto, que no deja entrar, así que los arbustos
+  // siguen bloqueando y solo se tumban la hierba y las flores. Tumbada una vez, no cambia más (no rehornea)
+  crushUnder(x: number, y: number, r: number): number {
+    return this.plantsAny ? crushAt(this.state, x, y, r - 1, { mode: 'flatten' }) : 0;
+  }
+  private get plantsAny(): boolean {
+    for (const k in this.plants) if (this.plants[k]) return true;
+    return false;
+  }
+
+  // Un disparo para en (x, y): si es un mueble, le quita vida. true si lo rompe
+  hitShot(x: number, y: number, damage: number): boolean {
+    return this.furniture.hit(x, y, damage);
   }
 
   // Abre la salida en el layout y en el mundo (VoxPix openDoorInWorld): la pared del hueco se quita y se pone el suelo.
@@ -231,8 +271,14 @@ export class Arena {
 
   // Mueve un cuerpo de radio r (dx, dy) con la colisión del runtime: resbala por las paredes, sube escalones bajos
   // y no entra en agua honda
-  move(m: Mover, r: number, dx: number, dy: number): void {
+  // push: quien se mueve empuja el objeto (mueble) que le corta el paso, con esa fuerza (N) durante dt y sin ir más
+  // rápido que su paso (maxSpeed, vóxeles/s). Lo que pesa más de lo que puede, hace de pared (VoxPix objects.push)
+  move(m: Mover, r: number, dx: number, dy: number, push?: { force: number; dt: number; maxSpeed: number }): void {
     const body = { x: m.x, y: m.y, z: m.z, r };
+    if (push && (dx || dy) && this.state.objects.size) {
+      const id = objectAhead(this.state, body, dx, dy);
+      if (id !== null) this.furniture.push(id, dx, dy, push.force, push.dt, push.maxSpeed);
+    }
     moveBody(this.state, body, dx, dy, DEFAULT_RULES);
     m.x = body.x; m.y = body.y; m.z = body.z;
   }
@@ -256,7 +302,7 @@ export class Arena {
   shotBlocked(x: number, y: number): boolean {
     const { x0, y0, x1, y1 } = this.inner;
     if (x < x0 || x > x1 || y < y0 || y > y1) return true;
-    return this.state.solidAt(x, y, this.floorZ + SHOT_HEIGHT);
+    return this.state.solidAt(x, y, this.floorZ + SHOT_HEIGHT) || this.furniture.blocksShot(x, y);
   }
 
   // El punto libre (para aparecer) más cercano a uno dado; si el dado ya está libre, el mismo
@@ -279,7 +325,14 @@ export class Arena {
   // enemigo pequeño encajado donde el grande no cabe sale hacia la celda con camino más cercana (a 2 o menos)
   pathDir(from: Point, to: Point, near = PATH_NEAR): Point | null {
     const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), n = cols * rows;
+    // Un mueble se movió o se rompió: la rejilla se rehace, como mucho cada FLOW_REFRESH ticks (empujar es continuo)
+    if (this.furniture.changed && this.ticks - this.flowAt >= FLOW_REFRESH) {
+      this.furniture.changed = false;
+      this.flowOk = null;
+      this.flowGoal = '';
+    }
     if (!this.flowOk) {
+      this.flowAt = this.ticks;
       this.flowOk = new Uint8Array(n);
       for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
         this.flowOk[j * cols + i] = this.fits(i * FLOW + FLOW / 2, j * FLOW + FLOW / 2, this.floorZ, SPAWN_RADIUS) ? 1 : 0;

@@ -36,6 +36,11 @@ export function metaKey(e: { code: string; key: string }): MetaAction | null {
     const row = treeOrder()[10];
     return row ? { type: 'upgrade', id: row.u.id } : null;
   }
+  // La duodécima, con la siguiente
+  if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+    const row = treeOrder()[11];
+    return row ? { type: 'upgrade', id: row.u.id } : null;
+  }
   if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') return { type: 'back' };
   return null;
 }
