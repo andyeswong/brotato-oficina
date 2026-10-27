@@ -24,7 +24,8 @@ import { discoverContent } from '../../../src/game/brotato/registry/discover';
 import { validateContent } from '../../../src/game/brotato/registry/validate';
 import type { LevelModule, ThemeId } from '../../../src/game/brotato/registry/schemas';
 import { pickLevel } from '../../../src/game/brotato/sim/arena';
-import { BrotatoGame, placeAtShop, type GameInput, type Models } from '../../../src/game/brotato/play';
+import { BrotatoGame, type GameInput, type Models } from '../../../src/game/brotato/play';
+import { skipTo } from '../../../src/game/brotato/skip';
 import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
 import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage, type ShopPending } from '../../../src/game/brotato/ui/shop';
@@ -420,29 +421,6 @@ function turn(step: 1 | -1): void {
   }, 30);
 }
 
-// Para verify y las capturas: sin entrada, hasta la primera tienda o hasta el final (saliendo de cada tienda sin comprar)
-function skipTo(target: string): void {
-  const g = game!;
-  for (let t = 0; t < 60 * 60 * 30; t++) {
-    if (target === 'tienda' && g.phase === 'shop') return;
-    if (target === 'limpia' && g.phase === 'wave' && g.current.status === 'open') return;
-    // Los pisos: con la salida abierta (tras la primera tienda), o ya en el segundo piso
-    if (target === 'salida' && g.phase === 'wave' && g.current.status === 'exit') return;
-    if (target === 'piso2' && g.run.floor >= 1) return;
-    if (g.phase === 'dead' || g.phase === 'victory') return;
-    if (g.phase === 'shop') g.leaveShop();
-    // El piso nuevo se hornea al volver al bucle (aquí no se pinta nada)
-    if (g.awaitingFloor) g.floorReady();
-    // Con la salida abierta, MAIA salta a ella (salvo si se pidió verla)
-    const exit = g.run.arena.exit;
-    if (g.current.status === 'exit' && exit && target !== 'salida') Object.assign(g.current.player, { x: exit.x, y: exit.y });
-    // Con la oleada limpia, MAIA salta junto a la entrada de la tienda y entra (solo para ?ir=, que es para medir)
-    const open = g.current.status === 'open';
-    if (open) placeAtShop(g.current.player, g.run.arena.shop);
-    g.step({ dx: 0, dy: 0, stomp: false, interact: open });
-  }
-}
-
 function toSelect(): void {
   seed = (seed * 7919 + 13) % 1000003;
   level = levelFor(seed);
@@ -721,5 +699,10 @@ addEventListener('pointercancel', (e) => { stick.end(e); if (e.pointerId === poi
 
 theme = level.theme;
 loading.style.display = 'none';
-if (q.has('seed')) newRun(() => { const target = q.get('ir'); if (target) skipTo(target); });
+if (q.has('seed')) newRun(() => {
+  const target = q.get('ir');
+  if (!target) return;
+  const r = skipTo(game!, target);
+  if (!r.reached) console.warn(`?ir=${target} no llegó: ${r.phase} (semilla ${seed}, ${level.id})`);
+});
 next(loop);

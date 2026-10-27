@@ -78,6 +78,8 @@ export class BrotatoGame {
   playerId!: EntityId;           // cambia con cada piso (otro mundo, otras entidades)
   // Piso nuevo montado y sin hornear todavía por la vista: la oleada no avanza (waitFloor)
   awaitingFloor = false;
+  // Durante el salto de ?ir= (skip.ts): MAIA no cae, como con immortal, solo mientras dura
+  guarded = false;
   private wave: Wave;
   private facing = 0;            // 8 direcciones, como el runtime de la escena: sur 0, este 2, norte 4
   private walked = 0;            // segundos andando: elige el cuadro del walk
@@ -171,7 +173,7 @@ export class BrotatoGame {
       const p = this.wave.player;
       const look = target ? { dx: target.x - p.x, dy: target.y - p.y } : this.moving ? input : null;
       if (look) this.facing = ((Math.round(Math.atan2(look.dx, -look.dy) / (Math.PI / 4)) % 8) + 8) % 8;
-      if (this.test.immortal) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead') this.wave.status = 'playing'; }
+      if (this.test.immortal || this.guarded) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead') this.wave.status = 'playing'; }
       this.collectFx();
       this.phaseTick++;
       if (this.wave.status === 'dead') {
