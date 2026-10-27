@@ -36,6 +36,7 @@ import { loadProgress, saveProgress } from '../../../src/game/brotato/meta/store
 import { fichasEarned } from '../../../src/game/brotato/meta/upgrades';
 import { drawEnd, END_GRACE_S } from '../../../src/game/brotato/ui/end';
 import { ACCENTS } from '../../../src/game/brotato/ui/theme';
+import { drawSign } from '../../../src/game/brotato/ui/sign';
 import type { Highlight } from '@voxpix/world/frame2d';
 import { TouchStick, isTouch } from './touch';
 import { GameAudio } from './audio';
@@ -116,6 +117,25 @@ const fxCanvas = document.getElementById('fx') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLCanvasElement;
 const hud = document.getElementById('hud')!;
 const loading = document.getElementById('loading')!;
+// El letrero de carga en la fuente de píxel (ui/sign.ts), en un lienzo dentro del velo; el texto, también para lectores
+// de pantalla. Se pinta al cambiar el texto y al cambiar la medida de la pantalla
+const sign = document.createElement('canvas');
+let signText = loading.textContent ?? '';
+let signAccent: () => string | undefined = () => undefined;
+loading.textContent = '';
+loading.setAttribute('role', 'status');
+loading.appendChild(sign);
+function paintSign(): void {
+  if (sign.width !== UW || sign.height !== UH) { sign.width = UW; sign.height = UH; }
+  const g = sign.getContext('2d')!;
+  g.clearRect(0, 0, UW, UH);
+  drawSign({ width: UW, height: UH, fill(x, y, w, h, color) { g.fillStyle = color; g.fillRect(x, y, w, h); }, icon: () => false }, signText, { accent: signAccent() });
+}
+function setSign(text: string): void {
+  signText = text;
+  loading.setAttribute('aria-label', text);
+  paintSign();
+}
 canvas.width = VW; canvas.height = VH;
 ui.width = UW; ui.height = UH;
 fxCanvas.width = VW; fxCanvas.height = VH;
@@ -142,6 +162,8 @@ function fit(): void {
   place(compositor.canvas, VW, VH, l);
   place(fxCanvas, VW, VH, l);
   place(ui, UW, UH, lu);
+  place(sign, UW, UH, lu);
+  paintSign();
   inspector?.place(compositor.canvas, VW, VH);
 }
 addEventListener('resize', fit);
@@ -170,6 +192,7 @@ const outline = (Object.hasOwn(OUTLINES, outlineKey) ? OUTLINES[outlineKey] : un
 const g2 = ui.getContext('2d')!;
 const icons = new Map<string, HTMLCanvasElement | null>();
 let theme: ThemeId = 'oficina';
+signAccent = () => ACCENTS[theme];
 function iconModel(ref: IconRef): VoxelSource | null {
   switch (ref.kind) {
     case 'weapon': return model(lookOf(registry.weapon(ref.id), theme).model);
@@ -291,6 +314,8 @@ function levelFor(s: number): LevelModule {
 }
 
 function newRun(after?: () => void): void {
+  theme = levelFor(seed).theme;
+  setSign('Construyendo el mundo en vóxeles…');
   loading.style.display = 'flex';
   setTimeout(() => {
     level = levelFor(seed);
@@ -355,8 +380,8 @@ const fallGate = new FallGate(bakeBackground, finishFall);
 // Ya cayó todo el piso: el giro actual de golpe, detrás del letrero (fallgate.ts)
 function finishFall(done: (pending: number) => void): void {
   floorBaking = true;
-  const text = loading.textContent;
-  loading.textContent = `Piso ${game!.run.floor + 1}`;
+  const text = signText;
+  setSign(`Piso ${game!.run.floor + 1}`);
   loading.style.display = 'flex';
   setTimeout(() => {
     if (!game) { floorBaking = false; return; }
@@ -373,7 +398,7 @@ function finishFall(done: (pending: number) => void): void {
     // Los cuadros de calentamiento también aquí: las piezas de la caída pueden haber desalojado del atlas lo precalentado.
     // Sin ellos, en la tapa del Flip el primer segundo de la oleada perdía 1-2 cuadros (2026-10-27)
     warmUntil = performance.now() + WARM_MS;
-    setTimeout(() => { loading.style.display = 'none'; loading.textContent = text; }, WARM_MS);
+    setTimeout(() => { loading.style.display = 'none'; setSign(text); }, WARM_MS);
   }, 30);
 }
 
@@ -382,8 +407,8 @@ let floorBaking = false;
 function changeFloor(): void {
   if (!game || floorBaking) return;
   floorBaking = true;
-  const text = loading.textContent;
-  loading.textContent = `Piso ${game.run.floor + 1}`;
+  const text = signText;
+  setSign(`Piso ${game.run.floor + 1}`);
   loading.style.display = 'flex';
   setTimeout(() => {
     if (!game) { floorBaking = false; return; }
@@ -392,7 +417,7 @@ function changeFloor(): void {
     floorBaking = false;
     // Unos cuadros de calentamiento detrás del letrero, como al empezar
     warmUntil = performance.now() + WARM_MS;
-    setTimeout(() => { loading.style.display = 'none'; loading.textContent = text; }, WARM_MS);
+    setTimeout(() => { loading.style.display = 'none'; setSign(text); }, WARM_MS);
   }, 30);
 }
 
@@ -436,8 +461,8 @@ function turn(step: 1 | -1): void {
   const have = views.get(next);
   if (have) { go(have); return; }
   turning = true;
-  const text = loading.textContent;
-  loading.textContent = 'Girando…';
+  const text = signText;
+  setSign('Girando…');
   loading.style.display = 'flex';
   setTimeout(() => {
     // Si estaba a medias en segundo plano, se termina de golpe; si no, se hornea entero
@@ -449,7 +474,7 @@ function turn(step: 1 | -1): void {
       go(keep(next, p.prep.result()!, t0, 'terminado al girar'));
     } else go(bakeView(next));
     loading.style.display = 'none';
-    loading.textContent = text;
+    setSign(text);
     turning = false;
   }, 30);
 }
