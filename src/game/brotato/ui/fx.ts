@@ -26,6 +26,7 @@ export interface FxScene {
   enemyHeight: number;
   // La altura del suelo en (x, y): la X del aviso se apoya en él
   groundZ(x: number, y: number): number;
+  accent?: string;   // el color del tema (la estela del dash)
 }
 
 // Duraciones, en segundos (las del Brotato en Phaser)
@@ -46,6 +47,13 @@ const DIM = '#fdf6ff80';
 // El destello de un golpe, como en el Brotato: el enemigo en blanco 60 ms y MAIA en rojo 90 ms
 export const FLASH_ENEMY = { color: [1, 1, 1] as const, s: 0.06 };
 export const FLASH_PLAYER = { color: [1, 0.2, 0.2] as const, s: 0.09 };
+// El dash: MAIA se tiñe de un azul claro mientras dura, y deja una estela (líneas de velocidad a tres alturas de su
+// cuerpo, en el acento del tema) y polvo por el camino
+export const FLASH_DASH = { color: [0.65, 0.95, 1] as const };
+export const TRAIL_S = 0.22;               // lo que dura cada tramo de la estela
+const TRAIL_HEIGHTS = [0.2, 0.45, 0.7];    // a qué alturas de MAIA van las líneas (fracción de su altura)
+const TRAIL_CLEAR = 7;                     // vóxeles alrededor de MAIA sin estela: la capa de efectos va encima y la taparía
+const DUST_COLORS = ['#c9c3d9', '#8a94a6'] as const;
 
 interface Floating {
   text: string;
@@ -60,6 +68,14 @@ interface Puff {
   y: number;
   z: number;
   t: number;
+}
+
+interface TrailPoint {
+  x: number;
+  y: number;
+  z: number;
+  t: number;
+  seq: number;     // de qué dash es: los puntos de dos dashes no se unen
 }
 
 interface Scrap {
@@ -146,9 +162,11 @@ export class Effects {
   private floating: Floating[] = [];
   private puffs: Puff[] = [];
   private scraps: Scrap[] = [];
+  private trail: TrailPoint[] = [];
+  private dashSeq = 0;
 
   get count(): number {
-    return this.floating.length + this.puffs.length + this.scraps.length;
+    return this.floating.length + this.puffs.length + this.scraps.length + this.trail.length;
   }
 
   // Lo que anunció la simulación desde el último cuadro
@@ -162,14 +180,29 @@ export class Effects {
           this.float(String(fx.amount), fx.crit ? COLORS.gold : COLORS.text, { x: fx.x, y: fx.y, z: fx.z + scene.enemyHeight });
           break;
         case 'enemy-die': this.die(fx.x, fx.y, fx.z, scene.enemyHeight); break;
-        case 'dash': this.puffs.push({ x: fx.x, y: fx.y, z: fx.z, t: PUFF_S }); break;   // el polvo de donde salió
+        case 'dash':
+          // el polvo de donde salió, y la estela empieza ahí
+          this.puffs.push({ x: fx.x, y: fx.y, z: fx.z, t: PUFF_S });
+          this.trail.push({ x: fx.x, y: fx.y, z: fx.z, t: TRAIL_S, seq: ++this.dashSeq });
+          break;
         default: break;   // spawn y pickup no se dibujan (el enemigo y el contador ya se ven)
       }
     }
   }
 
+  // Dónde está MAIA en un cuadro en que hace un dash: un punto más de la estela, y un poco de polvo a sus pies
+  dashAt(x: number, y: number, z: number): void {
+    this.trail.push({ x, y, z, t: TRAIL_S, seq: this.dashSeq });
+    const h = hash(x, y);
+    for (let k = 0; k < 2; k++) {
+      const a = (((h >>> (k * 8)) & 255) / 256) * Math.PI * 2;
+      this.scraps.push({ x, y, z: z + 1, vx: Math.cos(a) * 12, vy: Math.sin(a) * 12, vz: 20 + ((h >>> (k * 5)) & 7) * 3, floor: z, life: 0.3, color: DUST_COLORS[k]! });
+    }
+  }
+
   // El paso del tiempo de la vista (no de la simulación: los efectos no cuentan en la huella)
   update(dt: number): void {
+    this.trail = this.trail.filter((f) => (f.t -= dt) > 0);
     this.floating = this.floating.filter((f) => (f.life -= dt) > 0);
     this.puffs = this.puffs.filter((f) => (f.t -= dt) > 0);
     this.scraps = this.scraps.filter((s) => {
@@ -182,7 +215,7 @@ export class Effects {
   }
 
   clear(): void {
-    this.floating = []; this.puffs = []; this.scraps = [];
+    this.floating = []; this.puffs = []; this.scraps = []; this.trail = [];
   }
 
   // Pinta todo en la vista: (vx, vy) es la esquina de la vista en la imagen del horneado
@@ -203,6 +236,23 @@ export class Effects {
     for (const s of this.scraps) {
       const [x, y] = ground(cam, s.x, s.y, s.z);
       dot(x, y, s.color);
+    }
+    // La estela: cada tramo entre dos puntos seguidos del mismo dash, una línea por altura; la mitad final, atenuada.
+    // Solo detrás de MAIA, no sobre ella
+    const accent = scene.accent ?? COLORS.text;
+    for (let i = 1; i < this.trail.length; i++) {
+      const a = this.trail[i - 1]!, b = this.trail[i]!;
+      if (a.seq !== b.seq) continue;
+      const color = a.t > TRAIL_S / 2 ? accent : `${accent}80`;
+      for (const f of TRAIL_HEIGHTS) {
+        const h = f * scene.playerHeight;
+        const [x0, y0] = ground(cam, a.x, a.y, a.z + h), [x1, y1] = ground(cam, b.x, b.y, b.z + h);
+        const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+        for (let k = 0; k <= n; k++) {
+          if (Math.hypot(a.x + ((b.x - a.x) * k) / n - scene.player.x, a.y + ((b.y - a.y) * k) / n - scene.player.y) < TRAIL_CLEAR) continue;
+          dot(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), color);
+        }
+      }
     }
     const me = scene.player;
     for (const f of this.floating) {

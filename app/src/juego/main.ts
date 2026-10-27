@@ -37,11 +37,11 @@ import type { Highlight } from '@voxpix/world/frame2d';
 import { TouchStick, isTouch } from './touch';
 import { GameAudio } from './audio';
 import { VoxelInspector } from './voxel';
-import { DASH_RECHARGE } from '../../../src/game/brotato/sim/World';
+import { DASH_RECHARGE, DASH_TIME } from '../../../src/game/brotato/sim/World';
 import { drawHud, hudText, type HudAction } from '../../../src/game/brotato/ui/hud';
 import { PIXEL_RULES, computeLayout, scrollAxis } from '../../../src/game/brotato/ui/layout';
 import { cameraById, cycleCamera, type CameraPreset } from '../../../src/game/brotato/ui/camera';
-import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
+import { Effects, Flashes, FLASH_DASH, FLASH_ENEMY, FLASH_PLAYER, type FxScene } from '../../../src/game/brotato/ui/fx';
 import type { EntityId } from '@voxpix/world/state';
 import maiaFile from 'voxpix/models/maia/maia.json';
 
@@ -454,19 +454,21 @@ function paintFx(vx: number, vy: number): void {
   gfx.clearRect(0, 0, VW, VH);
   if (g.phase === 'shop') { flashes.clear(); return; }
   const p = g.current.player;
-  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1) };
+  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1), accent: ACCENTS[theme] };
   const fx = g.takeFx();
   for (const f of fx) {
     if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); audio.play('golpe'); }
     else if (f.type === 'player-hit') { flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s); audio.play('dano'); }
     else if (f.type === 'enemy-die') audio.play('muerte');
     else if (f.type === 'pickup') audio.play('recoger');
+    else if (f.type === 'dash') { flashes.flash(g.playerId, FLASH_DASH.color, DASH_TIME); audio.play('dash'); }
   }
   // Los disparos de MAIA no son un efecto de la partida: se oyen al ver un proyectil suyo nuevo
   if (shotWave !== g.current) { shotWave = g.current; shotSeen = 0; }
   for (const pr of g.current.projectiles) if (pr.owner !== 'enemy' && pr.uid > shotSeen) { shotSeen = pr.uid; audio.play('disparo'); }
   if (Math.hypot(p.vx, p.vy) > 1) audio.play('paso');
   effects.add(fx, scene);
+  if (g.phase === 'wave' && g.current.dash.t > 0) effects.dashAt(p.x, p.y, p.z);
   effects.paint(fxPainter, viewProjector(cur!.view.camera, b.cam), vx, vy, scene, g.phase === 'wave' ? g.current.telegraphs : []);
 }
 

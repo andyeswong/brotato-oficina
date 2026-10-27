@@ -3,7 +3,7 @@ import { Model, material } from '@voxpix/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
-import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, TELEGRAPH_ARM, FLOAT_PLAYER_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
+import { Effects, Flashes, FLASH_ENEMY, FLASH_PLAYER, FLOAT_ENEMY_S, TELEGRAPH_ARM, FLOAT_PLAYER_S, TRAIL_S, groundRing, groundX, type FxScene, type Projector } from '../../src/game/brotato/ui/fx';
 import { COLORS, type Painter } from '../../src/game/brotato/ui/paint';
 import { bakeWorld } from '@voxpix/world/bake';
 import type { WorldFx } from '../../src/game/brotato/sim/World';
@@ -228,5 +228,55 @@ describe('el destello de un golpe (el tinte de la entidad)', () => {
       }
     }
     expect(found).toBeGreaterThan(0);
+  });
+});
+
+describe('la estela del dash', () => {
+  const ACCENT = '#6aa8ff';
+  const withAccent = (cam: Projector): FxScene => ({ ...scene(cam), accent: ACCENT });
+  const accentDots = (fx: Effects) => {
+    const { p, dots, outside } = recorder();
+    const [vx, vy] = origin(half);
+    fx.paint(p, half, vx, vy, withAccent(half), []);
+    return { n: dots.filter((d) => d.color.toLowerCase().startsWith(ACCENT)).length, outside };
+  };
+
+  it('deja líneas en el acento detrás de MAIA, a varias alturas, que se van en TRAIL_S', () => {
+    const fx = new Effects();
+    fx.add([{ type: 'dash', x: mid.x - 20, y: mid.y, z: mid.z }], withAccent(half));
+    for (let k = 1; k <= 4; k++) fx.dashAt(mid.x - 20 + k * 5, mid.y, mid.z);
+    const { n, outside } = accentDots(fx);
+    // tres alturas de 20 vóxeles, menos los 7 de junto a MAIA: menos puntos que sin hueco (unos 60), y nunca fuera de la vista
+    expect(n).toBeGreaterThanOrEqual(3 * 12);
+    expect(n).toBeLessThan(3 * 19);
+    expect(outside).toEqual([]);
+    for (let t = 0; t < Math.ceil(TRAIL_S * 60) + 1; t++) fx.update(1 / 60);
+    expect(accentDots(fx).n).toBe(0);
+    // el polvo también se va
+    for (let t = 0; t < 30; t++) fx.update(1 / 60);
+    expect(fx.count).toBe(0);
+  });
+
+  it('no pinta sobre MAIA: con ella en medio del tramo, ese trozo queda limpio', () => {
+    const fx = new Effects();
+    fx.add([{ type: 'dash', x: mid.x - 20, y: mid.y, z: mid.z }], withAccent(half));
+    fx.dashAt(mid.x + 20, mid.y, mid.z);
+    const { p, dots } = recorder();
+    const [vx, vy] = origin(half);
+    fx.paint(p, half, vx, vy, withAccent(half), []);
+    const [cx] = half.project(mid.x, mid.y, mid.z);
+    const near = dots.filter((d) => d.color.toLowerCase().startsWith(ACCENT) && Math.abs(d.x + vx - cx!) < 6);
+    expect(near).toEqual([]);
+    expect(dots.some((d) => d.color.toLowerCase().startsWith(ACCENT))).toBe(true);
+  });
+
+  it('dos dashes seguidos no se unen con una línea', () => {
+    const fx = new Effects();
+    fx.add([{ type: 'dash', x: mid.x - 40, y: mid.y, z: mid.z }], withAccent(half));
+    fx.dashAt(mid.x - 30, mid.y, mid.z);
+    fx.add([{ type: 'dash', x: mid.x + 30, y: mid.y, z: mid.z }], withAccent(half));
+    fx.dashAt(mid.x + 40, mid.y, mid.z);
+    // dos tramos de 10 vóxeles por altura, no uno de 80 entre medias
+    expect(accentDots(fx).n).toBeLessThan(3 * 2 * 14);
   });
 });

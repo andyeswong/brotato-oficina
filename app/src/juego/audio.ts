@@ -14,6 +14,7 @@ const SOUNDS = {
   dano: { meanDb: -31.1, mix: 0.8, every: 0.15 },
   recoger: { meanDb: -3.4, mix: 0.4, every: 0.06 },
   paso: { meanDb: -36.0, mix: 0.25, every: 0.3 },
+  dash: { meanDb: -22.9, mix: 0.5, every: 0.1 },
   limpia: { meanDb: -29.9, mix: 0.8, every: 1 },
   tienda: { meanDb: -35.1, mix: 0.7, every: 1 },
   compra: { meanDb: -20.0, mix: 0.6, every: 0.2 },

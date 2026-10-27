@@ -20,6 +20,7 @@ CUES = [
     ("dano", "hurt retro", 0.1, 0.8),           # golpean a MAIA
     ("recoger", "coin pickup 8bit", 0.05, 0.6),       # MAIA recoge material
     ("paso", "footstep stone", 0.05, 0.5),            # un paso de MAIA
+    ("dash", "whoosh swoosh", 0.1, 0.6),             # MAIA hace un dash
     ("limpia", "level up 8bit", 0.3, 3.5),  # la oleada queda limpia (brilla la entrada a la tienda)
     ("tienda", "door bell shop", 0.2, 2.5),           # se entra en la tienda
     ("compra", "cash register", 0.2, 1.5),            # se compra algo
