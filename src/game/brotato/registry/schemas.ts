@@ -154,6 +154,9 @@ export const levelSchema = z.strictObject({
     height: z.number().int().positive(),
   }),
   waves: z.array(idSchema).min(1, 'un nivel necesita al menos una oleada'),
+  // Multiplica el daño que ganan los enemigos con cada oleada (su damagePerWave) solo en este nivel: la palanca para
+  // calibrar un mundo sin tocar los enemigos, que son los mismos en todos. 1 = como los define su módulo
+  enemyDamageScale: z.number().positive().default(1),
   // Distancias de aparición, en píxeles lógicos: escalan con el mundo, así que son del nivel, no del motor
   spawn: z
     .strictObject({

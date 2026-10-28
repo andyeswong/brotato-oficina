@@ -15,6 +15,11 @@ export default defineLevel({
   // F1: 10 oleadas
   // Los precios suben un 20 % por oleada superada: con 10 % sobraban ~200 materiales en la 7 (CURVA-F1.md)
   shop: { priceScale: { perWave: 0.2 } },
+  // Calibración por mundo (MAIA, 2026-10-27). Con 512 semillas (65-576) la oficina llegaba a 7,29 contra 7,63 del
+  // medieval y 7,99 del cyberpunk. El daño de contacto se redondea a entero y los enemigos comunes ganan 0,54 por
+  // oleada, así que el factor va a saltos: de 1 a 0,93 la partida es idéntica (7,29) y de 0,92 a 0,85 llega a 7,90.
+  // 0,9 queda a mitad de ese escalón.
+  enemyDamageScale: 0.9,
   theme: 'oficina',
   waves: ['o01', 'o02', 'o03', 'o04', 'o05', 'o06', 'o07', 'o08', 'o09', 'o10'],
   // Un mapa distinto en cada partida, sacado de su semilla (src/engine/worldgen)

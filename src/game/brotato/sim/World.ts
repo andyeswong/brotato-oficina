@@ -142,6 +142,8 @@ export interface WorldDeps {
   registry: Registry;
   wave: WaveModule;
   waveNumber: number;
+  // El enemyDamageScale del nivel: multiplica el damagePerWave de los enemigos (1 si no se pone)
+  damageScale?: number;
   spawn: { minDistance: number; edgeMargin: number; ringRadius: number; clusterSpread: number };
   // El mundo de vóxeles de la partida: paredes, columnas, muebles y agua, y dónde sale la jugadora
   arena: Arena;
@@ -449,7 +451,7 @@ export class World {
       mem: {},
       hp: maxHp,
       maxHp,
-      contactDamage: Math.round(def.contactDamage + def.damagePerWave * w),
+      contactDamage: Math.round(def.contactDamage + def.damagePerWave * w * (this.deps.damageScale ?? 1)),
       alive: true,
     };
     this.enemies.push(e);

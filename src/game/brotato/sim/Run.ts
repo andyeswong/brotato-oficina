@@ -134,6 +134,7 @@ export class Run {
       wave,
       waveNumber: this.waveNumber,
       spawn: this.level.spawn,
+      damageScale: this.level.enemyDamageScale,
       arena: this.arena,
       final: this.isLastWave,
       body: this.body,
