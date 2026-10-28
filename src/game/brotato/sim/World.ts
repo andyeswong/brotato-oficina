@@ -142,7 +142,8 @@ export interface WorldDeps {
   registry: Registry;
   wave: WaveModule;
   waveNumber: number;
-  // El enemyDamageScale del nivel: multiplica el damagePerWave de los enemigos (1 si no se pone)
+  // El enemyDamageScale del nivel: multiplica el damagePerWave de los enemigos (1 si no se pone). Escala el contacto y
+  // también el proyectil enemigo, que sale de contactDamage (WorldEnemyApi.shoot)
   damageScale?: number;
   spawn: { minDistance: number; edgeMargin: number; ringRadius: number; clusterSpread: number };
   // El mundo de vóxeles de la partida: paredes, columnas, muebles y agua, y dónde sale la jugadora
