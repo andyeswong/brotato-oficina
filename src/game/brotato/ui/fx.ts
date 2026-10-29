@@ -59,6 +59,9 @@ const DUST_COLORS = ['#c9c3d9', '#8a94a6'] as const;
 export const MUZZLE_S = 0.07;
 const MUZZLE_Z = 6;
 const MUZZLE_LEN = 4;                      // vóxeles de la llamarada
+// Lo que nace por detrás de la punta de la simulación (def.length): en la pose de disparo (anim0, MAIA) el cañón
+// retrocede y su boca queda 1-3 vóxeles por detrás; así el punto claro sale en la boca y no delante de ella
+const MUZZLE_BACK = 2;
 const MUZZLE_CORE = '#fff6c8', MUZZLE_FLAME = '#f0b951';
 // Los vivos a la vez, como mucho (MAIA): con 6 armas rápidas y cadencia acumulada salen decenas por segundo; los más
 // viejos se van primero. Cada uno son ~10 puntos
@@ -263,9 +266,10 @@ export class Effects {
     // Fogonazos: la llamarada hacia donde apunta y, encima, el punto claro en cruz; la segunda mitad, solo el punto
     for (const f of this.muzzles) {
       const z = f.z + MUZZLE_Z;
-      const [x0, y0] = ground(cam, f.x, f.y, z);
+      const mx = f.x - Math.cos(f.angle) * MUZZLE_BACK, my = f.y - Math.sin(f.angle) * MUZZLE_BACK;
+      const [x0, y0] = ground(cam, mx, my, z);
       if (f.t > MUZZLE_S / 2) {
-        const [x1, y1] = ground(cam, f.x + Math.cos(f.angle) * MUZZLE_LEN, f.y + Math.sin(f.angle) * MUZZLE_LEN, z);
+        const [x1, y1] = ground(cam, mx + Math.cos(f.angle) * MUZZLE_LEN, my + Math.sin(f.angle) * MUZZLE_LEN, z);
         const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
         for (let k = 1; k <= n; k++) dot(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), MUZZLE_FLAME);
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) dot(x0 + dx, y0 + dy, MUZZLE_FLAME);

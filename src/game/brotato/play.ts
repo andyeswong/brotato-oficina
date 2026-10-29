@@ -19,6 +19,8 @@ import { turn, type CarryConfig, type TickInput } from '@voxpix/runtime/runtime'
 export interface Models {
   model(ref: string): VoxelSource;
   walk(ref: string, role: string): { frames: VoxelSource[]; ms: number } | null;
+  // Una pose con nombre del modelo (las armas: 'anim0'..'anim3'; el jefe: 'carga', 'embiste'), si la tiene
+  pose?(ref: string, pose: string): VoxelSource | null;
 }
 export interface PlayerLooks {
   model: VoxelSource;
@@ -90,6 +92,8 @@ export class BrotatoGame {
   private moving = false;
   private carryId: EntityId | null = null;
   private weaponIds: EntityId[] = [];
+  // De cada arma puesta: su modelo quieto y sus cuatro poses de disparo (<id>-anim0..3, MAIA), o null si no las tiene
+  private weaponLooks: Array<{ base: VoxelSource; anim: VoxelSource[] | null }> = [];
   private readonly enemyIds = new Map<number, EntityId>();
   private readonly shotIds = new Map<number, EntityId>();
   private readonly materialIds = new Map<number, EntityId>();
@@ -139,6 +143,9 @@ export class BrotatoGame {
     for (const w of reg.weapons()) {
       const look = lookOf(w, this.theme);
       add(this.models.model(look.model), false);
+      // De las poses de disparo solo la primera: las otras tres se suben al disparar (MAIA, el atlas de 1024)
+      const first = this.models.pose?.(look.model, 'anim0');
+      if (first) add(first, false);
       if (look.projectile) add(this.models.model(look.projectile), false);
     }
     const enemies = new Set(this.run.level.waves.flatMap((id) => reg.wave(id).groups.map((g) => g.enemy)));
@@ -270,8 +277,13 @@ export class BrotatoGame {
   // Las armas cambian entre oleadas (compras, fusiones): se rehacen al empezar cada una
   private placeWeapons(): void {
     for (const id of this.weaponIds) this.state.entities.remove(id);
-    this.weaponIds = this.wave.weapons.map((w) =>
-      this.state.entities.add({ model: this.models.model(lookOf(w.def, this.theme).model), x: Math.round(w.x), y: Math.round(w.y), z: 0, facing: 0, castsShadow: false }));
+    this.weaponLooks = this.wave.weapons.map((w) => {
+      const ref = lookOf(w.def, this.theme).model;
+      const anim = [0, 1, 2, 3].map((k) => this.models.pose?.(ref, `anim${k}`) ?? null);
+      return { base: this.models.model(ref), anim: anim.every((m) => m) ? (anim as VoxelSource[]) : null };
+    });
+    this.weaponIds = this.weaponLooks.map((l, i) =>
+      this.state.entities.add({ model: l.base, x: Math.round(this.wave.weapons[i]!.x), y: Math.round(this.wave.weapons[i]!.y), z: 0, facing: 0, castsShadow: false }));
   }
 
   private sync(): void {
@@ -290,7 +302,15 @@ export class BrotatoGame {
     this.wave.weapons.forEach((w, i) => {
       const id = this.weaponIds[i];
       if (id === undefined) return;
-      const d = w.lunge > 0 ? w.lunge * LUNGE_VOX : -(Math.max(0, w.fireT) / FIRE_ANIM_TIME) * RECOIL_VOX;
+      // Con poses, el disparo es la pose (anim0..3 a lo largo de FIRE_ANIM_TIME; el retroceso y la estocada ya van en
+      // ella); sin poses, el arma se desplaza: atrás al disparar, adelante en la estocada
+      const look = this.weaponLooks[i];
+      const firing = w.fireT > 0;
+      let d = 0;
+      if (look?.anim) {
+        const k = Math.min(3, Math.floor((1 - w.fireT / FIRE_ANIM_TIME) * 4));
+        s.entities.setModel(id, firing ? look.anim[k]! : look.base);
+      } else d = w.lunge > 0 ? w.lunge * LUNGE_VOX : -(Math.max(0, w.fireT) / FIRE_ANIM_TIME) * RECOIL_VOX;
       const x = w.x + Math.cos(w.angle) * d, y = w.y + Math.sin(w.angle) * d;
       s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z, heading((w.angle * 180) / Math.PI + 90));
     });

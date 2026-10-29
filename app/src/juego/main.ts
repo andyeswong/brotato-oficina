@@ -93,8 +93,11 @@ function model(ref: string): Model {
 // para el aspecto de cualquier mundo
 const RIGS: Record<string, typeof RIG_GRAPA> = { perseguidor: RIG_GRAPA, embestidor: RIG_CLIP, escupidor: RIG_TAZA };
 const walks = new Map<string, { frames: VoxelSource[]; ms: number } | null>();
+// Las poses con nombre de un modelo: el fichero <ref>-<pose> (las armas: anim0..3, MAIA)
+const has = (ref: string) => !!FILES[`../../../models/brotato/${ref}.json`];
 const models: Models = {
   model,
+  pose: (ref, pose) => (has(`${ref}-${pose}`) ? model(`${ref}-${pose}`) : null),
   walk(ref, role) {
     const key = `${ref}|${role}`;
     if (!walks.has(key)) {

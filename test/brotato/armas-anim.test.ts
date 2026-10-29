@@ -105,4 +105,28 @@ describe('las armas al disparar', () => {
     expect(fx.count).toBe(MUZZLE_MAX);
     expect(fx['muzzles'][0]!.x).toBe(p0.x + 200 - MUZZLE_MAX);
   });
+
+  it('con poses, el disparo pasa por anim0..3 a lo largo de FIRE_ANIM_TIME y vuelve al modelo quieto, sin desplazarse', () => {
+    const base = cube(3), anim = [cube(8), cube(9), cube(10), cube(11)];
+    const posed: Models = { model: () => base, walk: () => null, pose: (_ref, pose) => anim[Number(pose.slice(4))] ?? null };
+    const g = new BrotatoGame(registry, 5, posed, player, registry.level('oficina'), { immortal: true });
+    const w = g.current.weapons[0]!, id = g['weaponIds'][0]!;
+    const seen: number[] = [];
+    let back = false;
+    for (let t = 0; t < 60 * 15 && !back; t++) {
+      g.step(still);
+      const e = g.state.entities.get(id)!;
+      const k = anim.indexOf(e.model as Model);
+      if (w.fireT > 0) {
+        expect(k).toBeGreaterThanOrEqual(0);
+        if (seen[seen.length - 1] !== k) seen.push(k);
+        // La pose lleva el retroceso: la entidad se queda en su sitio de la órbita
+        expect(Math.hypot(e.x - Math.round(w.x), e.y - Math.round(w.y))).toBe(0);
+      } else if (seen.length) { expect(e.model).toBe(base); back = true; }
+    }
+    expect(seen[0]).toBe(0);
+    expect(seen).toEqual([...seen].sort());
+    expect(seen.length).toBeGreaterThanOrEqual(3);
+    expect(back).toBe(true);
+  });
 });
