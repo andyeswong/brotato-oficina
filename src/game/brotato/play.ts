@@ -49,6 +49,10 @@ const WEAPON_Z = 5;
 // Al disparar el arma retrocede RECOIL_VOX y vuelve en FIRE_ANIM_TIME; en una estocada sale hacia delante LUNGE_VOX
 // (World: fireT y lunge, que la vista no pintaba)
 const RECOIL_VOX = 2;
+// Las armas flotan (Andrés, 2026-10-29: "deben verse flotar"): suben y bajan BOB_VOX en BOB_S segundos, cada una
+// desfasada para que no vayan al paso. Solo la vista: la simulación no sabe de alturas
+export const BOB_VOX = 2;
+const BOB_S = 1.6;
 const LUNGE_VOX = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
@@ -312,7 +316,8 @@ export class BrotatoGame {
         s.entities.setModel(id, firing ? look.anim[k]! : look.base);
       } else d = w.lunge > 0 ? w.lunge * LUNGE_VOX : -(Math.max(0, w.fireT) / FIRE_ANIM_TIME) * RECOIL_VOX;
       const x = w.x + Math.cos(w.angle) * d, y = w.y + Math.sin(w.angle) * d;
-      s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z, heading((w.angle * 180) / Math.PI + 90));
+      const bob = Math.sin((this.tick * TICK * 2 * Math.PI) / BOB_S + i * 2.1) * BOB_VOX;
+      s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z + Math.round(bob), heading((w.angle * 180) / Math.PI + 90));
     });
     // Enemigos: el modelo del tema y su cuadro de andar; cada uno con su desfase, para que no marchen al paso
     const alive = new Set<number>();

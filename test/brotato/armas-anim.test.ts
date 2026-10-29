@@ -5,7 +5,7 @@ import { Model, material } from '@voxpix/core';
 import { bakeWorld } from '@voxpix/world/bake';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
-import { BrotatoGame, type Models } from '../../src/game/brotato/play';
+import { BOB_VOX, BrotatoGame, type Models } from '../../src/game/brotato/play';
 import { Run } from '../../src/game/brotato/sim/Run';
 import { FIRE_ANIM_TIME, type WorldFx } from '../../src/game/brotato/sim/World';
 import { Effects, MUZZLE_MAX, MUZZLE_S } from '../../src/game/brotato/ui/fx';
@@ -128,5 +128,25 @@ describe('las armas al disparar', () => {
     expect(seen).toEqual([...seen].sort());
     expect(seen.length).toBeGreaterThanOrEqual(3);
     expect(back).toBe(true);
+  });
+
+  it('las armas flotan: suben y bajan BOB_VOX, cada una a su paso', () => {
+    const g = new BrotatoGame(registry, 5, models, player, registry.level('oficina'), { immortal: true });
+    g.run.weapons.push({ id: 'tiro', tier: 0 });
+    g['wave'] = g.run.startWave();
+    g['placeWeapons']();
+    const ids = g['weaponIds'] as number[];
+    expect(ids.length).toBe(2);
+    const zs: number[][] = [[], []];
+    for (let t = 0; t < 120; t++) {
+      g.step(still);
+      const feet = g.current.player.z;
+      ids.forEach((id, k) => zs[k]!.push(g.state.entities.get(id)!.z - feet));
+    }
+    for (const z of zs) {
+      expect(Math.max(...z) - Math.min(...z)).toBeGreaterThanOrEqual(2 * BOB_VOX - 1);
+      expect(Math.max(...z) - Math.min(...z)).toBeLessThanOrEqual(2 * BOB_VOX);
+    }
+    expect(zs[0]!.some((z, t) => z !== zs[1]![t])).toBe(true);   // desfasadas
   });
 });
