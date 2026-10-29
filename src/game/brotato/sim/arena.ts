@@ -29,6 +29,9 @@ import { DEFAULT_RULES, fits, moveBody, restZ, waterFactor } from '@voxpix/runti
 const SHOT_HEIGHT = 8;
 // El radio del enemigo más grande (embestidor y escupidor): un punto de aparición tiene que dejarle sitio
 const SPAWN_RADIUS = 6;
+// La pared de la salida al desmoronarse: hacia dentro de la sala (ejes del modelo) y a qué velocidad, vóxeles/s
+const INWARD: Record<Side, [number, number]> = { n: [0, -1], s: [0, 1], e: [-1, 0], w: [1, 0] };
+const EXIT_PUSH = 30;
 const FLOW = 4;          // lado de la celda del camino de la prórroga
 const PATH_NEAR = 8;     // a cuánto del destino se da por llegado (y desde dónde se cuentan las distancias)
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
@@ -98,6 +101,8 @@ export class Arena {
   exitOpen = false;
   // La caída del piso al llegar (dropIn), hasta que se suelta (releaseFall / settleFall)
   fall: VoxelFall | null = null;
+  // Las piezas de la pared de la salida, desmoronándose (openExit), hasta que desaparecen todas
+  exitFall: VoxelFall | null = null;
   private readonly look: WorldLook;
   private readonly decorate: (w: World) => void;
 
@@ -168,12 +173,17 @@ export class Arena {
   }
 
   // Abre la salida en el layout y en el mundo (VoxPix openDoorInWorld): la pared del hueco se quita y se pone el suelo.
-  // En esta etapa la caída se acaba de golpe; la animación (que la pared se desmorone) es la etapa 2. Devuelve las
-  // columnas tocadas. Cuesta 50-90 ms: solo al salir de la tienda, nunca en la oleada
+  // La pared se desmorona: sus vóxeles salen ya del mundo (el hueco se puede cruzar en el acto) y caen en piezas hacia
+  // dentro de la sala, que desaparecen al tocar el suelo; stepExit las mueve tick a tick mientras MAIA anda hasta la
+  // salida. Hacia dentro y no hacia fuera (lo de VoxPix): fuera no hay suelo, las piezas se salían del mapa y caían por
+  // debajo, casi todas fuera de cámara. Devuelve las columnas tocadas. Cuesta 50-90 ms: solo al salir de la tienda,
+  // nunca en la oleada
   openExit(): { x0: number; y0: number; x1: number; y1: number } | null {
     if (!this.exit || this.exitOpen) return null;
-    const { fall, touched } = openDoorInWorld(this.state, this.layout, this.exit.side, this.look, { decorate: this.decorate });
-    fall.finish();
+    const [ix, iy] = INWARD[this.exit.side];
+    const { fall, touched } = openDoorInWorld(this.state, this.layout, this.exit.side, this.look,
+      { decorate: this.decorate, crumble: { push: [ix * EXIT_PUSH, iy * EXIT_PUSH, 25], jitter: 20 } });
+    this.exitFall = fall.done ? null : fall;
     this.exitOpen = true;
     // El camino de la rejilla (pathDir) se rehace: ahora se puede pasar por el hueco
     this.flowOk = null;
@@ -200,6 +210,13 @@ export class Arena {
   }
 
   // Un tick de la caída
+  // Un tick de la pared de la salida que se desmorona (World.step, con la oleada en 'exit')
+  stepExit(): void {
+    if (!this.exitFall) return;
+    this.exitFall.step();
+    if (this.exitFall.done) this.exitFall = null;
+  }
+
   stepFall(): void {
     if (this.fall && !this.fall.done) this.fall.step();
   }
