@@ -72,12 +72,13 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
   if (w.overtime) shadowText(p, tx, pad + 1 + FONT_SIZE + 2, `quedan ${w.enemies.length}`, UI.bad, { align });
   else if (w.status !== 'open' && w.status !== 'exit') shadowText(p, tx, pad + 1 + FONT_SIZE, String(Math.max(0, Math.ceil(w.timeLeft))), UI.text, { scale: 2, align });
 
-  // El jefe: su nombre y su barra de vida, arriba en el centro bajo el tiempo, mientras viva
+  // El jefe: su nombre y su barra de vida, abajo en el centro mientras viva (Andrés, 2026-10-29). Estrecha lo justo
+  // para no pisar los botones táctiles de la esquina de abajo a la derecha (48 px con su margen)
   const boss = w.boss;
   if (boss) {
-    const bw = Math.min(150, W - 2 * pad - 8), bx = cx - Math.floor(bw / 2), by = pad + 1 + 3 * FONT_SIZE + 4;
-    shadowText(p, cx, by, lookOf(boss.def, game.theme).name, UI.bad, { align: 'center' });
-    bar(p, bx, by + FONT_SIZE + 1, bw, 7, boss.hp / boss.maxHp, UI.bad, UI.hpBack);
+    const bw = Math.min(150, W - 2 * (pad + 48)), bx = cx - Math.floor(bw / 2), barY = p.height - pad - 8;
+    shadowText(p, cx, barY - FONT_SIZE - 1, lookOf(boss.def, game.theme).name, UI.bad, { align: 'center' });
+    bar(p, bx, barY, bw, 7, boss.hp / boss.maxHp, UI.bad, UI.hpBack);
   }
 
   // Armas en sus casillas: a la derecha, o bajo la vida si no caben
