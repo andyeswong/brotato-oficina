@@ -329,7 +329,7 @@ function newRun(after?: () => void): void {
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
-        shake: Number(q.get('muebles') ?? 0) || undefined });
+        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna') });
     quarter = 0;
     runStart = performance.now();
     bakeFloor();
@@ -531,8 +531,13 @@ function frame(time: number): void {
   compositor.frame(rs, b, viewOptions(vx, vy, time));
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
   // El atlas de sprites (MAX_SPRITE_LAYERS = 1024) y las entidades del mundo: lo más que se puede pedir en un cuadro
-  document.body.dataset.sprites = String((compositor as { spriteCount?: number }).spriteCount ?? -1);
+  // GpuPath (VoxPix) envuelve al compositor de la GPU en un campo privado: se lee en tiempo de ejecución, solo para medir
+  document.body.dataset.sprites = String((compositor as unknown as { gpu?: { spriteCount?: number } | null }).gpu?.spriteCount ?? -1);
   document.body.dataset.entidades = String(game.state.entities.length);
+  // Las columnas en pie (estructura, > 500 kg): el jefe las rompe al embestirlas
+  let columns = 0;
+  for (const o of game.state.objects) if (o.mass > 500) columns++;
+  document.body.dataset.columnas = String(columns);
   document.body.dataset.despiertos = String(game.state.objects.awake.length);   // para medir los muebles (?muebles=N)
   document.body.dataset.caida = game.run.arena.fall ? (game.run.arena.falling ? 'cae' : 'publica') : '';   // para medir la caída del piso
   paintFx(vx, vy);

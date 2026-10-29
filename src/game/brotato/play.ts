@@ -83,6 +83,11 @@ export interface TestOptions {
   // Para medir los muebles despiertos (?muebles=N): durante la oleada empuja los N muebles más cercanos a MAIA, 1 s de
   // cada 3 y cada vez hacia el lado contrario, para que se despierten y se vuelvan a dormir solos (SLEEP_AFTER, 1,5 s)
   shake?: number;
+  // Para medir el peor caso del jefe (?jefevida=F): aparece con esa fracción de su vida (0,3: ya en la fase 3)
+  bossHp?: number;
+  // Y para romper columnas sin depender de dónde esté MAIA (?jefecolumna): los enemigos van a la columna más cercana al
+  // jefe en vez de a ella, así que el jefe embiste columna tras columna
+  bossLure?: boolean;
 }
 
 export class BrotatoGame {
@@ -211,6 +216,19 @@ export class BrotatoGame {
       const look = target ? { dx: target.x - p.x, dy: target.y - p.y } : this.moving ? input : null;
       if (look) this.facing = ((Math.round(Math.atan2(look.dx, -look.dy) / (Math.PI / 4)) % 8) + 8) % 8;
       if (this.test.shake) this.shakeFurniture(this.test.shake);
+      if (this.test.bossLure) {
+        const boss = this.wave.boss;
+        let best: { x: number; y: number } | null = null, bd = Infinity;
+        if (boss) for (const o of this.run.arena.state.objects) {
+          if (o.mass <= 500) continue;
+          const r = this.run.arena.furniture.rect(o.id);
+          if (!r) continue;
+          const c = { x: (r.x0 + r.x1 + 1) / 2, y: (r.y0 + r.y1 + 1) / 2 }, d = Math.hypot(c.x - boss.x, c.y - boss.y);
+          if (d < bd) { bd = d; best = c; }
+        }
+        this.wave.lure = best;
+      }
+      if (this.test.bossHp !== undefined) for (const e of this.wave.enemies) if (e.def.boss && !e.mem.measured) { e.hp = e.maxHp * this.test.bossHp; e.mem.measured = 1; }
       if (this.test.immortal || this.guarded) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead' && !this.wave.timedOut) this.wave.status = 'playing'; }
       this.collectFx();
       this.phaseTick++;

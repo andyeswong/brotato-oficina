@@ -6,7 +6,7 @@ import { Model, material } from '@voxpix/core';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run } from '../../src/game/brotato/sim/Run';
-import { BOSS_OVERTIME, type EnemyState } from '../../src/game/brotato/sim/World';
+import { BOSS_OVERTIME, SUMMON_MAX, type EnemyState } from '../../src/game/brotato/sim/World';
 import { PIECE_BUDGET, STRUCTURE_KG } from '../../src/game/brotato/sim/furniture';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
 import { skipTo } from '../../src/game/brotato/skip';
@@ -168,5 +168,43 @@ describe('el jefe', () => {
       expect(['dead', 'victory']).toContain(g.phase);
       expect(r.reached).toBe(target === 'fin');
     }
+  });
+
+  it('los refuerzos tienen tope: como mucho SUMMON_MAX vivos a la vez', () => {
+    const { w, a } = arenaWithBoss('oficina', 7);
+    const y = a.world.depth / 2;
+    const boss = place(w, a.world.width / 2, y, a.world.width / 2 + 60, y);
+    let most = 0, calls = 0;
+    for (let t = 0; t < 60 * 30; t++) {
+      boss.hp = boss.maxHp * 0.2;   // fase 3 todo el rato
+      w['telegraphs'].length = 0; w.player.hp = w.player.maxHp; if (w.status === 'dead') w.status = 'playing';
+      // Solo el jefe y sus llamados; los llamados no mueren (MAIA no los mata a tiempo)
+      for (let i = w.enemies.length - 1; i >= 0; i--) if (w.enemies[i] !== boss && !w.enemies[i]!.mem.summoned) w.enemies.splice(i, 1);
+      const before = w.enemies.length;
+      w.step(TICK, { x: 0, y: 0 });
+      if (w.enemies.length > before) calls++;
+      for (const e of w.enemies) if (e.mem.summoned) e.hp = e.maxHp;
+      most = Math.max(most, w.enemies.filter((e) => e.mem.summoned).length);
+    }
+    expect(calls).toBeGreaterThan(1);
+    expect(most).toBe(SUMMON_MAX);
+  });
+
+  it('embistiendo a través de un corro de enemigos en campo abierto no se aturde: no lo apartan', () => {
+    const { w, a } = arenaWithBoss('oficina', 7);
+    // Una fila libre de 90 vóxeles en el medio: el jefe a un lado, MAIA al otro y un corro de perseguidores entre los dos
+    const y = a.world.depth / 2, x0 = a.world.width / 2 - 45;
+    for (let x = x0; x <= x0 + 90; x += 3) expect(a.fits(x, y, a.floorZ, 10)).toBe(true);
+    const boss = place(w, x0, y, x0 + 90, y);
+    // Apretados, como se juntan alrededor de MAIA: 60 en un bloque de 30x18 delante del jefe
+    for (let k = 0; k < 60; k++) w['addEnemy'](registry.enemy('perseguidor'), x0 + 20 + (k % 10) * 3, y - 8 + Math.floor(k / 10) * 3);
+    let dashed = false;
+    for (let t = 0; t < 60 * 4 && !(dashed && boss.mem.state !== 2); t++) {
+      w['telegraphs'].length = 0; w.player.hp = w.player.maxHp; if (w.status === 'dead') w.status = 'playing';
+      w.step(TICK, { x: 0, y: 0 });
+      if (boss.mem.state === 2) dashed = true;
+    }
+    expect(dashed).toBe(true);
+    expect(stuns(boss)).toBe(0);
   });
 });
