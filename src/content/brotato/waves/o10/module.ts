@@ -13,5 +13,7 @@ export default defineWave({
     { enemy: 'embestidor', from: 3, to: 58, every: 1.6, count: 2, pattern: 'edge' },
     { enemy: 'escupidor', from: 5, to: 58, every: 3.75, count: 2, pattern: 'edge' },
     { enemy: 'perseguidor', from: 45, to: 55, every: 10, count: 10, pattern: 'ring' },
+    // El jefe del piso 10, a los 20 s y con aviso. La oleada no se limpia mientras viva (World, BOSS_OVERTIME)
+    { enemy: 'jefe', from: 20, to: 21, every: 60, count: 1, pattern: 'edge' },
   ],
 });

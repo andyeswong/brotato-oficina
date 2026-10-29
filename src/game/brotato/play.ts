@@ -196,7 +196,7 @@ export class BrotatoGame {
       const look = target ? { dx: target.x - p.x, dy: target.y - p.y } : this.moving ? input : null;
       if (look) this.facing = ((Math.round(Math.atan2(look.dx, -look.dy) / (Math.PI / 4)) % 8) + 8) % 8;
       if (this.test.shake) this.shakeFurniture(this.test.shake);
-      if (this.test.immortal || this.guarded) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead') this.wave.status = 'playing'; }
+      if (this.test.immortal || this.guarded) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead' && !this.wave.timedOut) this.wave.status = 'playing'; }
       this.collectFx();
       this.phaseTick++;
       if (this.wave.status === 'dead') {

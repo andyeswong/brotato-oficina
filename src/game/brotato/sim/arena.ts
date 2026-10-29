@@ -11,7 +11,7 @@ import { openDoorInWorld } from '@voxpix/world/doors';
 import { VoxelFall } from '@voxpix/world/fall';
 import { crushAt } from '@voxpix/world/crush';
 import { countPieces, fallPiece, FALL_MAX_PIECES } from './dropin';
-import { Furniture, KEEP_CLEAR, type Rect } from './furniture';
+import { Furniture, KEEP_CLEAR, STRUCTURE_KG, type Rect } from './furniture';
 
 // El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
 export interface LevelWorld { look: WorldLook; ambient: readonly [number, number, number] }
@@ -288,6 +288,15 @@ export class Arena {
     }
     moveBody(this.state, body, dx, dy, DEFAULT_RULES);
     m.x = body.x; m.y = body.y; m.z = body.z;
+  }
+
+  // El jefe embistiendo: si delante tiene estructura (una columna, más de STRUCTURE_KG), la rompe. Los muebles no: esos
+  // los arrastra (move con push). true si rompió algo
+  smashAhead(m: Mover, r: number, dx: number, dy: number): boolean {
+    if (!this.state.objects.size) return false;
+    const id = objectAhead(this.state, { x: m.x, y: m.y, z: m.z, r }, dx, dy);
+    if (id === null || this.state.objects.get(id)!.mass <= STRUCTURE_KG) return false;
+    return this.furniture.smash(id) > 0;
   }
 
   // Dónde se apoya un cuerpo recién puesto en (x, y)

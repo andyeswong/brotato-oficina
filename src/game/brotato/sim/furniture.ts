@@ -11,6 +11,7 @@
 //     paraban (MAIA: que el balance no cambie): la mampara entera, pero del escritorio solo las patas (vuelan a 8 de
 //     altura y el tablero está a 10; medido el 2026-10-27: el 1 % de su planta).
 import { VoxelFall } from '@voxpix/world/fall';
+import { FALL_MAX_PIECES, countPieces } from './dropin';
 import type { WorldState } from '@voxpix/world/state';
 
 export const STRUCTURE_KG = 500;
@@ -26,6 +27,11 @@ const DEBRIS_PIECE = 6;
 // Con 20 kg (mampara 2, escritorio 3) las victorias con el árbol al máximo subían 5 puntos sobre calib (72,7 -> 77,7 %,
 // 512 semillas); con 25, 5,2; con 40, 1,9, dentro de los 3 que admite MAIA. Mampara y escritorio sueltan 1
 export const LOOT_KG = 40;
+// Las piezas que pueden estar cayendo a la vez en la oleada (escombros de muebles y columnas): el mismo tope que la
+// caída del piso (dropin.ts, FALL_MAX_PIECES), por el atlas de 1024 capas. Una columna rota busca la pieza más fina
+// que quepa en lo que queda; si no cabe ninguna, se va de golpe sin piezas. Romper y aturdir no dependen de esto (MAIA)
+export const PIECE_BUDGET = FALL_MAX_PIECES;
+export const SMASH_PIECES = [6, 8, 12, 16];
 export const furnitureLoot = (kg: number) => Math.max(1, Math.round(kg / LOOT_KG));
 
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
@@ -121,6 +127,33 @@ export class Furniture {
     if (!r) return;
     const d = this.dirty.get(id);
     this.dirty.set(id, d ? { x0: Math.min(d.x0, r.x0), y0: Math.min(d.y0, r.y0), x1: Math.max(d.x1, r.x1), y1: Math.max(d.y1, r.y1) } : { ...r });
+  }
+
+  // Las piezas cayendo ahora mismo (todos los escombros)
+  get pieces(): number {
+    return this.debris.reduce((n, f) => n + f.active, 0);
+  }
+
+  // Rompe un objeto entero, estructura incluida (el jefe contra una columna). En piezas de la talla más fina de
+  // SMASH_PIECES que quepa en PIECE_BUDGET con las que ya caen; si ninguna cabe, sin piezas. Devuelve las piezas
+  smash(id: number): number {
+    const o = this.state.objects.get(id);
+    if (!o) return 0;
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let i = 0; i < o.cells.length; i += 4) {
+      const x = o.x + o.cells[i]!, y = o.y + o.cells[i + 1]!, z = o.z + o.cells[i + 2]!;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); z0 = Math.min(z0, z); x1 = Math.max(x1, x); y1 = Math.max(y1, y); z1 = Math.max(z1, z);
+    }
+    const left = PIECE_BUDGET - this.pieces;
+    const box = { x0, y0, z0, x1, y1, z1 };
+    const piece = SMASH_PIECES.find((n) => countPieces(this.state.solid, box, n, left) <= left);
+    const fall = piece ? new VoxelFall(this.state) : undefined;
+    const r = this.state.objects.destroy(id, fall, { piece, settle: 'vanish' });
+    this.size.delete(id);
+    this.mark(id, { x0, y0, x1, y1 });
+    this.version++;
+    if (fall && !fall.done) this.debris.push(fall);
+    return Math.max(1, r);
   }
 
   // Un tick: los escombros caen
