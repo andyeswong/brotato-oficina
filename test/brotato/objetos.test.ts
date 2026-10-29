@@ -115,11 +115,11 @@ describe('los muebles', () => {
     const around = a.pathDir(west, east, 4)!;
     expect(Math.abs(around.y)).toBeGreaterThan(0.3);   // rodea la mampara
     // Las balas de los enemigos no le hacen nada; las de MAIA, sí
-    for (let k = 0; k < 100; k++) expect(a.hitShot(hx, hy, 10, 'enemy')).toBe(false);
+    for (let k = 0; k < 100; k++) expect(a.hitShot(hx, hy, 10, 'enemy')).toBe(0);
     expect(a.state.objects.get(id)!.hp).toBe(FURNITURE_HP);
-    let broke = false, hits = 0;
+    let broke = 0, hits = 0;
     while (!broke && hits < 100) { broke = a.hitShot(hx, hy, 10, 'player'); hits++; }
-    expect(broke).toBe(true);
+    expect(broke).toBeCloseTo(mamparas[0]!.mass);   // lo que pesaba, para el botín
     expect(hits).toBe(FURNITURE_HP / 10);
     expect(a.state.objects.get(id)).toBeUndefined();
     expect(a.shotBlocked(hx, hy)).toBe(false);
@@ -135,7 +135,7 @@ describe('los muebles', () => {
     const col = [...m.state.objects][0]!, rc = m.furniture.rect(col.id)!;
     let cx = -1, cyy = -1;
     for (let y = rc.y0; y <= rc.y1 && cx < 0; y++) for (let x = rc.x0; x <= rc.x1; x++) if (m.shotBlocked(x + 0.5, y + 0.5)) { cx = x + 0.5; cyy = y + 0.5; break; }
-    for (let k = 0; k < 100; k++) expect(m.hitShot(cx, cyy, 50)).toBe(false);
+    for (let k = 0; k < 100; k++) expect(m.hitShot(cx, cyy, 50)).toBe(0);
     expect(m.state.objects.get(col.id)).toBeDefined();
   });
 

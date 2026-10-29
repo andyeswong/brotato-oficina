@@ -22,6 +22,10 @@ export const KEEP_CLEAR = 12;
 // (arena.pathDir) cubre con su margen (MAIA, 2026-10-29: que una prueba lo vigile)
 export const MAX_PUSH_SPEED = 150;
 const DEBRIS_PIECE = 6;
+// Lo que suelta un mueble roto (Andrés, 2026-10-29: "materiales según el peso"): uno por cada tantos kg, al menos uno.
+// La mampara (46 kg) suelta 2 y el escritorio (55 kg) 3; un enemigo suelta 1-2
+export const LOOT_KG = 20;
+export const furnitureLoot = (kg: number) => Math.max(1, Math.round(kg / LOOT_KG));
 
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
 const overlaps = (a: Rect, b: Rect) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
@@ -94,21 +98,22 @@ export class Furniture {
     return this.state.objects.awake.length > 0 && this.at(x, y) !== null;
   }
 
-  // Un disparo da en (x, y): si hay un mueble (no estructura), le quita vida. true si lo rompe
-  hit(x: number, y: number, damage: number): boolean {
+  // Un disparo da en (x, y): si hay un mueble (no estructura), le quita vida. Si lo rompe, lo que pesaba (kg); si no, 0
+  hit(x: number, y: number, damage: number): number {
     const id = this.at(x, y);
-    if (id === null) return false;
+    if (id === null) return 0;
     const o = this.state.objects.get(id)!;
-    if (o.mass > STRUCTURE_KG) return false;
+    if (o.mass > STRUCTURE_KG) return 0;
+    const kg = o.mass;
     const before = this.rect(id);
     const fall = new VoxelFall(this.state);
     const r = this.state.objects.damage(id, damage, fall, { piece: DEBRIS_PIECE, settle: 'vanish' });
-    if (!r.destroyed) return false;
+    if (!r.destroyed) return 0;
     this.size.delete(id);
     this.mark(id, before);
     this.version++;
     if (!fall.done) this.debris.push(fall);
-    return true;
+    return kg;
   }
 
   private mark(id: number, r: Rect | null): void {

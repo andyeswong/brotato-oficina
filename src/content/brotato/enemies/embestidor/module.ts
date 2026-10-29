@@ -12,7 +12,7 @@ export default defineEnemy({
   speed: 32,
   radius: 6,
   behavior: 'dash',
-  params: { triggerRange: 72, windup: 0.55, dashSpeed: 4, dashTime: 0.4 },
+  params: { triggerRange: 72, windup: 0.55, dashSpeed: 4, dashTime: 0.4, pushForce: 2400 },
   loot: { materials: 2, consumableChance: 0.02 },
   height: 14,   // alto del dibujo del Brotato: dónde salen los números de daño
   looks: {

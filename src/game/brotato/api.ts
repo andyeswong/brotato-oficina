@@ -51,6 +51,9 @@ export interface EnemySelf {
   vy: number;
   readonly speed: number;          // la del módulo del enemigo
   readonly mem: Record<string, number>;
+  // Con cuánta fuerza (N) empuja los muebles en este paso; 0, no empuja. Lo pone su comportamiento: el embestidor
+  // mientras embiste (Andrés, 2026-10-29: "solo el embestidor"); los demás los rodean
+  push: number;
 }
 
 export interface EnemyApi {

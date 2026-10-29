@@ -4,6 +4,7 @@ import type { Registry } from '../registry/validate';
 import type { Rng } from './rng';
 import type { Arena } from './arena';
 import { SpatialHash } from './SpatialHash';
+import { furnitureLoot } from './furniture';
 
 // El cuerpo de la jugadora (del módulo del personaje)
 export interface Body {
@@ -450,6 +451,7 @@ export class World {
       vy: 0,
       speed: def.speed,
       mem: {},
+      push: 0,
       hp: maxHp,
       maxHp,
       contactDamage: Math.round(def.contactDamage + def.damagePerWave * w * (this.deps.damageScale ?? 1)),
@@ -503,7 +505,9 @@ export class World {
     for (const e of this.enemies) {
       const slow = arena.slowdown(e.x, e.y);
       const p = push.get(e.uid);
-      arena.move(e, e.def.radius, e.vx * dt * slow + (p?.x ?? 0), e.vy * dt * slow + (p?.y ?? 0));
+      // El que empuja (el embestidor embistiendo) arrastra el mueble que tenga delante, como MAIA, a su velocidad
+      const shove = e.push > 0 ? { force: e.push, dt, maxSpeed: Math.hypot(e.vx, e.vy) } : undefined;
+      arena.move(e, e.def.radius, e.vx * dt * slow + (p?.x ?? 0), e.vy * dt * slow + (p?.y ?? 0), shove);
     }
   }
 
@@ -641,7 +645,11 @@ export class World {
       p.travel -= Math.hypot(p.vx, p.vy) * dt;
       let gone = p.travel <= 0 || arena.shotBlocked(p.x, p.y); // fuera, o paredes, columnas y muebles
       // Lo que para en un mueble le quita vida
-      if (gone && p.travel > 0) arena.hitShot(p.x, p.y, p.damage, p.owner);
+      if (gone && p.travel > 0) {
+        // Un mueble roto suelta materiales según lo que pesaba (furniture.ts, furnitureLoot)
+        const kg = arena.hitShot(p.x, p.y, p.damage, p.owner);
+        if (kg) this.dropMaterials({ x: p.x, y: p.y }, furnitureLoot(kg));
+      }
 
       if (!gone && p.owner === 'player') {
         for (const e of [...this.hash.query(p.x, p.y, p.radius + this.maxEnemyRadius * 2, this.near)]) {

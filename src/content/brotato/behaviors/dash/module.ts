@@ -16,12 +16,14 @@ export default defineEnemyBehavior({
     dashSpeed: z.number().positive().default(3.5),    // multiplica su velocidad
     dashTime: z.number().positive().default(0.45),
     recover: z.number().min(0).default(0.8),
+    pushForce: z.number().min(0).default(0),          // N con que arrastra los muebles mientras embiste (0: no)
   }),
   update(self, dt, api, p) {
     const m = self.mem;
     m.state ??= APPROACH;
     m.t ??= 0;
     m.t -= dt;
+    self.push = m.state === DASH ? p.pushForce : 0;
 
     if (m.state === APPROACH) {
       steerTowards(self, api.player, self.speed);
@@ -39,6 +41,7 @@ export default defineEnemyBehavior({
         m.dy = self.vy;
         m.state = DASH;
         m.t = p.dashTime;
+        self.push = p.pushForce;
       }
     } else if (m.state === DASH) {
       self.vx = m.dx!;
