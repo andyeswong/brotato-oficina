@@ -60,6 +60,9 @@ export const MUZZLE_S = 0.07;
 const MUZZLE_Z = 6;
 const MUZZLE_LEN = 4;                      // vóxeles de la llamarada
 const MUZZLE_CORE = '#fff6c8', MUZZLE_FLAME = '#f0b951';
+// Los vivos a la vez, como mucho (MAIA): con 6 armas rápidas y cadencia acumulada salen decenas por segundo; los más
+// viejos se van primero. Cada uno son ~10 puntos
+export const MUZZLE_MAX = 24;
 
 interface Floating {
   text: string;
@@ -200,7 +203,10 @@ export class Effects {
           this.puffs.push({ x: fx.x, y: fx.y, z: fx.z, t: PUFF_S });
           this.trail.push({ x: fx.x, y: fx.y, z: fx.z, t: TRAIL_S, seq: ++this.dashSeq });
           break;
-        case 'muzzle': this.muzzles.push({ x: fx.x, y: fx.y, z: fx.z, angle: fx.angle, t: MUZZLE_S }); break;
+        case 'muzzle':
+          this.muzzles.push({ x: fx.x, y: fx.y, z: fx.z, angle: fx.angle, t: MUZZLE_S });
+          if (this.muzzles.length > MUZZLE_MAX) this.muzzles.splice(0, this.muzzles.length - MUZZLE_MAX);
+          break;
         default: break;   // spawn y pickup no se dibujan (el enemigo y el contador ya se ven)
       }
     }

@@ -8,7 +8,7 @@ import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BrotatoGame, type Models } from '../../src/game/brotato/play';
 import { Run } from '../../src/game/brotato/sim/Run';
 import { FIRE_ANIM_TIME, type WorldFx } from '../../src/game/brotato/sim/World';
-import { Effects, MUZZLE_S } from '../../src/game/brotato/ui/fx';
+import { Effects, MUZZLE_MAX, MUZZLE_S } from '../../src/game/brotato/ui/fx';
 import type { Painter } from '../../src/game/brotato/ui/paint';
 
 const { registry } = validateContent(discoverContent());
@@ -75,5 +75,34 @@ describe('las armas al disparar', () => {
     expect(first.some((d) => d.endsWith('#fff6c8'))).toBe(true);
     fx.update(MUZZLE_S + 0.01);
     expect(paint().length).toBe(0);
+  });
+
+  it('la estocada sale hacia delante y vuelve', () => {
+    const g = new BrotatoGame(registry, 5, models, player, registry.level('oficina'), { immortal: true });
+    // MAIA con una estocada en vez de la pistola
+    g.run.weapons.splice(0, g.run.weapons.length, { id: 'estocada', tier: 0 });
+    g['wave'] = g.run.startWave();
+    g['placeWeapons']();
+    const w = g.current.weapons[0]!, id = g['weaponIds'][0]!;
+    expect(w.def.id).toBe('estocada');
+    let out = -Infinity, home = -1;
+    for (let t = 0; t < 60 * 20 && home < 0; t++) {
+      g.step(still);
+      const e = g.state.entities.get(id)!;
+      if (w.lunge > 0.8) out = Math.max(out, (e.x - w.x) * Math.cos(w.angle) + (e.y - w.y) * Math.sin(w.angle));
+      if (out > -Infinity && w.lunge === 0 && w.fireT <= 0) home = Math.hypot(e.x - Math.round(w.x), e.y - Math.round(w.y));
+    }
+    expect(out).toBeGreaterThanOrEqual(3);
+    expect(home).toBe(0);
+  });
+
+  it('como mucho MUZZLE_MAX fogonazos vivos a la vez; se van los más viejos', () => {
+    const g = new BrotatoGame(registry, 3, models, player, registry.level('oficina'));
+    const p0 = g.current.player;
+    const scene = { player: p0, playerHeight: 30, enemyHeight: 12, groundZ: () => p0.z };
+    const fx = new Effects();
+    fx.add(Array.from({ length: 200 }, (_, k) => ({ type: 'muzzle' as const, x: p0.x + k, y: p0.y, z: p0.z, angle: 0 })), scene);
+    expect(fx.count).toBe(MUZZLE_MAX);
+    expect(fx['muzzles'][0]!.x).toBe(p0.x + 200 - MUZZLE_MAX);
   });
 });
