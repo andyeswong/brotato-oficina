@@ -4,10 +4,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
-import { Arena } from '../../src/game/brotato/sim/arena';
+import { Arena, FLOW_MARGIN } from '../../src/game/brotato/sim/arena';
 import { PUSH_FORCE } from '../../src/game/brotato/sim/Run';
 import { decode } from '@voxpix/core';
-import { Furniture, MAX_AWAKE, STRUCTURE_KG, FURNITURE_HP } from '../../src/game/brotato/sim/furniture';
+import { Furniture, MAX_AWAKE, STRUCTURE_KG, FURNITURE_HP, MAX_PUSH_SPEED } from '../../src/game/brotato/sim/furniture';
 
 vi.setConfig({ testTimeout: 120_000 });
 const { registry } = validateContent(discoverContent());
@@ -255,5 +255,31 @@ describe('la rejilla hecha de antemano (warmPath)', () => {
     const cold = run(false), warm = run(true);
     expect(warm.out).toEqual(cold.out);
     expect(warm.ok).toBe(cold.ok);
+  });
+});
+
+describe('el margen del repaso del camino', () => {
+  // El repaso de pathDir marca, por mueble, dónde estaba y dónde está tras cada empujón. Sin marcar dónde estaba, el
+  // hueco que deja el primer empujón solo lo cubre FLOW_MARGIN, y eso vale mientras un mueble no avance más que eso en
+  // un tick (MAIA, 2026-10-29). Si alguien sube el tope o el margen baja, que falle esto y no la partida
+  it('lo que avanza un mueble en un tick, al tope de velocidad, cabe en el margen', () => {
+    expect(MAX_PUSH_SPEED * TICK).toBeLessThan(FLOW_MARGIN);
+  });
+
+  it('el tope se cumple aunque se empuje con una velocidad y una fuerza enormes', () => {
+    const a = new Arena(registry.level('oficina'), 7, { floor: 0 });
+    const id = freeDesk(a), x0 = a.state.objects.get(id)!.x;
+    let moved = 0;
+    for (let t = 0; t < 30; t++) {
+      const before = a.state.objects.get(id)!;
+      const px = before.awake ? before.px : before.x;
+      a.furniture.push(id, 1, 0, 1e7, TICK, 1e5);
+      const after = a.state.objects.get(id)!;
+      const step = (after.awake ? after.px : after.x) - px;
+      expect(step).toBeLessThanOrEqual(MAX_PUSH_SPEED * TICK + 1e-6);
+      moved += step;
+    }
+    expect(moved).toBeGreaterThan(0);
+    expect(a.state.objects.get(id)!.px - x0).toBeGreaterThan(0);
   });
 });

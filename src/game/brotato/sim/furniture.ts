@@ -17,6 +17,10 @@ export const STRUCTURE_KG = 500;
 export const MAX_AWAKE = 16;
 export const FURNITURE_HP = 40;
 export const KEEP_CLEAR = 12;
+// Lo más rápido que se mueve un mueble empujado, vóxeles/s, empuje quien empuje. MAIA anda a ~67 y su velocidad sube
+// sin tope con los objetos; el tope deja acotado lo que avanza un mueble en un tick, que es lo que el repaso del camino
+// (arena.pathDir) cubre con su margen (MAIA, 2026-10-29: que una prueba lo vigile)
+export const MAX_PUSH_SPEED = 150;
 const DEBRIS_PIECE = 6;
 
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
@@ -66,9 +70,10 @@ export class Furniture {
 
   // Empuja (VoxPix objects.push) y apunta si se movió
   push(id: number, dx: number, dy: number, force: number, dt: number, maxSpeed: number): number {
-    if (!this.canPush(id, dx, dy, maxSpeed * dt)) return 0;
+    const top = Math.min(maxSpeed, MAX_PUSH_SPEED);
+    if (!this.canPush(id, dx, dy, top * dt)) return 0;
     const before = this.rect(id);
-    const r = this.state.objects.push(id, dx, dy, force, dt, { maxSpeed });
+    const r = this.state.objects.push(id, dx, dy, force, dt, { maxSpeed: top });
     if (r.moved > 0) { this.mark(id, before); this.mark(id, this.rect(id)); this.version++; }
     return r.moved;
   }

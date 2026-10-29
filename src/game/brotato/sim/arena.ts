@@ -32,6 +32,9 @@ const SHOT_HEIGHT = 8;
 // El radio del enemigo más grande (embestidor y escupidor): un punto de aparición tiene que dejarle sitio
 const SPAWN_RADIUS = 6;
 const FLOW = 4;
+// Lo que pathDir repasa alrededor de la caja de un mueble movido (furniture.dirty): el radio del enemigo más grande y
+// 2 de holgura. Tiene que pasar de lo que un mueble avanza en un tick (MAX_PUSH_SPEED · TICK, objetos.test.ts)
+export const FLOW_MARGIN = SPAWN_RADIUS + 2;
 const FLOW_REFRESH = 15;  // ticks entre rehacer el camino de la prórroga mientras se empujan muebles (1/4 s)          // lado de la celda del camino de la prórroga
 const PATH_NEAR = 8;     // a cuánto del destino se da por llegado (y desde dónde se cuentan las distancias)
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
@@ -346,7 +349,7 @@ export class Arena {
 
   // Las celdas que alcanzan las cajas de furniture.dirty (un enemigo de SPAWN_RADIUS centrado en ellas tocaría la caja)
   private flowBoxes(): void {
-    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), m = SPAWN_RADIUS + 2;
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), m = FLOW_MARGIN;
     for (const d of this.furniture.dirty.values()) {
       this.flowFill(Math.max(0, Math.floor((d.x0 - m) / FLOW)), Math.max(0, Math.floor((d.y0 - m) / FLOW)),
         Math.min(cols - 1, Math.floor((d.x1 + 1 + m) / FLOW)), Math.min(rows - 1, Math.floor((d.y1 + 1 + m) / FLOW)));
