@@ -530,6 +530,9 @@ function frame(time: number): void {
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
   compositor.frame(rs, b, viewOptions(vx, vy, time));
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
+  // El atlas de sprites (MAX_SPRITE_LAYERS = 1024) y las entidades del mundo: lo más que se puede pedir en un cuadro
+  document.body.dataset.sprites = String((compositor as { spriteCount?: number }).spriteCount ?? -1);
+  document.body.dataset.entidades = String(game.state.entities.length);
   document.body.dataset.despiertos = String(game.state.objects.awake.length);   // para medir los muebles (?muebles=N)
   document.body.dataset.caida = game.run.arena.fall ? (game.run.arena.falling ? 'cae' : 'publica') : '';   // para medir la caída del piso
   paintFx(vx, vy);
