@@ -157,7 +157,7 @@ describe('el jefe', () => {
     const { w } = arenaWithBoss('medieval', 3);
     place(w, 200, 200, 300, 200);
     const g = { current: w, run: { waveNumber: 10, totalWaves: 10, materials: 0, kills: 0, waveIndex: 9 }, phase: 'wave', theme: 'medieval' } as unknown as BrotatoGame;
-    expect(hudText(g)).toContain('Coloso de latón 600/600');
+    expect(hudText(g)).toContain('Minotauro 600/600');
   });
 
   // La oleada 10 entera con sus cientos de enemigos: tarda (en reposo, ~1 min por salto)
