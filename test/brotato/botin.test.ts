@@ -18,9 +18,10 @@ function quiet(seed = 7) {
 }
 
 describe('el botín de los muebles', () => {
-  it('uno por cada 20 kg, al menos uno: mampara 2, escritorio 3', () => {
-    expect(furnitureLoot(46)).toBe(2);
-    expect(furnitureLoot(55)).toBe(3);
+  it('uno por cada 40 kg, al menos uno: mampara y escritorio 1', () => {
+    expect(furnitureLoot(46)).toBe(1);
+    expect(furnitureLoot(55)).toBe(1);
+    expect(furnitureLoot(100)).toBe(3);
     expect(furnitureLoot(3)).toBe(1);
   });
 

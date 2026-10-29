@@ -23,8 +23,9 @@ export const KEEP_CLEAR = 12;
 export const MAX_PUSH_SPEED = 150;
 const DEBRIS_PIECE = 6;
 // Lo que suelta un mueble roto (Andrés, 2026-10-29: "materiales según el peso"): uno por cada tantos kg, al menos uno.
-// La mampara (46 kg) suelta 2 y el escritorio (55 kg) 3; un enemigo suelta 1-2
-export const LOOT_KG = 20;
+// Con 20 kg (mampara 2, escritorio 3) las victorias con el árbol al máximo subían 5 puntos sobre calib (72,7 -> 77,7 %,
+// 512 semillas); con 25, 5,2; con 40, 1,9, dentro de los 3 que admite MAIA. Mampara y escritorio sueltan 1
+export const LOOT_KG = 40;
 export const furnitureLoot = (kg: number) => Math.max(1, Math.round(kg / LOOT_KG));
 
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
