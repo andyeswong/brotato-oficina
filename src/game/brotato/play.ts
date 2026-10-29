@@ -53,6 +53,8 @@ const RECOIL_VOX = 2;
 // desfasada para que no vayan al paso. Solo la vista: la simulación no sabe de alturas
 export const BOB_VOX = 2;
 const BOB_S = 1.6;
+// Lo que flota el arma de la casilla `slot` en el tick `tick`, en vóxeles enteros: lo usan el arma y su fogonazo
+export const weaponBob = (tick: number, slot: number) => Math.round(Math.sin((tick * TICK * 2 * Math.PI) / BOB_S + slot * 2.1) * BOB_VOX);
 const LUNGE_VOX = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
@@ -230,6 +232,8 @@ export class BrotatoGame {
   private collectFx(): void {
     const list = this.wave.fx;
     if (!list.length) return;
+    // El fogonazo, a la altura a la que flota su arma en este tick (la misma que le pone sync)
+    for (const f of list) if (f.type === 'muzzle') f.z += weaponBob(this.tick, f.slot);
     this.fx.push(...list);
     list.length = 0;
     if (this.fx.length > FX_KEEP) this.fx.splice(0, this.fx.length - FX_KEEP);
@@ -316,8 +320,7 @@ export class BrotatoGame {
         s.entities.setModel(id, firing ? look.anim[k]! : look.base);
       } else d = w.lunge > 0 ? w.lunge * LUNGE_VOX : -(Math.max(0, w.fireT) / FIRE_ANIM_TIME) * RECOIL_VOX;
       const x = w.x + Math.cos(w.angle) * d, y = w.y + Math.sin(w.angle) * d;
-      const bob = Math.sin((this.tick * TICK * 2 * Math.PI) / BOB_S + i * 2.1) * BOB_VOX;
-      s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z + Math.round(bob), heading((w.angle * 180) / Math.PI + 90));
+      s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z + weaponBob(this.tick, w.slot), heading((w.angle * 180) / Math.PI + 90));
     });
     // Enemigos: el modelo del tema y su cuadro de andar; cada uno con su desfase, para que no marchen al paso
     const alive = new Set<number>();

@@ -132,7 +132,7 @@ export type WorldFx =
   | { type: 'heal'; amount: number }
   | { type: 'dash'; x: number; y: number; z: number }
   // Un arma de MAIA soltó un proyectil desde su boca (x, y), apuntando a angle: el fogonazo de la vista. z: los pies
-  | { type: 'muzzle'; x: number; y: number; z: number; angle: number };
+  | { type: 'muzzle'; x: number; y: number; z: number; angle: number; slot: number };
 
 // playing: se juega (también la prórroga: el tiempo acabó y quedan enemigos vivos, que hay que matar). open: tiempo
 // cumplido y 0 vivos, la oleada está limpia y la entrada a la tienda brilla en el mapa (Andrés, 2026-10-25). cleared:
@@ -580,6 +580,7 @@ export class World {
       };
       try {
         this.weaponApi.source = `weapon:${w.def.id}`;
+        this.weaponApi.slot = w.slot;
         (w.behavior.fire as WeaponFire)(shot, this.weaponApi, w.def.params);
       } catch (cause) {
         throw new Error(`El comportamiento "${w.behavior.id}" del arma "${w.def.id}" falló: ${(cause as Error).message}`, { cause });
@@ -781,6 +782,7 @@ class WorldEnemyApi implements EnemyApi {
 // Lo que ve un comportamiento de arma: crear proyectiles o golpear cuerpo a cuerpo, nada más
 class WorldWeaponApi implements WeaponApi {
   source = ''; // el arma que está disparando; lo pone el World antes de llamar a fire()
+  slot = 0;     // y su casilla (la vista sube el fogonazo con lo que flota esa arma)
 
   constructor(private readonly world: World, readonly rng: () => number) {}
 
@@ -802,7 +804,7 @@ class WorldWeaponApi implements WeaponApi {
       source: this.source,
       anim: opts.anim,
     });
-    this.world.fx.push({ type: 'muzzle', x: shot.x, y: shot.y, z: this.world.player.z, angle });
+    this.world.fx.push({ type: 'muzzle', x: shot.x, y: shot.y, z: this.world.player.z, angle, slot: this.slot });
   }
 
   melee(shot: WeaponShot, opts: { reach: number; width: number }): void {

@@ -6,6 +6,7 @@ import { bakeWorld } from '@voxpix/world/bake';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { BOB_VOX, BrotatoGame, type Models } from '../../src/game/brotato/play';
+import { MUZZLE_Z } from '../../src/game/brotato/ui/fx';
 import { Run } from '../../src/game/brotato/sim/Run';
 import { FIRE_ANIM_TIME, type WorldFx } from '../../src/game/brotato/sim/World';
 import { Effects, MUZZLE_MAX, MUZZLE_S } from '../../src/game/brotato/ui/fx';
@@ -63,7 +64,7 @@ describe('las armas al disparar', () => {
     const p0 = g.current.player;
     const scene = { player: p0, playerHeight: 30, enemyHeight: 12, groundZ: () => p0.z };
     const fx = new Effects();
-    fx.add([{ type: 'muzzle', x: p0.x + 10, y: p0.y, z: p0.z, angle: 0 }], scene);
+    fx.add([{ type: 'muzzle', x: p0.x + 10, y: p0.y, z: p0.z, angle: 0, slot: 0 }], scene);
     const paint = () => {
       const dots: string[] = [];
       const p: Painter = { width: 4000, height: 4000, icon: () => false, fill: (x, y, _w, _h, c) => dots.push(`${x},${y},${c}`) };
@@ -101,7 +102,7 @@ describe('las armas al disparar', () => {
     const p0 = g.current.player;
     const scene = { player: p0, playerHeight: 30, enemyHeight: 12, groundZ: () => p0.z };
     const fx = new Effects();
-    fx.add(Array.from({ length: 200 }, (_, k) => ({ type: 'muzzle' as const, x: p0.x + k, y: p0.y, z: p0.z, angle: 0 })), scene);
+    fx.add(Array.from({ length: 200 }, (_, k) => ({ type: 'muzzle' as const, x: p0.x + k, y: p0.y, z: p0.z, angle: 0, slot: 0 })), scene);
     expect(fx.count).toBe(MUZZLE_MAX);
     expect(fx['muzzles'][0]!.x).toBe(p0.x + 200 - MUZZLE_MAX);
   });
@@ -148,5 +149,25 @@ describe('las armas al disparar', () => {
       expect(Math.max(...z) - Math.min(...z)).toBeLessThanOrEqual(2 * BOB_VOX);
     }
     expect(zs[0]!.some((z, t) => z !== zs[1]![t])).toBe(true);   // desfasadas
+  });
+
+  it('el fogonazo nace a la altura de su arma flotando, arriba y abajo (±1)', () => {
+    const g = new BrotatoGame(registry, 5, models, player, registry.level('oficina'), { immortal: true });
+    const id = g['weaponIds'][0]!;
+    const fx = g['fx'] as WorldFx[];
+    const offs: number[] = [], heights = new Set<number>();
+    for (let t = 0; t < 60 * 20; t++) {
+      fx.length = 0;
+      g.step(still);
+      const e = g.state.entities.get(id)!, feet = g.current.player.z;
+      for (const f of fx) if (f.type === 'muzzle') {
+        // El fogonazo se pinta a z + MUZZLE_Z; el centro del arma está 1 por encima de su base (MUZZLE_Z = WEAPON_Z + 1)
+        offs.push(f.z + MUZZLE_Z - (e.z + 1));
+        heights.add(e.z - feet);
+      }
+    }
+    expect(offs.length).toBeGreaterThan(5);
+    for (const d of offs) expect(Math.abs(d)).toBeLessThanOrEqual(1);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThanOrEqual(2 * BOB_VOX - 1);   // la vio arriba y abajo
   });
 });

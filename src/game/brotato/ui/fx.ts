@@ -57,7 +57,7 @@ const DUST_COLORS = ['#c9c3d9', '#8a94a6'] as const;
 // El fogonazo de un disparo de MAIA (Andrés, 2026-10-29): en la boca del arma, a la altura a la que flotan (play.ts,
 // WEAPON_Z 5, y 1 más al centro del modelo), un punto claro y una llamarada corta hacia donde apunta; 2-3 cuadros
 export const MUZZLE_S = 0.07;
-const MUZZLE_Z = 6;
+export const MUZZLE_Z = 6;
 const MUZZLE_LEN = 4;                      // vóxeles de la llamarada
 // Lo que nace por detrás de la punta de la simulación (def.length): en la pose de disparo (anim0, MAIA) el cañón
 // retrocede y su boca queda 1-3 vóxeles por detrás; así el punto claro sale en la boca y no delante de ella
