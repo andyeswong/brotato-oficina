@@ -15,7 +15,7 @@ export interface Body {
 
 const TELEGRAPH_TIME = 1;              // aviso antes de que aparezca un enemigo
 const IFRAMES = 0.6;                   // invulnerabilidad tras un golpe
-const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de disparo
+export const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de disparo
 const MAGNET_SPEED_FACTOR = 3;         // los materiales vuelan a 3× la velocidad base del jugador
 const LIFE_STEAL_COOLDOWN = 0.1;       // como mucho una curación por robo de vida cada 0,1 s
 export const OVERTIME_MAX = 30;
@@ -130,7 +130,9 @@ export type WorldFx =
   | { type: 'enemy-die'; x: number; y: number; z: number }
   | { type: 'pickup'; value: number }
   | { type: 'heal'; amount: number }
-  | { type: 'dash'; x: number; y: number; z: number };
+  | { type: 'dash'; x: number; y: number; z: number }
+  // Un arma de MAIA soltó un proyectil desde su boca (x, y), apuntando a angle: el fogonazo de la vista. z: los pies
+  | { type: 'muzzle'; x: number; y: number; z: number; angle: number };
 
 // playing: se juega (también la prórroga: el tiempo acabó y quedan enemigos vivos, que hay que matar). open: tiempo
 // cumplido y 0 vivos, la oleada está limpia y la entrada a la tienda brilla en el mapa (Andrés, 2026-10-25). cleared:
@@ -800,6 +802,7 @@ class WorldWeaponApi implements WeaponApi {
       source: this.source,
       anim: opts.anim,
     });
+    this.world.fx.push({ type: 'muzzle', x: shot.x, y: shot.y, z: this.world.player.z, angle });
   }
 
   melee(shot: WeaponShot, opts: { reach: number; width: number }): void {

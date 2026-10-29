@@ -54,6 +54,12 @@ export const TRAIL_S = 0.22;               // lo que dura cada tramo de la estel
 const TRAIL_HEIGHTS = [0.2, 0.45, 0.7];    // a qué alturas de MAIA van las líneas (fracción de su altura)
 const TRAIL_CLEAR = 7;                     // vóxeles alrededor de MAIA sin estela: la capa de efectos va encima y la taparía
 const DUST_COLORS = ['#c9c3d9', '#8a94a6'] as const;
+// El fogonazo de un disparo de MAIA (Andrés, 2026-10-29): en la boca del arma, a la altura a la que flotan (play.ts,
+// WEAPON_Z 5, y 1 más al centro del modelo), un punto claro y una llamarada corta hacia donde apunta; 2-3 cuadros
+export const MUZZLE_S = 0.07;
+const MUZZLE_Z = 6;
+const MUZZLE_LEN = 4;                      // vóxeles de la llamarada
+const MUZZLE_CORE = '#fff6c8', MUZZLE_FLAME = '#f0b951';
 
 interface Floating {
   text: string;
@@ -61,6 +67,14 @@ interface Floating {
   life: number;
   readonly total: number;
   at: { x: number; y: number; z: number } | null;   // null: sigue a MAIA
+}
+
+interface Muzzle {
+  x: number;
+  y: number;
+  z: number;
+  angle: number;
+  t: number;
 }
 
 interface Puff {
@@ -161,12 +175,13 @@ export class Flashes<Id> {
 export class Effects {
   private floating: Floating[] = [];
   private puffs: Puff[] = [];
+  private muzzles: Muzzle[] = [];
   private scraps: Scrap[] = [];
   private trail: TrailPoint[] = [];
   private dashSeq = 0;
 
   get count(): number {
-    return this.floating.length + this.puffs.length + this.scraps.length + this.trail.length;
+    return this.floating.length + this.puffs.length + this.scraps.length + this.trail.length + this.muzzles.length;
   }
 
   // Lo que anunció la simulación desde el último cuadro
@@ -185,6 +200,7 @@ export class Effects {
           this.puffs.push({ x: fx.x, y: fx.y, z: fx.z, t: PUFF_S });
           this.trail.push({ x: fx.x, y: fx.y, z: fx.z, t: TRAIL_S, seq: ++this.dashSeq });
           break;
+        case 'muzzle': this.muzzles.push({ x: fx.x, y: fx.y, z: fx.z, angle: fx.angle, t: MUZZLE_S }); break;
         default: break;   // spawn y pickup no se dibujan (el enemigo y el contador ya se ven)
       }
     }
@@ -205,6 +221,7 @@ export class Effects {
     this.trail = this.trail.filter((f) => (f.t -= dt) > 0);
     this.floating = this.floating.filter((f) => (f.life -= dt) > 0);
     this.puffs = this.puffs.filter((f) => (f.t -= dt) > 0);
+    this.muzzles = this.muzzles.filter((f) => (f.t -= dt) > 0);
     this.scraps = this.scraps.filter((s) => {
       s.life -= dt;
       s.vz -= SCRAP_GRAVITY * dt;
@@ -215,7 +232,7 @@ export class Effects {
   }
 
   clear(): void {
-    this.floating = []; this.puffs = []; this.scraps = []; this.trail = [];
+    this.floating = []; this.puffs = []; this.scraps = []; this.trail = []; this.muzzles = [];
   }
 
   // Pinta todo en la vista: (vx, vy) es la esquina de la vista en la imagen del horneado
@@ -236,6 +253,18 @@ export class Effects {
     for (const s of this.scraps) {
       const [x, y] = ground(cam, s.x, s.y, s.z);
       dot(x, y, s.color);
+    }
+    // Fogonazos: la llamarada hacia donde apunta y, encima, el punto claro en cruz; la segunda mitad, solo el punto
+    for (const f of this.muzzles) {
+      const z = f.z + MUZZLE_Z;
+      const [x0, y0] = ground(cam, f.x, f.y, z);
+      if (f.t > MUZZLE_S / 2) {
+        const [x1, y1] = ground(cam, f.x + Math.cos(f.angle) * MUZZLE_LEN, f.y + Math.sin(f.angle) * MUZZLE_LEN, z);
+        const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+        for (let k = 1; k <= n; k++) dot(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), MUZZLE_FLAME);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) dot(x0 + dx, y0 + dy, MUZZLE_FLAME);
+      }
+      dot(x0, y0, MUZZLE_CORE);
     }
     // La estela: cada tramo entre dos puntos seguidos del mismo dash, una línea por altura; la mitad final, atenuada.
     // Solo detrás de MAIA, no sobre ella

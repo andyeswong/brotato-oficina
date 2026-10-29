@@ -9,7 +9,7 @@ import { TICK } from '@voxpix/world/state';
 import type { Registry } from './registry/validate';
 import type { LevelModule, ThemeId } from './registry/schemas';
 import { Run } from './sim/Run';
-import type { World as Wave, WorldFx } from './sim/World';
+import { FIRE_ANIM_TIME, type World as Wave, type WorldFx } from './sim/World';
 import { pickLevel } from './sim/arena';
 import { lookOf } from './looks';
 import { turn, type CarryConfig, type TickInput } from '@voxpix/runtime/runtime';
@@ -43,7 +43,11 @@ export function placeAtShop(p: { x: number; y: number }, shop: { x: number; y: n
   p.y = shop.y + (dy / len) * (shop.reach - 1);
 }
 
-const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
+const WEAPON_Z = 5;
+// Al disparar el arma retrocede RECOIL_VOX y vuelve en FIRE_ANIM_TIME; en una estocada sale hacia delante LUNGE_VOX
+// (World: fireT y lunge, que la vista no pintaba)
+const RECOIL_VOX = 2;
+const LUNGE_VOX = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
 const FX_KEEP = 256;
@@ -285,7 +289,10 @@ export class BrotatoGame {
     // Armas: en su sitio de la órbita, apuntando (el modelo apunta a -y; el ángulo de la simulación es atan2(y, x))
     this.wave.weapons.forEach((w, i) => {
       const id = this.weaponIds[i];
-      if (id !== undefined) s.entities.move(id, Math.round(w.x), Math.round(w.y), p.z + WEAPON_Z, heading((w.angle * 180) / Math.PI + 90));
+      if (id === undefined) return;
+      const d = w.lunge > 0 ? w.lunge * LUNGE_VOX : -(Math.max(0, w.fireT) / FIRE_ANIM_TIME) * RECOIL_VOX;
+      const x = w.x + Math.cos(w.angle) * d, y = w.y + Math.sin(w.angle) * d;
+      s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z, heading((w.angle * 180) / Math.PI + 90));
     });
     // Enemigos: el modelo del tema y su cuadro de andar; cada uno con su desfase, para que no marchen al paso
     const alive = new Set<number>();
