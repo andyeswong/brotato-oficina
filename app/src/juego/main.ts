@@ -7,6 +7,7 @@
 // ?ir=tienda|limpia|salida|piso2|fin simula sin entrada hasta ahí: la primera tienda, la oleada limpia, la salida abierta, el
 // segundo piso o el final (para verify y las capturas).
 // Para medir (fase 4): ?ola=N empieza en la oleada N e ?inmortal hace que MAIA no caiga; body[data-enemigos] los cuenta.
+// ?muebles=N empuja los N muebles más cercanos 1 s de cada 3 (play.ts, shake); body[data-despiertos] cuenta los despiertos.
 // ?dev activa las herramientas de desarrollo: V pausa y enseña el mundo en modo vóxel (./voxel.ts).
 import { Model, render, type ModelFile, type VoxelSource } from '@voxpix/core/index';
 import { TILE } from '@voxpix/worldgen';
@@ -322,7 +323,8 @@ function newRun(after?: () => void): void {
     theme = level.theme;
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
-      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true });
+      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
+        shake: Number(q.get('muebles') ?? 0) || undefined });
     quarter = 0;
     runStart = performance.now();
     bakeFloor();
@@ -355,6 +357,8 @@ function bakeFloor(): boolean {
   cur = bakeView(quarter);
   baked = cur.baked;
   shownArena = g.run.arena;
+  // La rejilla del camino de los enemigos, también aquí detrás del letrero: en la oleada era un cuadro de 150-430 ms
+  g.run.arena.warmPath();
   // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
   // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
   // cuadro tardaba 86-88 ms
@@ -521,6 +525,7 @@ function frame(time: number): void {
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
   compositor.frame(rs, b, viewOptions(vx, vy, time));
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
+  document.body.dataset.despiertos = String(game.state.objects.awake.length);   // para medir los muebles (?muebles=N)
   document.body.dataset.caida = game.run.arena.fall ? (game.run.arena.falling ? 'cae' : 'publica') : '';   // para medir la caída del piso
   paintFx(vx, vy);
 }

@@ -26,8 +26,12 @@ export class Furniture {
   // Los escombros que caen (una VoxelFall por mueble roto), hasta que acaban
   readonly debris: VoxelFall[] = [];
   private readonly size = new Map<number, { w: number; d: number }>();
-  // Algo se movió, despertó o rompió desde la última vez que se miró (el camino de la prórroga se rehace)
-  changed = false;
+  // Por mueble, la caja (en vóxeles) de lo que se movió o rompió desde la última vez que se miró: dónde estaba y dónde
+  // está. El camino de la prórroga (arena.pathDir) rehace solo las celdas que tocan esas cajas: rehacer la rejilla entera
+  // con muebles despiertos costaba 400 ms por vez en un S25 FE (2026-10-29), porque cada celda pregunta el suelo a todos
+  // los despiertos. Una caja por mueble y no una que los junte a todos: seis muebles repartidos ya cubren casi el mapa
+  readonly dirty = new Map<number, Rect>();
+  get changed(): boolean { return this.dirty.size > 0; }
   // Cuántas veces se movió o rompió algo (para quien guarde su propia rejilla de caminos: el piloto de la curva)
   version = 0;
 
@@ -63,8 +67,9 @@ export class Furniture {
   // Empuja (VoxPix objects.push) y apunta si se movió
   push(id: number, dx: number, dy: number, force: number, dt: number, maxSpeed: number): number {
     if (!this.canPush(id, dx, dy, maxSpeed * dt)) return 0;
+    const before = this.rect(id);
     const r = this.state.objects.push(id, dx, dy, force, dt, { maxSpeed });
-    if (r.moved > 0) { this.changed = true; this.version++; }
+    if (r.moved > 0) { this.mark(id, before); this.mark(id, this.rect(id)); this.version++; }
     return r.moved;
   }
 
@@ -90,14 +95,21 @@ export class Furniture {
     if (id === null) return false;
     const o = this.state.objects.get(id)!;
     if (o.mass > STRUCTURE_KG) return false;
+    const before = this.rect(id);
     const fall = new VoxelFall(this.state);
     const r = this.state.objects.damage(id, damage, fall, { piece: DEBRIS_PIECE, settle: 'vanish' });
     if (!r.destroyed) return false;
     this.size.delete(id);
-    this.changed = true;
+    this.mark(id, before);
     this.version++;
     if (!fall.done) this.debris.push(fall);
     return true;
+  }
+
+  private mark(id: number, r: Rect | null): void {
+    if (!r) return;
+    const d = this.dirty.get(id);
+    this.dirty.set(id, d ? { x0: Math.min(d.x0, r.x0), y0: Math.min(d.y0, r.y0), x1: Math.max(d.x1, r.x1), y1: Math.max(d.y1, r.y1) } : { ...r });
   }
 
   // Un tick: los escombros caen

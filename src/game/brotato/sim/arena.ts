@@ -105,6 +105,7 @@ export class Arena {
   readonly furniture: Furniture;
   private ticks = 0;
   private flowAt = 0;
+  private flowWarm = false;   // la rejilla la hizo warmPath y pathDir aún no la ha usado
   private readonly look: WorldLook;
   private readonly decorate: (w: World) => void;
 
@@ -218,6 +219,7 @@ export class Arena {
     this.exitOpen = true;
     // El camino de la rejilla (pathDir) se rehace: ahora se puede pasar por el hueco
     this.flowOk = null;
+    this.flowWarm = false;
     this.flowGoal = '';
     return touched;
   }
@@ -319,6 +321,38 @@ export class Arena {
     return { x: best.x, y: best.y };
   }
 
+  // La rejilla de pathDir, entera, antes de que nadie la pida: la vista la llama detrás del letrero del piso
+  // (app/src/juego/main.ts, bakeFloor). Hacerla en la primera pregunta, en plena oleada, costaba 150 ms en un S25 FE, y
+  // 430 con seis muebles despiertos (cada celda pregunta el suelo a todos). Sin vista no se llama y la partida es la misma
+  warmPath(): void {
+    if (this.flowOk) return;
+    this.flowBuild();
+    this.flowWarm = true;
+  }
+
+  private flowBuild(): void {
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW);
+    this.flowOk = new Uint8Array(cols * rows);
+    this.flowFill(0, 0, cols - 1, rows - 1);
+    this.flowDist = new Int32Array(cols * rows);
+  }
+
+  private flowFill(i0: number, j0: number, i1: number, j1: number): void {
+    const cols = Math.ceil(this.world.width / FLOW);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      this.flowOk![j * cols + i] = this.fits(i * FLOW + FLOW / 2, j * FLOW + FLOW / 2, this.floorZ, SPAWN_RADIUS) ? 1 : 0;
+    }
+  }
+
+  // Las celdas que alcanzan las cajas de furniture.dirty (un enemigo de SPAWN_RADIUS centrado en ellas tocaría la caja)
+  private flowBoxes(): void {
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), m = SPAWN_RADIUS + 2;
+    for (const d of this.furniture.dirty.values()) {
+      this.flowFill(Math.max(0, Math.floor((d.x0 - m) / FLOW)), Math.max(0, Math.floor((d.y0 - m) / FLOW)),
+        Math.min(cols - 1, Math.floor((d.x1 + 1 + m) / FLOW)), Math.min(rows - 1, Math.floor((d.y1 + 1 + m) / FLOW)));
+    }
+  }
+
   // Hacia dónde ir (unitario) desde `from` para llegar a `to` por el camino más corto, rodeando arbustos, columnas y
   // paredes; null si ya está al lado (a `near` px o menos) o si no hay camino. Rejilla de FLOW px donde cabe el enemigo
   // más grande, con las distancias por BFS desde las celdas libres a `near` de `to` (`to` puede ser sólido, como el
@@ -326,21 +360,24 @@ export class Arena {
   // enemigo pequeño encajado donde el grande no cabe sale hacia la celda con camino más cercana (a 2 o menos)
   pathDir(from: Point, to: Point, near = PATH_NEAR): Point | null {
     const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), n = cols * rows;
-    // Un mueble se movió o se rompió: la rejilla se rehace, como mucho cada FLOW_REFRESH ticks (empujar es continuo)
-    if (this.furniture.changed && this.ticks - this.flowAt >= FLOW_REFRESH) {
-      this.furniture.changed = false;
-      this.flowOk = null;
+    // La rejilla se hace ahora: la primera vez (o tras abrir la salida), o la dejó hecha warmPath y se usa por primera
+    // vez; esa se pone al día con lo que se haya movido desde entonces y cuenta como hecha aquí
+    const fresh = this.flowWarm || !this.flowOk;
+    if (this.flowWarm && this.flowOk) this.flowBoxes();
+    this.flowWarm = false;
+    // Un mueble se movió o se rompió: se rehacen solo las celdas que alcanzan su caja (furniture.dirty), como mucho cada
+    // FLOW_REFRESH ticks (empujar es continuo). Dan lo mismo que rehacer la rejilla entera (objetos.test.ts), y en los
+    // mismos ticks que cuando se rehacía entera: con eso las partidas no cambian (la huella de 64 semillas, idéntica)
+    if (this.furniture.dirty.size && this.ticks - this.flowAt >= FLOW_REFRESH) {
+      if (!fresh) { this.flowAt = this.ticks; this.flowBoxes(); }
+      this.furniture.dirty.clear();
       this.flowGoal = '';
     }
-    if (!this.flowOk) {
+    if (fresh) {
       this.flowAt = this.ticks;
-      this.flowOk = new Uint8Array(n);
-      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
-        this.flowOk[j * cols + i] = this.fits(i * FLOW + FLOW / 2, j * FLOW + FLOW / 2, this.floorZ, SPAWN_RADIUS) ? 1 : 0;
-      }
-      this.flowDist = new Int32Array(n);
+      if (!this.flowOk) this.flowBuild();
     }
-    const ok = this.flowOk, dist = this.flowDist!;
+    const ok = this.flowOk!, dist = this.flowDist!;
     const cell = (p: Point) => Math.min(rows - 1, Math.max(0, Math.floor(p.y / FLOW))) * cols + Math.min(cols - 1, Math.max(0, Math.floor(p.x / FLOW)));
     const goal = `${cell(to)}:${near}`;
     if (goal !== this.flowGoal) {

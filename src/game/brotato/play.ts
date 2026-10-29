@@ -12,6 +12,7 @@ import { Run } from './sim/Run';
 import type { World as Wave, WorldFx } from './sim/World';
 import { pickLevel } from './sim/arena';
 import { lookOf } from './looks';
+import { STRUCTURE_KG } from './sim/furniture';
 import { turn, type CarryConfig, type TickInput } from '@voxpix/runtime/runtime';
 
 // Lo que la vista le da a la partida para dibujarse: los modelos (por su referencia en models/brotato) y los cuadros
@@ -67,6 +68,9 @@ export interface TestOptions {
   // Tampoco: con vista (app/src/juego), al llegar a un piso nuevo la partida espera quieta a que la vista lo hornee
   // (floorReady), para que el horneado no caiga nunca dentro de una oleada (regla de MAIA). Sin vista, sigue sola
   waitFloor?: boolean;
+  // Para medir los muebles despiertos (?muebles=N): durante la oleada empuja los N muebles más cercanos a MAIA, 1 s de
+  // cada 3 y cada vez hacia el lado contrario, para que se despierten y se vuelvan a dormir solos (SLEEP_AFTER, 1,5 s)
+  shake?: number;
 }
 
 export class BrotatoGame {
@@ -158,6 +162,23 @@ export class BrotatoGame {
     return this.wave;
   }
 
+  // ?muebles=N (TestOptions.shake). Los N más cercanos al empezar la oleada, fijos para toda ella
+  private shaken: number[] | null = null;
+  private shakeFurniture(n: number): void {
+    const a = this.run.arena, objs = a.state.objects, p = this.wave.player;
+    if (this.phaseTick === 0 || !this.shaken) {
+      this.shaken = [...objs].filter((o) => o.mass <= STRUCTURE_KG)
+        .sort((u, v) => Math.hypot(u.x - p.x, u.y - p.y) - Math.hypot(v.x - p.x, v.y - p.y)).slice(0, n).map((o) => o.id);
+    }
+    const t = this.phaseTick % 180;
+    if (t >= 60) return;
+    const s = Math.floor(this.phaseTick / 180) % 2 ? -1 : 1;
+    for (const id of this.shaken) {
+      if (!objs.get(id)) continue;
+      if (!a.furniture.push(id, s, 0, 4000, TICK, 20)) a.furniture.push(id, 0, s, 4000, TICK, 20);
+    }
+  }
+
   step(input: GameInput): void {
     if (this.phase === 'wave' && this.awaitingFloor) {
       // El piso nuevo cae a su sitio y la vista aún no lo ha horneado: nada más avanza (ni el reloj de la oleada)
@@ -174,6 +195,7 @@ export class BrotatoGame {
       const p = this.wave.player;
       const look = target ? { dx: target.x - p.x, dy: target.y - p.y } : this.moving ? input : null;
       if (look) this.facing = ((Math.round(Math.atan2(look.dx, -look.dy) / (Math.PI / 4)) % 8) + 8) % 8;
+      if (this.test.shake) this.shakeFurniture(this.test.shake);
       if (this.test.immortal || this.guarded) { const me = this.wave.player; me.hp = me.maxHp; if (this.wave.status === 'dead') this.wave.status = 'playing'; }
       this.collectFx();
       this.phaseTick++;

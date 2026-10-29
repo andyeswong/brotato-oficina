@@ -199,3 +199,61 @@ describe('los muebles', () => {
     expect(a.crushUnder(m.x, m.y, R)).toBe(0);
   });
 });
+
+describe('el camino de la prórroga con muebles', () => {
+  it('rehacer solo lo que tocan los muebles movidos o rotos da la misma rejilla que rehacerla entera', () => {
+    const a = new Arena(registry.level('oficina'), 7, { floor: 0 });
+    const goal = { x: a.world.width / 2, y: a.world.depth / 2 };
+    a.pathDir({ x: 20, y: 20 }, goal);   // la rejilla entera, antes de mover nada
+    const id = freeDesk(a), r = a.furniture.rect(id)!;
+    const m = { x: r.x0 - R - 0.5, y: (r.y0 + r.y1) / 2, z: 0 };
+    m.z = a.restZ(m.x, m.y, R);
+    // Empujar mientras los enemigos preguntan el camino: se repasa cada FLOW_REFRESH ticks, a trozos
+    for (let t = 0; t < 120; t++) {
+      a.move(m, R, SPEED * TICK, 0, { force: PUSH_FORCE, dt: TICK, maxSpeed: SPEED });
+      a.stepObjects();
+      a.pathDir({ x: 20, y: 20 }, goal);
+    }
+    expect(a.furniture.rect(id)!.x0).toBeGreaterThan(r.x0 + 3);
+    // Y una mampara rota a balazos
+    const mampara = [...a.state.objects].find((o) => o.kind === 'pillar')!, q = a.furniture.rect(mampara.id)!;
+    let hx = -1, hy = -1;
+    for (let y = q.y0; y <= q.y1 && hx < 0; y++) for (let x = q.x0; x <= q.x1; x++) if (a.shotBlocked(x + 0.5, y + 0.5)) { hx = x + 0.5; hy = y + 0.5; break; }
+    while (!a.hitShot(hx, hy, 10, 'player')) { /* hasta romperla */ }
+    for (let t = 0; t < 60 * 5; t++) { a.stepObjects(); a.pathDir({ x: 20, y: 20 }, goal); }
+    expect(a.furniture.dirty.size).toBe(0);
+    const parts = a['flowOk']!.slice();
+    a['flowOk'] = null;
+    a.pathDir({ x: 20, y: 20 }, goal);
+    const whole = a['flowOk']!;
+    // Que la prueba mida algo: la rejilla ya no es la del principio
+    const fresh = new Arena(registry.level('oficina'), 7, { floor: 0 });
+    fresh.pathDir({ x: 20, y: 20 }, goal);
+    expect([...whole].filter((v, i) => v !== fresh['flowOk']![i]).length).toBeGreaterThan(0);
+    expect([...parts].filter((v, i) => v !== whole[i]).length).toBe(0);
+  });
+});
+
+describe('la rejilla hecha de antemano (warmPath)', () => {
+  it('da los mismos caminos que hacerla en la primera pregunta, aunque se empuje antes de preguntar', () => {
+    const goal = { x: 256, y: 256 };
+    const run = (warm: boolean) => {
+      const a = new Arena(registry.level('oficina'), 7, { floor: 0 });
+      if (warm) a.warmPath();
+      const id = freeDesk(a), r = a.furniture.rect(id)!;
+      const m = { x: r.x0 - R - 0.5, y: (r.y0 + r.y1) / 2, z: 0 };
+      m.z = a.restZ(m.x, m.y, R);
+      const out: string[] = [];
+      for (let t = 0; t < 150; t++) {
+        a.move(m, R, SPEED * TICK, 0, { force: PUSH_FORCE, dt: TICK, maxSpeed: SPEED });
+        a.stepObjects();
+        // Nadie pregunta los primeros 40 ticks: el mueble ya se movió cuando se usa la rejilla
+        if (t >= 40) { const d = a.pathDir({ x: r.x1 + 12, y: m.y }, goal); out.push(d ? `${d.x.toFixed(3)},${d.y.toFixed(3)}` : '-'); }
+      }
+      return { out, ok: [...a['flowOk']!].join('') };
+    };
+    const cold = run(false), warm = run(true);
+    expect(warm.out).toEqual(cold.out);
+    expect(warm.ok).toBe(cold.ok);
+  });
+});
