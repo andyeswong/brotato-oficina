@@ -94,16 +94,21 @@ function model(ref: string): Model {
 // para el aspecto de cualquier mundo
 const RIGS: Record<string, typeof RIG_GRAPA> = { perseguidor: RIG_GRAPA, embestidor: RIG_CLIP, escupidor: RIG_TAZA };
 const walks = new Map<string, { frames: VoxelSource[]; ms: number } | null>();
+// Los modelos con su paso dibujado en la fuente (<ref>-andar0..3, el jefe): esos cuadros, a 150 ms
+const AUTHORED_WALK_MS = 150;
+const has = (ref: string) => !!FILES[`../../../models/brotato/${ref}.json`];
 const models: Models = {
   model,
   walk(ref, role) {
     const key = `${ref}|${role}`;
     if (!walks.has(key)) {
       const rig = RIGS[role];
-      walks.set(key, rig ? { frames: rigFrames(model(ref), rig), ms: rig.frameMs } : null);
+      walks.set(key, has(`${ref}-andar0`) ? { frames: [0, 1, 2, 3].map((k) => model(`${ref}-andar${k}`)), ms: AUTHORED_WALK_MS }
+        : rig ? { frames: rigFrames(model(ref), rig), ms: rig.frameMs } : null);
     }
     return walks.get(key)!;
   },
+  pose: (ref, pose) => (has(`${ref}-${pose}`) ? model(`${ref}-${pose}`) : null),
 };
 const maiaModel = Model.fromJSON(maiaFile as unknown as ModelFile);
 const maiaWalk = walkFrames(maiaModel);

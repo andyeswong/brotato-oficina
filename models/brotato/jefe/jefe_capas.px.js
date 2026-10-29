@@ -10,7 +10,10 @@
 //
 // Ejes como MAIA: cada capa z es un corte visto desde arriba, norte arriba (la espalda) y abajo el frente (la cara,
 // que mira a la cámara); pivote en el centro, los pies en z = 0.
-// Importar: voxpix import-pxl jefe_capas.px.js --stack oficina oficina.json (y medieval, cyberpunk)
+// Poses (Andrés, 2026-10-29), del mismo cuerpo: <mundo> quieto; <mundo>-andar0..3, el paso (piernas y brazos
+// alternos, el cuerpo sube al pasar); <mundo>-carga, encorvado con la cabeza baja antes de embestir; <mundo>-embiste,
+// lanzado hacia delante con los cuernos por delante y una zancada larga.
+// Importar: voxpix import-pxl jefe_capas.px.js --stack oficina oficina.json (y cada mundo y pose)
 
 pal({
   F: "#2a1a12", G: "#4a2e1e", H: "#6e4630", I: "#94633f", J: "#b8875a",   // pelaje
@@ -31,7 +34,7 @@ ramps("FGHIJ", "tuv", "abc", "BCDE", "SVWX", "opq", "TYZ", "LMNO", "lmn", "dfghs
 // voxpix: emissive Rre ijw   (ojos y neón encendidos: se leen en lo oscuro)
 
 const RAMP = { fur: "FGHIJ", muzzle: "tuv", hoof: "abc", horn: "BCDE", suit: "SVWX", shirt: "opq", tie: "TYZ", gold: "LMNO", leather: "lmn", steel: "dfghs", neon: "ijw" }
-const MX = 14, MY = 10, W = 2 * MX + 1, H = 2 * MY + 1, LAYERS = 42
+const MX = 14, MY = 22, W = 2 * MX + 1, H = 2 * MY + 1, LAYERS = 42
 
 const ell = (x, y, cx, cy, rx, ry) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
 
@@ -135,13 +138,64 @@ function voxel(world, x, y, z) {
   return ramp[Math.max(0, Math.min(ramp.length - 1, k))]
 }
 
+// El modelo quieto de un mundo: cada vóxel con su color y su parte del cuerpo
+function rest(world) {
+  const out = []
+  for (let z = 0; z < LAYERS; z++) for (let y = -12; y <= 12; y++) for (let x = -MX; x <= MX; x++) {
+    const k = voxel(world, x, y, z)
+    if (k) out.push({ x, y, z, k, part: body(x, y, z).part })
+  }
+  return out
+}
+
+const LOWER = new Set(["leg", "hoof"])
+const HEAD = new Set(["head", "snout", "ear", "horn", "neck"])
+const ARMS = new Set(["arm", "fist"])
+
+// Cuánto se mueve cada vóxel en una pose: [dx, dy, dz]. El frente es -y
+function offset(pose, v) {
+  const { x, y, z, part } = v
+  const left = x < 0
+  if (pose.startsWith("andar")) {
+    // 0 y 2: zancada (un pie delante y otro detrás); 1 y 3: paso por debajo, el cuerpo 1 más alto
+    const k = Number(pose.slice(5)), sw = [1, 0, -1, 0][k], bob = sw === 0 ? 1 : 0
+    if (LOWER.has(part)) return [0, Math.round((left ? -sw : sw) * 2 * (12 - z) / 12), 0]
+    if (ARMS.has(part)) return [0, Math.round((left ? sw : -sw) * 2 * (27 - Math.min(27, z)) / 14), bob]
+    return [0, 0, bob]
+  }
+  // Inclinado hacia delante desde la cadera: más cuanto más alto; la cabeza, además, baja
+  const lean = pose === "carga" ? 0.22 : 0.38, drop = pose === "carga" ? 2 : 3
+  if (LOWER.has(part)) {
+    if (pose === "embiste") return [0, Math.round((left ? -3 : 3) * (12 - z) / 12), 0]
+    return [0, 0, 0]
+  }
+  const h = Math.max(0, z - 11)
+  let dy = -Math.round(h * lean), dz = pose === "carga" ? -1 : 0
+  if (HEAD.has(part)) { dy -= drop; dz -= drop }
+  if (ARMS.has(part)) dy += pose === "carga" ? 1 : 2
+  return [0, dy, dz]
+}
+
+const POSES = ["", "andar0", "andar1", "andar2", "andar3", "carga", "embiste"]
 for (const world of ["oficina", "medieval", "cyberpunk"]) {
-  for (let z = 0; z < LAYERS; z++) {
-    sprite(`${world}_z${String(z).padStart(2, "0")}`, { w: W, h: H }, (c) => {
-      for (let y = -MY; y <= MY; y++) for (let x = -MX; x <= MX; x++) {
-        const k = voxel(world, x, y, z)
-        if (k) c.px(x + MX, MY - y, k)
-      }
-    })
+  const base = rest(world)
+  for (const pose of POSES) {
+    const at = new Map()
+    for (const v of base) {
+      const [dx, dy, dz] = pose ? offset(pose, v) : [0, 0, 0]
+      const x = v.x + dx, y = v.y + dy, z = v.z + dz
+      if (z < 0 || z >= LAYERS || y < -MY || y > MY) continue
+      const key = `${x},${y},${z}`
+      if (!at.has(key)) at.set(key, v.k)
+    }
+    const stack = pose ? `${world}-${pose}` : world
+    for (let z = 0; z < LAYERS; z++) {
+      sprite(`${stack}_z${String(z).padStart(2, "0")}`, { w: W, h: H }, (c) => {
+        for (let y = -MY; y <= MY; y++) for (let x = -MX; x <= MX; x++) {
+          const k = at.get(`${x},${y},${z}`)
+          if (k) c.px(x + MX, MY - y, k)
+        }
+      })
+    }
   }
 }

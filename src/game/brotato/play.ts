@@ -20,6 +20,8 @@ import { turn, type CarryConfig, type TickInput } from '@voxpix/runtime/runtime'
 export interface Models {
   model(ref: string): VoxelSource;
   walk(ref: string, role: string): { frames: VoxelSource[]; ms: number } | null;
+  // Una pose con nombre del modelo (el jefe: 'carga', 'embiste'), si la tiene
+  pose?(ref: string, pose: string): VoxelSource | null;
 }
 export interface PlayerLooks {
   model: VoxelSource;
@@ -44,6 +46,16 @@ export function placeAtShop(p: { x: number; y: number }, shop: { x: number; y: n
   p.y = shop.y + (dy / len) * (shop.reach - 1);
 }
 
+// Las poses del jefe (models/brotato/jefe) y sus estados en el comportamiento boss
+const BOSS_POSES = ['carga', 'embiste'];
+const BOSS_WINDUP = 1, BOSS_DASH = 2;
+// La luz de los ojos del jefe, en los ejes de su modelo (el frente es -y): roja entre los dos ojos; en el cíborg, cian
+// en el ojo de metal (el derecho)
+const BOSS_EYES: Record<ThemeId, { kind: 'neon-pink' | 'neon-cyan'; color?: readonly [number, number, number]; radius: number; intensity: number; offset: readonly [number, number, number] }> = {
+  oficina: { kind: 'neon-pink', color: [1, 0.22, 0.2], radius: 34, intensity: 0.8, offset: [0, -6, 33.5] },
+  medieval: { kind: 'neon-pink', color: [1, 0.22, 0.2], radius: 34, intensity: 0.8, offset: [0, -6, 33.5] },
+  cyberpunk: { kind: 'neon-cyan', radius: 40, intensity: 1, offset: [2.5, -6, 33.5] },
+};
 const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
@@ -91,6 +103,8 @@ export class BrotatoGame {
   private carryId: EntityId | null = null;
   private weaponIds: EntityId[] = [];
   private readonly enemyIds = new Map<number, EntityId>();
+  // La luz de los ojos de cada jefe (la sigue a él), por uid
+  private readonly bossLights = new Map<number, number | string>();
   private readonly shotIds = new Map<number, EntityId>();
   private readonly materialIds = new Map<number, EntityId>();
   private fx: WorldFx[] = [];
@@ -146,6 +160,7 @@ export class BrotatoGame {
       const e = reg.enemy(id), look = lookOf(e, this.theme);
       const walk = this.models.walk(look.model, e.id);
       for (const m of walk ? walk.frames : [this.models.model(look.model)]) add(m, true);
+      for (const pose of e.boss ? BOSS_POSES : []) { const m = this.models.pose?.(look.model, pose); if (m) add(m, true); }
     }
     add(this.models.model(`efectos/escupitajo-${this.theme}`), false);
     add(this.models.model(`efectos/material-${this.theme}`), false);
@@ -266,6 +281,7 @@ export class BrotatoGame {
     this.wave = this.run.startWave();
     this.weaponIds = [];
     this.enemyIds.clear();
+    this.bossLights.clear();
     this.shotIds.clear();
     this.materialIds.clear();
     this.carryId = null;
@@ -315,18 +331,33 @@ export class BrotatoGame {
       alive.add(e.uid);
       const look = lookOf(e.def, this.theme);
       const walk = this.models.walk(look.model, e.def.id);
-      const frame = walk ? walk.frames[Math.floor((this.tick * TICK * 1000) / walk.ms + e.uid) % walk.frames.length]! : this.models.model(look.model);
+      let frame = walk ? walk.frames[Math.floor((this.tick * TICK * 1000) / walk.ms + e.uid) % walk.frames.length]! : this.models.model(look.model);
       const eyaw = Math.hypot(e.vx, e.vy) > 1 ? heading((Math.atan2(e.vx, -e.vy) * 180) / Math.PI) : undefined;
+      // El jefe: encorvado y temblando mientras carga, lanzado mientras embiste (boss: mem.state 1 y 2); quieto si no anda
+      let shake = 0;
+      if (e.def.boss) {
+        const st = e.mem.state;
+        const pose = st === BOSS_WINDUP ? this.models.pose?.(look.model, 'carga') : st === BOSS_DASH ? this.models.pose?.(look.model, 'embiste') : null;
+        if (pose) frame = pose;
+        else if (eyaw === undefined) frame = this.models.model(look.model);
+        if (st === BOSS_WINDUP) shake = (this.tick >> 1) % 2 ? 1 : -1;
+      }
       let id = this.enemyIds.get(e.uid);
       if (id === undefined) {
         id = s.entities.add({ model: frame, x: Math.round(e.x), y: Math.round(e.y), z: e.z, facing: eyaw ?? 0, castsShadow: true });
         this.enemyIds.set(e.uid, id);
+        if (e.def.boss) this.bossLights.set(e.uid, s.lights.add({ ...BOSS_EYES[this.theme], x: e.x, y: e.y, z: e.z, follow: { entity: id, offset: BOSS_EYES[this.theme].offset } }));
       } else {
-        s.entities.move(id, Math.round(e.x), Math.round(e.y), e.z, eyaw ?? s.entities.get(id)!.yaw);
+        s.entities.move(id, Math.round(e.x) + shake, Math.round(e.y), e.z, eyaw ?? s.entities.get(id)!.yaw);
         s.entities.setModel(id, frame);
       }
     }
-    for (const [uid, id] of this.enemyIds) if (!alive.has(uid)) { s.entities.remove(id); this.enemyIds.delete(uid); }
+    for (const [uid, id] of this.enemyIds) if (!alive.has(uid)) {
+      s.entities.remove(id);
+      this.enemyIds.delete(uid);
+      const light = this.bossLights.get(uid);
+      if (light !== undefined) { s.lights.remove(light); this.bossLights.delete(uid); }
+    }
     // Disparos: el proyectil del arma que lo lanzó, o el escupitajo del tema
     const flying = new Set<number>();
     for (const pr of this.wave.projectiles) {
