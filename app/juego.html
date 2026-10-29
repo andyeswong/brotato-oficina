@@ -19,8 +19,10 @@
       background: #1a1420e6; color: #ffd08a; border: 1px solid #6a4a2a; border-radius: 4px; font-size: 13px; pointer-events: none; }
     /* El commit de la build, abajo a la izquierda y solo en la portada */
     #version { position: fixed; left: 6px; bottom: 4px; font: 11px monospace; color: #8a86a0; opacity: .7; pointer-events: none; z-index: 5; }
-    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(13,12,18,.82); font-size: 16px; transition: background-color .3s; }
-    /* El letrero de piso sobre la caída: sin velo, para que se vea caer el piso (main.ts, enterSign/leaveSign) */
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(13,12,18,.82); font-size: 16px; }
+    /* El letrero de piso sobre la caída: sin velo, para que se vea caer el piso (main.ts, enterSign/leaveSign). El velo
+       se quita de golpe, sin fundido: fundir el fondo de una capa de pantalla completa sobre el WebGL ponía la caída a
+       30 fps sus primeros 0,4 s en el Flip (3-12 % de cuadros >16,8 ms; sin fundido, 0-2 %, 2026-10-29) */
     #loading.claro { background-color: transparent; }
     /* Entra cayendo a saltos y se balancea mientras está; sale subiendo. Solo transform y opacity: siguen moviéndose
        aunque el horneado bloquee el hilo principal */
