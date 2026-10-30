@@ -8,7 +8,7 @@ export default defineEnemy({
   id: 'jefe',
   name: 'Jefe',   // el papel; el nombre que se enseña va en looks, por mundo
   description: 'Carga y embiste arrastrando lo que pille. Llévalo contra algo duro: se queda aturdido.',
-  hp: 600,
+  hp: 1000,
   hpPerWave: 0,
   contactDamage: 6,
   damagePerWave: 0,
