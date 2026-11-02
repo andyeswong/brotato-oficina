@@ -123,6 +123,7 @@ const loading = document.getElementById('loading')!;
 const sign = document.createElement('canvas');
 let signText = loading.textContent ?? '';
 let signAccent: () => string | undefined = () => undefined;
+let signLeave = 0;              // la salida animada del letrero de piso en curso (leaveSign); setSign la cancela
 loading.textContent = '';
 loading.setAttribute('role', 'status');
 loading.appendChild(sign);
@@ -133,6 +134,9 @@ function paintSign(): void {
   drawSign({ width: UW, height: UH, fill(x, y, w, h, color) { g.fillStyle = color; g.fillRect(x, y, w, h); }, icon: () => false }, signText, { accent: signAccent() });
 }
 function setSign(text: string): void {
+  clearTimeout(signLeave);
+  sign.classList.remove('sale');
+  loading.classList.remove('claro');
   signText = text;
   loading.setAttribute('aria-label', text);
   paintSign();
@@ -341,7 +345,8 @@ function newRun(after?: () => void): void {
     // de la oleada cargaba con todo el arranque (en el Flip, 50-67 ms): el reloj traía el tiempo de la carga y el bucle
     // fijo daba de golpe sus 10 ticks de tope. Mientras se calienta, el reloj sigue al día y la oleada empieza con un dt normal
     warmUntil = performance.now() + WARM_MS;
-    setTimeout(() => { loading.style.display = 'none'; }, WARM_MS);
+    // Salvo si ya está el letrero de piso (?ir= cruza la salida antes de que acabe el calentamiento): ese se va solo
+    setTimeout(() => { if (!sign.classList.contains('entra')) loading.style.display = 'none'; }, WARM_MS);
   }, 30);
 }
 
@@ -384,9 +389,8 @@ const fallGate = new FallGate(bakeBackground, finishFall);
 // Ya cayó todo el piso: el giro actual de golpe, detrás del letrero (fallgate.ts)
 function finishFall(done: (pending: number) => void): void {
   floorBaking = true;
-  const text = signText;
-  setSign(`Piso ${game!.run.floor + 1}`);
-  loading.style.display = 'flex';
+  // El letrero ya está desde que se cruzó la salida (changeFloor); si no, sale ahora
+  if (!sign.classList.contains('entra')) enterSign(`Piso ${game!.run.floor + 1}`);
   setTimeout(() => {
     if (!game) { floorBaking = false; return; }
     // Lo que el budget tuviera del rehorneado se tira: el horneado nuevo ya lo incluye
@@ -402,8 +406,24 @@ function finishFall(done: (pending: number) => void): void {
     // Los cuadros de calentamiento también aquí: las piezas de la caída pueden haber desalojado del atlas lo precalentado.
     // Sin ellos, en la tapa del Flip el primer segundo de la oleada perdía 1-2 cuadros (2026-10-27)
     warmUntil = performance.now() + WARM_MS;
-    setTimeout(() => { loading.style.display = 'none'; setSign(text); }, WARM_MS);
+    setTimeout(leaveSign, WARM_MS);
   }, 30);
+}
+
+// El letrero de piso (Andrés, 2026-10-28): uno solo por piso. Entra animado al cruzar la salida, se queda sin velo
+// encima de la caída y se va cuando el piso ya está horneado. Antes salía dos veces: al cruzar y al acabar la caída
+const SIGN_OUT_MS = 240;        // lo que dura sign-out (juego.html)
+let signBack = '';              // el texto que había antes del letrero de piso, para devolverlo al irse
+function enterSign(text: string): void {
+  signBack = signText;
+  setSign(text);
+  sign.classList.add('entra');
+  loading.style.display = 'flex';
+}
+function leaveSign(): void {
+  sign.classList.remove('entra');
+  sign.classList.add('sale');
+  signLeave = window.setTimeout(() => { loading.style.display = 'none'; sign.classList.remove('sale'); setSign(signBack); }, SIGN_OUT_MS);
 }
 
 // La partida cruzó la salida y está en un piso nuevo: el letrero con el número, el horneado y, al acabar, la oleada
@@ -411,17 +431,20 @@ let floorBaking = false;
 function changeFloor(): void {
   if (!game || floorBaking) return;
   floorBaking = true;
-  const text = signText;
-  setSign(`Piso ${game.run.floor + 1}`);
-  loading.style.display = 'flex';
+  enterSign(`Piso ${game.run.floor + 1}`);
   setTimeout(() => {
     if (!game) { floorBaking = false; return; }
     // Sin caída, la oleada ya puede empezar; con ella, cuando acabe (fallGate.frame)
-    if (bakeFloor()) game.floorReady();
+    const ready = bakeFloor();
+    if (ready) game.floorReady();
     floorBaking = false;
-    // Unos cuadros de calentamiento detrás del letrero, como al empezar
+    // Unos cuadros de calentamiento detrás del letrero, como al empezar. Con caída el letrero se queda sin velo hasta
+    // que acabe (finishFall); si ya se fue (?ir=, que no espera), no se toca
     warmUntil = performance.now() + WARM_MS;
-    setTimeout(() => { loading.style.display = 'none'; setSign(text); }, WARM_MS);
+    setTimeout(() => {
+      if (ready) leaveSign();
+      else if (sign.classList.contains('entra')) loading.classList.add('claro');
+    }, WARM_MS);
   }, 30);
 }
 
@@ -460,14 +483,20 @@ let turning = false;
 function turn(step: 1 | -1): void {
   if (!game || !cur || turning || !fallGate.canTurn(game)) return;
   const next = turnQuarter(quarter, step);
-  const go = (t: TurnView) => { quarter = next; cur = t; baked = t.baked; };
+  // body[data-giro]: el giro a la vista, para comprobar desde fuera que girar con el letrero encima sí gira
+  const go = (t: TurnView) => { quarter = next; cur = t; baked = t.baked; document.body.dataset.giro = String(next); };
   collectViews();
   const have = views.get(next);
   if (have) { go(have); return; }
   turning = true;
   const text = signText;
-  setSign('Girando…');
-  loading.style.display = 'flex';
+  // Con el letrero de piso a la vista (entrando, quieto o saliendo) el giro se hace debajo de él, sin cambiarlo: si no,
+  // el piso perdía su salida y el letrero salía dos veces
+  const floorSign = sign.classList.contains('entra') || sign.classList.contains('sale');
+  if (!floorSign) {
+    setSign('Girando…');
+    loading.style.display = 'flex';
+  }
   setTimeout(() => {
     // Si estaba a medias en segundo plano, se termina de golpe; si no, se hornea entero
     const p = pending.get(next);
@@ -477,8 +506,10 @@ function turn(step: 1 | -1): void {
       bgJobs = bgJobs.filter((j) => j !== p.bg);
       go(keep(next, p.prep.result()!, t0, 'terminado al girar'));
     } else go(bakeView(next));
-    loading.style.display = 'none';
-    setSign(text);
+    if (!floorSign) {
+      loading.style.display = 'none';
+      setSign(text);
+    }
     turning = false;
   }, 30);
 }
