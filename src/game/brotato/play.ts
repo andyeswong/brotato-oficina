@@ -9,7 +9,7 @@ import { TICK } from '@voxpix/world/state';
 import type { Registry } from './registry/validate';
 import type { LevelModule, ThemeId } from './registry/schemas';
 import { Run } from './sim/Run';
-import type { World as Wave, WorldFx } from './sim/World';
+import { FIRE_ANIM_TIME, type World as Wave, type WorldFx } from './sim/World';
 import { pickLevel } from './sim/arena';
 import { lookOf } from './looks';
 import { STRUCTURE_KG } from './sim/furniture';
@@ -20,6 +20,8 @@ import { turn, type CarryConfig, type TickInput } from '@voxpix/runtime/runtime'
 export interface Models {
   model(ref: string): VoxelSource;
   walk(ref: string, role: string): { frames: VoxelSource[]; ms: number } | null;
+  // Una pose con nombre del modelo (las armas: 'anim0'..'anim3'; el jefe: 'carga', 'embiste'), si la tiene
+  pose?(ref: string, pose: string): VoxelSource | null;
 }
 export interface PlayerLooks {
   model: VoxelSource;
@@ -44,7 +46,17 @@ export function placeAtShop(p: { x: number; y: number }, shop: { x: number; y: n
   p.y = shop.y + (dy / len) * (shop.reach - 1);
 }
 
-const WEAPON_Z = 5;       // a qué altura sobre los pies flotan las armas
+const WEAPON_Z = 5;
+// Al disparar el arma retrocede RECOIL_VOX y vuelve en FIRE_ANIM_TIME; en una estocada sale hacia delante LUNGE_VOX
+// (World: fireT y lunge, que la vista no pintaba)
+const RECOIL_VOX = 2;
+// Las armas flotan (Andrés, 2026-10-29: "deben verse flotar"): suben y bajan BOB_VOX en BOB_S segundos, cada una
+// desfasada para que no vayan al paso. Solo la vista: la simulación no sabe de alturas
+export const BOB_VOX = 2;
+const BOB_S = 1.6;
+// Lo que flota el arma de la casilla `slot` en el tick `tick`, en vóxeles enteros: lo usan el arma y su fogonazo
+export const weaponBob = (tick: number, slot: number) => Math.round(Math.sin((tick * TICK * 2 * Math.PI) / BOB_S + slot * 2.1) * BOB_VOX);
+const LUNGE_VOX = 5;       // a qué altura sobre los pies flotan las armas
 const SHOT_Z = 7;         // y vuelan los disparos
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
 const FX_KEEP = 256;
@@ -90,6 +102,8 @@ export class BrotatoGame {
   private moving = false;
   private carryId: EntityId | null = null;
   private weaponIds: EntityId[] = [];
+  // De cada arma puesta: su modelo quieto y sus cuatro poses de disparo (<id>-anim0..3, MAIA), o null si no las tiene
+  private weaponLooks: Array<{ base: VoxelSource; anim: VoxelSource[] | null }> = [];
   private readonly enemyIds = new Map<number, EntityId>();
   private readonly shotIds = new Map<number, EntityId>();
   private readonly materialIds = new Map<number, EntityId>();
@@ -139,6 +153,9 @@ export class BrotatoGame {
     for (const w of reg.weapons()) {
       const look = lookOf(w, this.theme);
       add(this.models.model(look.model), false);
+      // De las poses de disparo solo la primera: las otras tres se suben al disparar (MAIA, el atlas de 1024)
+      const first = this.models.pose?.(look.model, 'anim0');
+      if (first) add(first, false);
       if (look.projectile) add(this.models.model(look.projectile), false);
     }
     const enemies = new Set(this.run.level.waves.flatMap((id) => reg.wave(id).groups.map((g) => g.enemy)));
@@ -237,6 +254,8 @@ export class BrotatoGame {
   private collectFx(): void {
     const list = this.wave.fx;
     if (!list.length) return;
+    // El fogonazo, a la altura a la que flota su arma en este tick (la misma que le pone sync)
+    for (const f of list) if (f.type === 'muzzle') f.z += weaponBob(this.tick, f.slot);
     this.fx.push(...list);
     list.length = 0;
     if (this.fx.length > FX_KEEP) this.fx.splice(0, this.fx.length - FX_KEEP);
@@ -288,8 +307,13 @@ export class BrotatoGame {
   // Las armas cambian entre oleadas (compras, fusiones): se rehacen al empezar cada una
   private placeWeapons(): void {
     for (const id of this.weaponIds) this.state.entities.remove(id);
-    this.weaponIds = this.wave.weapons.map((w) =>
-      this.state.entities.add({ model: this.models.model(lookOf(w.def, this.theme).model), x: Math.round(w.x), y: Math.round(w.y), z: 0, facing: 0, castsShadow: false }));
+    this.weaponLooks = this.wave.weapons.map((w) => {
+      const ref = lookOf(w.def, this.theme).model;
+      const anim = [0, 1, 2, 3].map((k) => this.models.pose?.(ref, `anim${k}`) ?? null);
+      return { base: this.models.model(ref), anim: anim.every((m) => m) ? (anim as VoxelSource[]) : null };
+    });
+    this.weaponIds = this.weaponLooks.map((l, i) =>
+      this.state.entities.add({ model: l.base, x: Math.round(this.wave.weapons[i]!.x), y: Math.round(this.wave.weapons[i]!.y), z: 0, facing: 0, castsShadow: false }));
   }
 
   private sync(): void {
@@ -307,7 +331,18 @@ export class BrotatoGame {
     // Armas: en su sitio de la órbita, apuntando (el modelo apunta a -y; el ángulo de la simulación es atan2(y, x))
     this.wave.weapons.forEach((w, i) => {
       const id = this.weaponIds[i];
-      if (id !== undefined) s.entities.move(id, Math.round(w.x), Math.round(w.y), p.z + WEAPON_Z, heading((w.angle * 180) / Math.PI + 90));
+      if (id === undefined) return;
+      // Con poses, el disparo es la pose (anim0..3 a lo largo de FIRE_ANIM_TIME; el retroceso y la estocada ya van en
+      // ella); sin poses, el arma se desplaza: atrás al disparar, adelante en la estocada
+      const look = this.weaponLooks[i];
+      const firing = w.fireT > 0;
+      let d = 0;
+      if (look?.anim) {
+        const k = Math.min(3, Math.floor((1 - w.fireT / FIRE_ANIM_TIME) * 4));
+        s.entities.setModel(id, firing ? look.anim[k]! : look.base);
+      } else d = w.lunge > 0 ? w.lunge * LUNGE_VOX : -(Math.max(0, w.fireT) / FIRE_ANIM_TIME) * RECOIL_VOX;
+      const x = w.x + Math.cos(w.angle) * d, y = w.y + Math.sin(w.angle) * d;
+      s.entities.move(id, Math.round(x), Math.round(y), p.z + WEAPON_Z + weaponBob(this.tick, w.slot), heading((w.angle * 180) / Math.PI + 90));
     });
     // Enemigos: el modelo del tema y su cuadro de andar; cada uno con su desfase, para que no marchen al paso
     const alive = new Set<number>();
