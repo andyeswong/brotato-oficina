@@ -803,5 +803,12 @@ if (q.has('seed')) newRun(() => {
   if (!target) return;
   const r = skipTo(game!, target);
   if (!r.reached) console.warn(`?ir=${target} no llegó: ${r.phase} (semilla ${seed}, ${level.id})`);
+  // Para medir la pared que se desmorona dentro de cuadro (?ir=salida&cerca): MAIA a un 15 % del camino de la salida al
+  // centro, con la cámara encima; si no, se queda en la tienda y la caída se dibuja fuera de la vista
+  const exit = game!.run.arena.exit;
+  if (q.has('cerca') && target === 'salida' && exit) {
+    const w = game!.run.arena.world, p = game!.current.player;
+    Object.assign(p, { x: exit.x + (w.width / 2 - exit.x) * 0.15, y: exit.y + (w.depth / 2 - exit.y) * 0.15 });
+  }
 });
 next(loop);

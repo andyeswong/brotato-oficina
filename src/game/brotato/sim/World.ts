@@ -282,6 +282,7 @@ export class World {
     this.deps.arena.stepObjects();
     if (this.status === 'exit') {
       this.time += dt;
+      this.deps.arena.stepExit();
       this.movePlayer(dt, move, dash);
       if (this.deps.arena.atExit(this.player)) this.status = 'left';
       return;
