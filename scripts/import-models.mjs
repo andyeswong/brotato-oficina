@@ -36,12 +36,18 @@ try {
     for (const file of readdirSync(here).filter((f) => f.endsWith('.json')).sort()) {
       const id = basename(file, '.json');
       const out = check ? join(tmp, `${dir}-${file}`) : join(here, file);
+      // --strict: un sprite que dibuja fuera de su lienzo pierde vóxeles sin avisar (pxl los descarta), así que es un
+      // error y no un aviso. La CLI sale entonces con 2, que no es "esta fuente no tiene la pila": se para aquí
       const ok = sources.filter((src) => {
         try {
           execFileSync('npx', ['tsx', join(VOXPIX, 'src/cli/main.ts'),
-            'import-pxl', src, '--stack', stackOf(dir, id), out], { cwd: here, stdio: ['ignore', 'ignore', sources.length > 1 ? 'ignore' : 'inherit'] });
+            'import-pxl', src, '--stack', stackOf(dir, id), out, '--strict'], { cwd: here, stdio: ['ignore', 'ignore', 'pipe'] });
           return true;
-        } catch { return false; }
+        } catch (e) {
+          if (e.status === 2) throw new Error(`${dir}/${src}: dibuja fuera del lienzo\n${e.stderr}`);
+          if (sources.length === 1) process.stderr.write(e.stderr ?? '');
+          return false;
+        }
       });
       if (ok.length !== 1) throw new Error(`${dir}/${file}: la pila ${stackOf(dir, id)} sale de ${ok.length} fuentes (${ok.join(', ') || 'ninguna'})`);
       n++;

@@ -104,36 +104,29 @@ const WEAPONS = {
 }
 
 // 64 y no 28: con 28 (centro 14) todo lo que pasaba de 13 vóxeles por delante del agarre se recortaba sin avisar;
-// el rifle perdía 9 y las hojas 6 (MAIA, 2026-10-29). Cambiar el lienzo no mueve el modelo: va centrado en MID
-const GRID = 64, MID = 32
+// el rifle perdía 9 y las hojas 6 (MAIA, 2026-10-29). Cambiar el lienzo no mueve el modelo: va centrado en el lienzo
+const GRID = 64
 
+// Los vóxeles se modelan con el global `vox` de VoxPix (mapas "x,y,z" -> tecla, ver src/pxl/voxmap.ts)
 function layers(id) {
   const def = WEAPONS[id]
   const [gx, gy] = def.grip
-  const vox = new Map()
+  const m = new Map()
   def.rows.forEach((row, r) => [...row].forEach((k, c) => {
     if (k === ".") return
     // lat: columnas laterales por tecla (un doble cañón deja el hueco del medio); si no, de -half a half
     const half = def.half[k] ?? def.half.default
     const lat = def.lat?.[k] ?? Array.from({ length: 2 * half + 1 }, (_, i) => i - half)
-    for (const u of lat) vox.set(`${u},${-(c - gx)},${gy - r}`, k)
+    for (const u of lat) vox.set(m, u, -(c - gx), gy - r, k)
   }))
-  const zs = [...vox.keys()].map((s) => Number(s.split(",")[2]))
-  return { vox, z0: Math.min(...zs), z1: Math.max(...zs) }
+  return { vox: m, z0: vox.bounds(m).minZ }
 }
 
-// Las capas van de z0 a z1 y se nombran desde 00 (el importador apila desde z = 0): en el modelo el vóxel más bajo
-// queda en z = 0 y el agarre, a la altura -z0.
+// Las capas se nombran desde 00 (el importador apila desde z = 0): en el modelo el vóxel más bajo queda en z = 0 y el
+// agarre, a la altura -z0. Por eso el mapa baja -z0 antes de cortarlo en capas.
 for (const id of Object.keys(WEAPONS)) {
-  const { vox, z0, z1 } = layers(id)
-  for (let z = z0; z <= z1; z++) {
-    sprite(`${id}_z${String(z - z0).padStart(2, "0")}`, { w: GRID, h: GRID }, (c) => {
-      for (const [key, k] of vox) {
-        const [x, y, zz] = key.split(",").map(Number)
-        if (zz === z) c.px(x + MID, MID - y, k)
-      }
-    })
-  }
+  const { vox: m, z0 } = layers(id)
+  vox.layers(id, vox.shift(m, 0, 0, -z0), { w: GRID, h: GRID })
 }
 
 // ---- Poses de animación (MAIA, 2026-10-29) ----
@@ -189,28 +182,20 @@ function lightRamp(vox) {
   return best
 }
 
-function pose(vox, p, ramp) {
-  const th = ((p.yaw ?? 0) * Math.PI) / 180, cos = Math.cos(th), sin = Math.sin(th)
-  let R = 0
-  for (const key of vox.keys()) { const [u, y] = key.split(",").map(Number); R = Math.max(R, Math.ceil(Math.hypot(u, y)) + 1) }
-  const zs = [...new Set([...vox.keys()].map((s) => Number(s.split(",")[2])))]
-  const out = new Map()
-  // Girar (u, y) un ángulo th alrededor del agarre con muestreo inverso, para que no queden agujeros
-  for (const z of zs) for (let u = -R; u <= R; u++) for (let y = -R; y <= R; y++) {
-    const su = Math.round(u * cos + y * sin), sy = Math.round(-u * sin + y * cos)
-    let k = vox.get(`${su},${sy},${z}`)
-    if (!k) continue
-    if (p.glow) for (const r of GLOWS) { const i = r.indexOf(k); if (i >= 0 && i < r.length - 1) { k = r[i + 1]; break } }
-    out.set(`${u},${y + (p.back ?? 0)},${z + (p.lift ?? 0)}`, k)
-  }
-  // La boca: el vóxel más adelantado (en la fila de en medio si hay varios)
+function pose(m, p, ramp) {
+  // Girar en horizontal alrededor del agarre (muestreo inverso, sin agujeros), aclarar la energía y mover
+  let out = p.yaw ? vox.rotate(m, p.yaw, { axis: "z" }) : m
+  if (p.glow) out = vox.toneUp(out, GLOWS)
+  out = vox.shift(out, 0, p.back ?? 0, p.lift ?? 0)
+  // La boca: el vóxel más adelantado; si hay varios, el del medio (menor |u|), el más alto y el de la izquierda
   let tip = null
   for (const key of out.keys()) {
     const [u, y, z] = key.split(",").map(Number)
-    if (!tip || y < tip.y || (y === tip.y && Math.abs(u) < Math.abs(tip.u))) tip = { u, y, z }
+    if (!tip || y < tip.y || (y === tip.y && (Math.abs(u) < Math.abs(tip.u) ||
+      (Math.abs(u) === Math.abs(tip.u) && (z > tip.z || (z === tip.z && u < tip.u)))))) tip = { u, y, z }
   }
   const [dim, mid, hot] = [ramp[0], ramp[1], ramp[ramp.length - 1]]
-  const put = (u, y, z, k) => { if (!out.has(`${u},${y},${z}`)) out.set(`${u},${y},${z}`, k) }
+  const put = (u, y, z, k) => { if (!vox.get(out, u, y, z)) vox.set(out, u, y, z, k) }
   if (p.flash && tip) {
     // Fogonazo: núcleo blanco de su luz pegado a la boca, una cruz alrededor y las puntas en el tono oscuro
     const n = p.flash, len = p.long ? n + 2 : n
@@ -230,20 +215,9 @@ function pose(vox, p, ramp) {
   return out
 }
 
+// Las capas de cada pose arrancan en la z del arma quieta (ver POSES)
 for (const [id, kind] of Object.entries(ANIM)) {
-  const { vox, z0 } = layers(id)
-  const ramp = lightRamp(vox)
-  POSES[kind].forEach((p, i) => {
-    const out = pose(vox, p, ramp)
-    const zs = [...out.keys()].map((s) => Number(s.split(",")[2]))
-    const z1 = Math.max(...zs)
-    for (let z = z0; z <= z1; z++) {
-      sprite(`${id}-anim${i}_z${String(z - z0).padStart(2, "0")}`, { w: GRID, h: GRID }, (c) => {
-        for (const [key, k] of out) {
-          const [x, y, zz] = key.split(",").map(Number)
-          if (zz === z) c.px(x + MID, MID - y, k)
-        }
-      })
-    }
-  })
+  const { vox: m, z0 } = layers(id)
+  const ramp = lightRamp(m)
+  POSES[kind].forEach((p, i) => vox.layers(`${id}-anim${i}`, vox.shift(pose(m, p, ramp), 0, 0, -z0), { w: GRID, h: GRID }))
 }

@@ -17,3 +17,9 @@ node scripts/import-models.mjs items efectos   # solo esas carpetas
 
 Usa la CLI de VoxPix instalada (`node_modules/voxpix`, el commit fijado en `package.json`). Para probar con otro VoxPix,
 por ejemplo uno local con cambios sin publicar: `VOXPIX=/ruta/a/voxpix bun run models:check`.
+
+Se importa con `--strict`: si un sprite dibuja fuera de su lienzo, pxl descarta esos píxeles sin avisar y el modelo
+pierde vóxeles, así que el script se para y dice qué sprite y dónde.
+
+Las fuentes pueden modelar con el global `vox` que pone VoxPix al importar (mapas `"x,y,z"` -> tecla con `set`, `shift`,
+`rotate`, `toneUp`, `layers`...; ver `src/pxl/voxmap.ts` de VoxPix). `armas-futuro/armas_capas.px.js` es el ejemplo.
