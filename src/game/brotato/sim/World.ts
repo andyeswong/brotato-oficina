@@ -20,6 +20,13 @@ export const FIRE_ANIM_TIME = 0.15;           // cuánto se ve la animación de 
 const MAGNET_SPEED_FACTOR = 3;         // los materiales vuelan a 3× la velocidad base del jugador
 const LIFE_STEAL_COOLDOWN = 0.1;       // como mucho una curación por robo de vida cada 0,1 s
 export const OVERTIME_MAX = 30;
+// Con un jefe vivo la oleada no se acaba sola: si no muere en este tiempo tras el final, la partida se pierde por
+// tiempo (MAIA, 2026-10-29: una partida que no acaba rompe la curva y ?ir=fin). La oleada 10 dura 60 s: 2 min en total
+export const BOSS_OVERTIME = 60;
+// Los refuerzos que llama el jefe vivos a la vez, como mucho (dos tandas de 3). Sin tope, en la fase 3 se juntaban
+// junto a MAIA: en el segundo 45 de la oleada 10, 232 enemigos contra 204 sin jefe, y en el Flip la oleada caía a
+// 30 fps casi 2 s (2026-10-29). Los que no caben no se llaman
+export const SUMMON_MAX = 6;
 // El dash (meta/upgrades.ts, Esprint): un tramo corto y rápido en la dirección en la que se anda (o la última), con
 // invulnerabilidad mientras dura y un poco después. Las cargas se recuperan de una en una
 export const DASH_TIME = 0.15;          // segundos que dura
@@ -73,6 +80,7 @@ export interface EnemyState extends EnemySelf {
   readonly maxHp: number;
   readonly contactDamage: number;
   alive: boolean;
+  blocked: boolean;
 }
 
 export interface WeaponState {
@@ -245,6 +253,25 @@ export class World {
     return this.deps.wave.duration;
   }
 
+  // El jefe vivo de la oleada (para su barra de vida), o null
+  get boss(): EnemyState | null {
+    return this.enemies.find((e) => e.def.boss && e.alive) ?? null;
+  }
+
+  // Se perdió por tiempo (BOSS_OVERTIME), no por vida: ni immortal ni la guarda del salto la deshacen
+  timedOut = false;
+
+  // Solo para medir (?jefecolumna): a dónde van los enemigos en vez de a MAIA (la columna más cercana al jefe)
+  lure: Point | null = null;
+
+  // Un enemigo llamado por otro (el jefe), ya, junto a (x, y) donde quepa; nada si ya hay SUMMON_MAX llamados vivos
+  summon(enemy: string, x: number, y: number): void {
+    if (this.enemies.filter((e) => e.mem.summoned).length >= SUMMON_MAX) return;
+    const p = this.free({ x, y });
+    this.addEnemy(this.deps.registry.enemy(enemy), p.x, p.y);
+    this.enemies[this.enemies.length - 1]!.mem.summoned = 1;
+  }
+
   get timeLeft(): number {
     return Math.max(0, this.deps.wave.duration - this.time);
   }
@@ -311,7 +338,14 @@ export class World {
     // queda limpia cuando no queda ninguno. Con OVERTIME_MAX de prórroga, los que queden se van (sin botín): un enemigo
     // encajado donde nadie llega no puede dejar la partida sin acabar
     if (this.status === 'playing' && this.time >= this.deps.wave.duration) this.telegraphs.length = 0;
-    if (this.status === 'playing' && this.time >= this.deps.wave.duration + OVERTIME_MAX) this.enemies.length = 0;
+    // El jefe no se va: lo que decide es BOSS_OVERTIME
+    if (this.status === 'playing' && this.time >= this.deps.wave.duration + OVERTIME_MAX) {
+      for (let i = this.enemies.length - 1; i >= 0; i--) if (!this.enemies[i]!.def.boss) this.enemies.splice(i, 1);
+    }
+    if (this.status === 'playing' && this.time >= this.deps.wave.duration + BOSS_OVERTIME && this.boss) {
+      this.status = 'dead';
+      this.timedOut = true;
+    }
     if (this.status === 'playing' && this.time >= this.deps.wave.duration && this.enemies.length === 0) {
       this.status = this.deps.final ? 'cleared' : 'open';
       // Lo que quedó en el suelo se recoge solo al acabar la oleada
@@ -455,6 +489,8 @@ export class World {
       speed: def.speed,
       mem: {},
       push: 0,
+      smash: false,
+      blocked: false,
       hp: maxHp,
       maxHp,
       contactDamage: Math.round(def.contactDamage + def.damagePerWave * w * (this.deps.damageScale ?? 1)),
@@ -498,9 +534,12 @@ export class World {
         if (d2 >= min * min) continue;
         const d = Math.sqrt(d2) || 0.01;
         const k = ((min - d) / 2) * 0.5;
+        // El jefe no se deja apartar: pesa demasiado para los pequeños, que se apartan el doble. Si no, embistiendo
+        // contra el corro de MAIA lo frenaban y se aturdía como contra una pared
+        const ke = o.def.boss ? 2 * k : e.def.boss ? 0 : k, ko = e.def.boss ? 2 * k : o.def.boss ? 0 : k;
         const pe = of(e), po = of(o);
-        pe.x -= (dx / d) * k; pe.y -= (dy / d) * k;
-        po.x += (dx / d) * k; po.y += (dy / d) * k;
+        pe.x -= (dx / d) * ke; pe.y -= (dy / d) * ke;
+        po.x += (dx / d) * ko; po.y += (dy / d) * ko;
       }
     }
 
@@ -510,7 +549,14 @@ export class World {
       const p = push.get(e.uid);
       // El que empuja (el embestidor embistiendo) arrastra el mueble que tenga delante, como MAIA, a su velocidad
       const shove = e.push > 0 ? { force: e.push, dt, maxSpeed: Math.hypot(e.vx, e.vy) } : undefined;
-      arena.move(e, e.def.radius, e.vx * dt * slow + (p?.x ?? 0), e.vy * dt * slow + (p?.y ?? 0), shove);
+      const dx = e.vx * dt * slow + (p?.x ?? 0), dy = e.vy * dt * slow + (p?.y ?? 0);
+      // El jefe embistiendo rompe la columna que tenga delante, y eso lo para en seco como una pared
+      const smashed = e.smash && (dx !== 0 || dy !== 0) && arena.smashAhead(e, e.def.radius, dx, dy);
+      const x0 = e.x, y0 = e.y;
+      arena.move(e, e.def.radius, dx, dy, shove);
+      // Frenado en seco: quería avanzar y no hizo ni un 30 % (pared, o un mueble que no consigue arrastrar)
+      const want = Math.hypot(e.vx, e.vy) * dt * slow;
+      e.blocked = smashed || (want > 0.3 && Math.hypot(e.x - x0, e.y - y0) < want * 0.3);
     }
   }
 
@@ -770,11 +816,19 @@ class WorldEnemyApi implements EnemyApi {
   constructor(private readonly world: World, readonly rng: () => number) {}
 
   get player(): Point {
-    return this.world.bodyCenter;
+    return this.world.lure ?? this.world.bodyCenter;
   }
 
   get time(): number {
     return this.world.time;
+  }
+
+  summon(self: EnemySelf, enemy: string, count: number): void {
+    const e = self as EnemyState;
+    for (let k = 0; k < count; k++) {
+      const a = (k / count) * Math.PI * 2, d = e.def.radius + 10;
+      this.world.summon(enemy, e.x + Math.cos(a) * d, e.y + Math.sin(a) * d);
+    }
   }
 
   shoot(self: EnemySelf, angle: number, speed: number, opts: { radius?: number; range?: number } = {}): void {

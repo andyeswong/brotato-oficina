@@ -10,6 +10,7 @@ import { FONT_SIZE, drawText, textWidth } from './font';
 import type { Painter, Zone } from './paint';
 import { ACCENTS, ICON, UI, bar, button, icon, panel, shadowText } from './theme';
 import { DASH_RECHARGE } from '../sim/World';
+import { lookOf } from '../looks';
 
 export type HudAction = { type: 'enter' } | { type: 'turn'; delta: 1 | -1 } | { type: 'dash' };
 
@@ -22,7 +23,8 @@ export function hudText(game: BrotatoGame): string {
   const state = w.status === 'exit' ? `sube al piso ${run.waveNumber}: ve a la salida` : w.status === 'open' ? `ronda superada: ve ${SHOP_PROPS[game.theme]}${w.atShop ? ' y pulsa F' : ''}`
     : w.overtime ? `quedan ${w.enemies.length}` : `${Math.ceil(w.timeLeft)} s`;
   const dash = w.dash.max > 0 ? ` · dash ${w.dash.charges}/${w.dash.max}` : '';
-  return `Oleada ${run.waveNumber}/${run.totalWaves} · ${state} · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}${dash}`;
+  const boss = w.boss ? ` · ${lookOf(w.boss.def, game.theme).name} ${Math.ceil(w.boss.hp)}/${w.boss.maxHp}` : '';
+  return `Oleada ${run.waveNumber}/${run.totalWaves} · ${state} · vida ${w.player.hp}/${w.player.maxHp} · materiales ${run.materials} · bajas ${run.kills}${dash}${boss}`;
 }
 
 const SLOT_W = 18, SLOT_H = 12;   // casilla de un arma en el HUD
@@ -69,6 +71,15 @@ export function drawHud(p: Painter, game: BrotatoGame, opts: { touch?: boolean }
   shadowText(p, tx, pad + 1, waveLabel, accent, { align });
   if (w.overtime) shadowText(p, tx, pad + 1 + FONT_SIZE + 2, `quedan ${w.enemies.length}`, UI.bad, { align });
   else if (w.status !== 'open' && w.status !== 'exit') shadowText(p, tx, pad + 1 + FONT_SIZE, String(Math.max(0, Math.ceil(w.timeLeft))), UI.text, { scale: 2, align });
+
+  // El jefe: su nombre y su barra de vida, abajo en el centro mientras viva (Andrés, 2026-10-29). Estrecha lo justo
+  // para no pisar los botones táctiles de la esquina de abajo a la derecha (48 px con su margen)
+  const boss = w.boss;
+  if (boss) {
+    const bw = Math.min(150, W - 2 * (pad + 48)), bx = cx - Math.floor(bw / 2), barY = p.height - pad - 8;
+    shadowText(p, cx, barY - FONT_SIZE - 1, lookOf(boss.def, game.theme).name, UI.bad, { align: 'center' });
+    bar(p, bx, barY, bw, 7, boss.hp / boss.maxHp, UI.bad, UI.hpBack);
+  }
 
   // Armas en sus casillas: a la derecha, o bajo la vida si no caben
   const n = run.weapons.length;

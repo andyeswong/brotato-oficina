@@ -246,6 +246,9 @@ export const enemySchema = z.strictObject({
     .default({ materials: 1, consumableChance: 0 }),
   height: z.number().positive().default(14),   // alto del cuerpo: dónde salen los números de daño (vista)
   looks: looksSchema,                          // su aspecto en cada mundo (el de la oficina, obligatorio)
+  // Jefe (el del piso 10): la prórroga no lo quita, la oleada no se limpia mientras viva, y si no muere a tiempo
+  // (BOSS_OVERTIME tras el final de la oleada) la partida se pierde por tiempo. La vista enseña su barra de vida
+  boss: z.boolean().default(false),
 });
 
 const shopEntrySchema = z.strictObject({

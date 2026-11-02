@@ -94,16 +94,19 @@ function model(ref: string): Model {
 // para el aspecto de cualquier mundo
 const RIGS: Record<string, typeof RIG_GRAPA> = { perseguidor: RIG_GRAPA, embestidor: RIG_CLIP, escupidor: RIG_TAZA };
 const walks = new Map<string, { frames: VoxelSource[]; ms: number } | null>();
-// Las poses con nombre de un modelo: el fichero <ref>-<pose> (las armas: anim0..3, MAIA)
+// Los modelos con su paso dibujado en la fuente (<ref>-andar0..3, el jefe): esos cuadros, a 150 ms
+const AUTHORED_WALK_MS = 150;
 const has = (ref: string) => !!FILES[`../../../models/brotato/${ref}.json`];
 const models: Models = {
   model,
+  // Las poses con nombre de un modelo: el fichero <ref>-<pose> (las armas: anim0..3, MAIA; el jefe: carga, embiste)
   pose: (ref, pose) => (has(`${ref}-${pose}`) ? model(`${ref}-${pose}`) : null),
   walk(ref, role) {
     const key = `${ref}|${role}`;
     if (!walks.has(key)) {
       const rig = RIGS[role];
-      walks.set(key, rig ? { frames: rigFrames(model(ref), rig), ms: rig.frameMs } : null);
+      walks.set(key, has(`${ref}-andar0`) ? { frames: [0, 1, 2, 3].map((k) => model(`${ref}-andar${k}`)), ms: AUTHORED_WALK_MS }
+        : rig ? { frames: rigFrames(model(ref), rig), ms: rig.frameMs } : null);
     }
     return walks.get(key)!;
   },
@@ -331,7 +334,7 @@ function newRun(after?: () => void): void {
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
-        shake: Number(q.get('muebles') ?? 0) || undefined });
+        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna') });
     quarter = 0;
     runStart = performance.now();
     bakeFloor();
@@ -559,6 +562,14 @@ function frame(time: number): void {
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
   compositor.frame(rs, b, viewOptions(vx, vy, time));
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
+  // El atlas de sprites (MAX_SPRITE_LAYERS = 1024) y las entidades del mundo: lo más que se puede pedir en un cuadro
+  // GpuPath (VoxPix) envuelve al compositor de la GPU en un campo privado: se lee en tiempo de ejecución, solo para medir
+  document.body.dataset.sprites = String((compositor as unknown as { gpu?: { spriteCount?: number } | null }).gpu?.spriteCount ?? -1);
+  document.body.dataset.entidades = String(game.state.entities.length);
+  // Las columnas en pie (estructura, > 500 kg): el jefe las rompe al embestirlas
+  let columns = 0;
+  for (const o of game.state.objects) if (o.mass > 500) columns++;
+  document.body.dataset.columnas = String(columns);
   document.body.dataset.despiertos = String(game.state.objects.awake.length);   // para medir los muebles (?muebles=N)
   document.body.dataset.caida = game.run.arena.fall ? (game.run.arena.falling ? 'cae' : 'publica') : '';   // para medir la caída del piso
   paintFx(vx, vy);

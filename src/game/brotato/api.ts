@@ -54,6 +54,13 @@ export interface EnemySelf {
   // Con cuánta fuerza (N) empuja los muebles en este paso; 0, no empuja. Lo pone su comportamiento: el embestidor
   // mientras embiste (Andrés, 2026-10-29: "solo el embestidor"); los demás los rodean
   push: number;
+  readonly hp: number;
+  readonly maxHp: number;
+  // El paso anterior lo frenó algo en seco: una pared, una columna (que rompió) o un mueble que no pudo arrastrar. Lo
+  // pone el mundo después de moverlo
+  readonly blocked: boolean;
+  // Rompe la estructura (columnas) que tenga delante en este paso; lo pone su comportamiento (el jefe embistiendo)
+  smash: boolean;
 }
 
 export interface EnemyApi {
@@ -62,6 +69,8 @@ export interface EnemyApi {
   rng(): number;
   // Dispara un proyectil enemigo desde el centro del cuerpo de self, con el daño de contacto del enemigo
   shoot(self: EnemySelf, angle: number, speed: number, opts?: { radius?: number; range?: number }): void;
+  // Llama a `count` enemigos del módulo `enemy` alrededor de self, ya (sin aviso)
+  summon(self: EnemySelf, enemy: string, count: number): void;
 }
 
 // ---------- Comportamientos de arma ----------
