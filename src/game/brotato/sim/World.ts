@@ -185,6 +185,7 @@ export interface Ring {
 }
 
 export const ZONE_MAX = 8;
+export const STUCK_TIME = 1;           // segundos queriendo andar sin moverse antes de sacarla de donde está encajada
 export const RING_BAND = 5;            // vóxeles a cada lado del anillo en que da
 
 export interface WorldDeps {
@@ -240,6 +241,7 @@ export class World {
   readonly materials: Material[] = [];
   readonly telegraphs: Telegraph[] = [];
   readonly zones: Zone[] = [];
+  private stuckT = 0;
   readonly rings: Ring[] = [];
   readonly fx: WorldFx[] = [];
 
@@ -435,7 +437,9 @@ export class World {
       p.vx = move.x * speed;
       p.vy = move.y * speed;
       const force = this.deps.pushForce ?? 0;
+      const x0 = p.x, y0 = p.y;
       arena.move(p, body.radius, p.vx * dt, p.vy * dt, force > 0 ? { force, dt, maxSpeed: speed } : undefined);
+      this.unstick(dt, x0, y0, speed);
     }
     arena.crushUnder(p.x, p.y, body.radius);
     if (p.iframes > 0) p.iframes -= dt;
@@ -453,6 +457,22 @@ export class World {
     } else {
       this.regenT = 0;
     }
+  }
+
+  // Un mueble empujado puede dejar a MAIA encajada, sin sitio para su cuerpo y sin poder salir (medido: partida pilotada,
+  // semilla 9, piso 7), y sin llegar a la tienda la partida no acaba. Si lleva un rato queriendo andar sin moverse y de
+  // verdad no cabe donde está, sale al punto libre más cercano. Sin encajarse no pasa nunca, y la huella no cambia
+  private unstick(dt: number, x0: number, y0: number, speed: number): void {
+    const p = this.player, { arena, body } = this.deps;
+    const want = speed * dt;
+    if (want <= 0 || !(p.vx || p.vy) || Math.hypot(p.x - x0, p.y - y0) > want * 0.1) { this.stuckT = 0; return; }
+    this.stuckT += dt;
+    if (this.stuckT < STUCK_TIME || arena.fits(p.x, p.y, p.z, body.radius)) return;
+    const q = arena.nearestFree(p);
+    p.x = q.x;
+    p.y = q.y;
+    p.z = arena.restZ(q.x, q.y, body.radius);
+    this.stuckT = 0;
   }
 
   // Recupera cargas y, si se pulsó y queda alguna, empieza un dash (no se encadena: el siguiente, al acabar este)

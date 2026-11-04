@@ -119,3 +119,17 @@ describe('poses y aspectos', () => {
     for (const e of registry.enemies()) expect(Object.keys(e.poses).length > 0, e.id).toBe(e.boss);
   });
 });
+
+describe('encajada', () => {
+  it('si MAIA no cabe donde está y no puede andar, sale al punto libre más cercano', () => {
+    const run = new Run(registry, registry.character('maia'), registry.level('oficina'), 3);
+    const w = run.startWave();
+    const pillar = [...run.arena.state.objects].find((o) => o.kind === 'pillar')!;
+    const cell = pillar.cells[Math.floor(pillar.cells.length / 2)]!;
+    const c = cell as unknown as readonly number[];
+    Object.assign(w.player, { x: c[0]!, y: c[1]!, z: 1 });
+    expect(run.arena.fits(w.player.x, w.player.y, w.player.z, run.body.radius)).toBe(false);
+    for (let t = 0; t < 90; t++) { w.player.hp = w.player.maxHp; w.step(TICK, { x: 1, y: 0 }); }
+    expect(run.arena.fits(w.player.x, w.player.y, w.player.z, run.body.radius)).toBe(true);
+  });
+});
