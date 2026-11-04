@@ -19,6 +19,8 @@ export const PORTRAIT_W = 32; // caja del retrato a escala x1
 export const PORTRAIT_H = 48;
 // Las flechas de cambiar de agente: su zona de toque, a escala x1 (un dedo, en la vista del Flip)
 export const ARROW_W = 32;
+// Apaisada caben menos píxeles de ficha y cada uno se ve más grande en pantalla: 18 son 40 px CSS en un móvil tumbado
+export const ARROW_W_WIDE = 18;
 const ARROW_MIN_H = 44;
 export const THEME_NAMES: Record<ThemeId, string> = { oficina: 'Oficina', medieval: 'Medieval', cyberpunk: 'Cyberpunk' };
 export const GAME_TITLE = 'Brotato';
@@ -129,7 +131,7 @@ function agentCard(p: Painter, zones: Zone<SelectAction>[], registry: Registry, 
   const pad = 5 * u, accent = ACCENTS[theme];
   panel(p, x, y, w, h, { fill: UI.panelHi, accent, edge: accent });
   // Las flechas van a los lados del retrato y con sitio para el dedo: apaisada les hace falta su propio hueco
-  const side = several && !stacked ? ARROW_W * u : 0;
+  const aw = (stacked ? ARROW_W : ARROW_W_WIDE) * u, side = several && !stacked ? aw : 0;
   const ps = stacked
     ? Math.max(1, Math.min(3, Math.floor((w - 2 * pad - 2 * ARROW_W * u) / (PORTRAIT_W * u)), Math.floor((h * 0.45) / (PORTRAIT_H * u))))
     : Math.max(1, Math.min(3, Math.floor((h - 2 * pad) / (PORTRAIT_H * u)), Math.floor((w * 0.3) / (PORTRAIT_W * u))));
@@ -173,7 +175,7 @@ function agentCard(p: Painter, zones: Zone<SelectAction>[], registry: Registry, 
     const px = x + Math.floor((w - pw) / 2);
     p.icon({ kind: 'character', id: c.id }, px, ty, pw, ph);
     portraitY = ty;
-    leftX = px - ARROW_W * u;
+    leftX = px - aw;
     rightX = px + pw;
     ty += ph + 4 * u;
   } else {
@@ -191,10 +193,10 @@ function agentCard(p: Painter, zones: Zone<SelectAction>[], registry: Registry, 
   // Con más de una agente, flechas para cambiar (van después: ganan a la ficha)
   if (several) {
     const cy = portraitY + Math.floor(ph / 2), zh = Math.max(ARROW_MIN_H * u, ph);
-    chevron(p, leftX + Math.floor((ARROW_W * u) / 2), cy, -1, u, accent);
-    chevron(p, rightX + Math.floor((ARROW_W * u) / 2), cy, 1, u, accent);
-    zones.push({ x: leftX, y: cy - Math.floor(zh / 2), w: ARROW_W * u, h: zh, action: { type: 'move', delta: -1 } });
-    zones.push({ x: rightX, y: cy - Math.floor(zh / 2), w: ARROW_W * u, h: zh, action: { type: 'move', delta: 1 } });
+    chevron(p, leftX + Math.floor(aw / 2), cy, -1, u, accent);
+    chevron(p, rightX + Math.floor(aw / 2), cy, 1, u, accent);
+    zones.push({ x: leftX, y: cy - Math.floor(zh / 2), w: aw, h: zh, action: { type: 'move', delta: -1 } });
+    zones.push({ x: rightX, y: cy - Math.floor(zh / 2), w: aw, h: zh, action: { type: 'move', delta: 1 } });
   }
 }
 

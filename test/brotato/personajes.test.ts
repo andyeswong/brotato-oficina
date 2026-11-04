@@ -50,7 +50,7 @@ describe('personajes', () => {
         const arrows = zones.filter((z) => z.action.type === 'move');
         expect(arrows.length, `${W}x${H}`).toBe(2);
         for (const a of arrows) {
-          expect(a.w).toBeGreaterThanOrEqual(30);
+          expect(a.w).toBeGreaterThanOrEqual(W > H ? 18 : 30);
           expect(a.h).toBeGreaterThanOrEqual(40);
           expect(a.x).toBeGreaterThanOrEqual(0);
           expect(a.x + a.w).toBeLessThanOrEqual(W);
