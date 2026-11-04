@@ -136,7 +136,9 @@ function agentCard(p: Painter, zones: Zone<SelectAction>[], registry: Registry, 
   lines.push({ text: c.name, color: COLORS.text, scale: nameScale, gap: 0 });
   for (const l of wrapText(c.description ?? '', maxChars)) lines.push({ text: l, color: COLORS.dim, scale: u });
   const stats = new Map<string, StatModule>(registry.stats().map((s) => [s.id, s]));
-  (c.modifiers ?? []).forEach((m, k) => {
+  // Lo que su base cambia frente a la de la estadística (la vida del Becario y de la Conserje) también es ventaja o desventaja
+  const fromBase = Object.entries(c.baseStats ?? {}).flatMap(([stat, v]) => { const add = v - (stats.get(stat)?.base ?? v); return add ? [{ stat, add }] : []; });
+  [...fromBase, ...(c.modifiers ?? [])].forEach((m, k) => {
     const d = describeModifier(m, stats);
     wrapText(d.text, maxChars).forEach((l, j) => lines.push({ text: l, color: d.good ? COLORS.good : COLORS.bad, scale: u, gap: k === 0 && j === 0 ? 3 * u : 0 }));
   });
