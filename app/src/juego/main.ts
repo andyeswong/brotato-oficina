@@ -116,14 +116,14 @@ const maiaWalk = walkFrames(maiaModel);
 // Lo que miden MAIA y un bicho (los textos de los efectos salen justo encima de la cabeza)
 const MAIA_H = (maiaModel.bounds()?.maxZ ?? 30) + 1;
 const ENEMY_H = 12;
-// El cuerpo de cada agente: MAIA es el modelo de VoxPix; las demás, personajes/<id>, con su mismo esqueleto y el mismo
-// walk. Sin modelo todavía, el de MAIA (la prueba de personajes no deja que eso llegue a master)
+// El cuerpo de cada agente: MAIA es el modelo de VoxPix con su walk; las demás, personajes/<id> con su paso dibujado
 const looks = new Map<string, PlayerLooks>([['maia', { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }]]);
 function looksOf(id: string): PlayerLooks {
   let l = looks.get(id);
   if (!l) {
     const ref = `personajes/${id}`;
-    l = has(ref) ? { model: model(ref), walk: walkFrames(model(ref)), walkMs: WALK_FRAME_MS } : looks.get('maia')!;
+    const walk = models.walk(ref, id)!;
+    l = { model: model(ref), walk: walk.frames, walkMs: walk.ms };
     looks.set(id, l);
   }
   return l;

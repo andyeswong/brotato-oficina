@@ -12,7 +12,7 @@ export default defineCharacter({
   order: 1,
 
   baseStats: { 'max-hp': 8 },
-  body: { radius: 5, centerY: 10, speed: 67, orbit: 14 },
+  body: { radius: 4, centerY: 10, speed: 67, orbit: 14 },
 
   modifiers: [
     { stat: 'speed-pct', add: 20 },

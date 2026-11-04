@@ -16,7 +16,7 @@ describe('personajes', () => {
 
   it('cada personaje que no es MAIA tiene su modelo', () => {
     for (const c of roster(registry).filter((x) => x.id !== 'maia')) {
-      expect(existsSync(`models/brotato/personajes/${c.id}.json`), c.id).toBe(true);
+      for (const s of ['', '-andar0', '-andar1', '-andar2', '-andar3']) expect(existsSync(`models/brotato/personajes/${c.id}${s}.json`), c.id + s).toBe(true);
     }
   });
 
