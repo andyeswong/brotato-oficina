@@ -14,11 +14,12 @@ import { countPieces, fallPiece, FALL_MAX_PIECES } from './dropin';
 import { Furniture, KEEP_CLEAR, STRUCTURE_KG, type Rect } from './furniture';
 
 // El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
-// decorate: lo que el nivel pone en su mundo además de lo del generador (su aspecto: atravesable, no cambia la partida)
+// decorate: lo que el nivel pone en su mundo además de lo del generador (su aspecto: atravesable, no cambia la partida);
+// at.shop, dónde está el adorno de la tienda (la pieza central del piso)
 export interface LevelWorld {
   look: WorldLook;
   ambient: readonly [number, number, number];
-  decorate?: (world: World, seed: number, layout: Layout) => Record<string, number>;
+  decorate?: (world: World, seed: number, layout: Layout, at: { shop: Point | null }) => Record<string, number>;
 }
 const WORLDS = import.meta.glob<LevelWorld>('../../../content/brotato/levels/*/module.ts', { eager: true, import: 'world' });
 export function levelWorld(level: Pick<LevelModule, 'id'>): LevelWorld {
@@ -149,7 +150,7 @@ export class Arena {
       if (opts.foliage !== false && level.theme === 'oficina') this.decor.cups = addCups(w, mix(dseed, 32));
       // Lo que pone el propio nivel (el decorate de su world): va detrás, y esquiva lo que ya hay
       const own = levelWorld(level).decorate;
-      if (opts.foliage !== false && own) Object.assign(this.decor, own(w, mix(dseed, 33), this.layout));
+      if (opts.foliage !== false && own) Object.assign(this.decor, own(w, mix(dseed, 33), this.layout, { shop: prop }));
     };
     this.look = levelWorld(level).look;
     this.decorate = decorate;

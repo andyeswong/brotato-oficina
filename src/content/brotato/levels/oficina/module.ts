@@ -69,7 +69,8 @@ export const world: LevelWorld = {
     metal: { colors: DEFAULT_WORLD_RAMPS.metal, props: { density: 300 } },
     screen: { colors: DEFAULT_WORLD_RAMPS.screen, props: { density: 600 } },
   })), ...SAMPLE_PIECES, floor: oficinaFloor, facade: oficinaFacade, pillar: mamparaPillar, objects: true },
-  ambient: [0.7, 0.72, 0.8] as const,
+  // Más baja que antes (0,7): los charcos de luz de los tubos y las lámparas tienen que contrastar (MAIA, 2026-11-04)
+  ambient: [0.55, 0.57, 0.64] as const,
   // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)
-  decorate: (w, seed, layout) => ({ ...decorateOficina(w, seed, layout) }),
+  decorate: (w, seed, layout, at) => ({ ...decorateOficina(w, seed, layout, at) }),
 };

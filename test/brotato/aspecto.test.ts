@@ -6,26 +6,33 @@ import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Arena } from '../../src/game/brotato/sim/arena';
 import { materialsOf } from '@voxpix/core';
+import { MAX_LIGHTS } from '@voxpix/view/gpu/shaders';
 
 vi.setConfig({ testTimeout: 120_000 });
 const { registry } = validateContent(discoverContent());
 const SHOT_Z = 8;
 
-// Los vóxeles que pone el decorado (los que hay con él y no sin él), por rampa, y los que quitaría (ninguno)
-function decorVoxels(a: Arena, b: Arena): { added: Map<string, number>; blocking: string[]; removed: number } {
-  const ma = a.world.model, mb = b.world.model, mt = materialsOf(ma.palette)!;
-  const added = new Map<string, number>(), blocking: string[] = [];
-  let removed = 0;
+// Lo que cambia el decorado (con él frente a sin él): los vóxeles que pone, por rampa; los que pone y paran el paso
+// (ninguno); los que quita (ninguno), y los que repinta (las losas del suelo) sin cambiar lo que son para la partida
+function decorVoxels(a: Arena, b: Arena): { added: Map<string, number>; blocking: string[]; removed: number; repainted: number; changed: string[] } {
+  const ma = a.world.model, mb = b.world.model, ta = materialsOf(ma.palette)!, tb = materialsOf(mb.palette)!;
+  const added = new Map<string, number>(), blocking: string[] = [], changed: string[] = [];
+  let removed = 0, repainted = 0;
   for (let y = 0; y < a.world.depth; y++) for (let x = 0; x < a.world.width; x++) for (let z = 0; z < 40; z++) {
     const va = ma.get(x, y, z), vb = mb.get(x, y, z);
     if (va === vb) continue;
     if (!va) { removed++; continue; }
     const ramp = ma.palette.ramps[Math.floor((va - 1) / 16)]!.name;
+    if (vb) {
+      repainted++;
+      if (ta.blocks[va] !== tb.blocks[vb] || ta.bed[va] !== tb.bed[vb] || ta.climb[va] !== tb.climb[vb]) changed.push(`${x},${y},${z} ${ramp}`);
+      continue;
+    }
     added.set(ramp, (added.get(ramp) ?? 0) + 1);
     // El café de las tazas de sim/decor.ts es el agua del tema, que es sólida: no es de este decorado
-    if (mt.blocks[va] && ramp !== 'agua') blocking.push(`${x},${y},${z} ${ramp}`);
+    if (ta.blocks[va] && ramp !== 'agua') blocking.push(`${x},${y},${z} ${ramp}`);
   }
-  return { added, blocking, removed };
+  return { added, blocking, removed, repainted, changed };
 }
 
 describe('el aspecto de la oficina y del cyberpunk', () => {
@@ -37,6 +44,9 @@ describe('el aspecto de la oficina y del cyberpunk', () => {
         expect(d.added.size, `semilla ${seed} piso ${floor}`).toBeGreaterThan(5);
         expect(d.blocking.slice(0, 5), `semilla ${seed} piso ${floor}`).toEqual([]);
         expect(d.removed).toBe(0);
+        expect(d.changed.slice(0, 5)).toEqual([]);
+        // Las luces del mundo caben en las que pinta la GPU en un cuadro (MAX_LIGHTS, con la que lleva MAIA)
+        expect(a.world.lights.length).toBeLessThanOrEqual(MAX_LIGHTS - 2);
         // Y lo que ve la partida, igual: donde se apoya el pie y lo que para un disparo, en cada columna
         for (let y = 0; y < a.world.depth; y += 3) for (let x = 0; x < a.world.width; x += 3) {
           if (b.world.model.get(x, y, 2) && b.world.model.palette.ramps[Math.floor((b.world.model.get(x, y, 2) - 1) / 16)]!.name === 'agua') continue;
@@ -46,28 +56,28 @@ describe('el aspecto de la oficina y del cyberpunk', () => {
     });
   }
 
-  it('oficina: plantas, cajas, papeleras, fuentes de agua, sillas y papeles en cada piso', () => {
+  it('oficina: moqueta, montones de papel, grupos contra la pared, tubos colgados y lámparas en cada piso', () => {
     for (const floor of [0, 3, 6, 9]) {
-      const d = new Arena(registry.level('oficina'), 5, { floor }).decor;
-      expect(d.plantas, `piso ${floor}`).toBeGreaterThanOrEqual(6);
-      expect(d.cajas).toBeGreaterThanOrEqual(4);
-      expect(d.papeleras).toBeGreaterThanOrEqual(4);
-      expect(d.fuentes).toBeGreaterThanOrEqual(1);
-      expect(d.sillas).toBeGreaterThanOrEqual(3);
-      expect(d.papeles).toBeGreaterThanOrEqual(80);
+      const a = new Arena(registry.level('oficina'), 5, { floor }), d = a.decor;
+      expect(d.alfombras, `piso ${floor}`).toBeGreaterThanOrEqual(3);
+      expect(d.montones).toBeGreaterThanOrEqual(3);
+      expect(d.plantas).toBeGreaterThanOrEqual(4);
+      expect(d.lamparas).toBeGreaterThanOrEqual(1);
+      expect(d.tubos).toBeGreaterThanOrEqual(4);
+      for (const k of ['lampara-', 'tubo-']) expect(a.world.lights.filter((l) => String(l.id).startsWith(k)).length).toBe(k === 'tubo-' ? d.tubos : d.lamparas);
     }
   });
 
-  it('cyberpunk: contenedores, bolsas, expendedoras con su luz, conos, hologramas y tuberías en cada piso', () => {
+  it('cyberpunk: el cruce con su holograma, alcantarillas, contenedores, expendedoras, farolas y rótulos con su luz', () => {
     for (const floor of [0, 3, 6, 9]) {
       const a = new Arena(registry.level('cyberpunk'), 5, { floor }), d = a.decor;
-      expect(d.contenedores, `piso ${floor}`).toBeGreaterThanOrEqual(1);
-      expect(d.bolsas).toBeGreaterThanOrEqual(4);
+      expect(d.calzada, `piso ${floor}`).toBeGreaterThan(20000);
+      expect(d.hologramas).toBe(1);
+      expect(d.alcantarillas).toBeGreaterThanOrEqual(1);
+      expect(d.contenedores).toBeGreaterThanOrEqual(1);
       expect(d.expendedoras).toBeGreaterThanOrEqual(1);
-      expect(a.world.lights.filter((l) => String(l.id).startsWith('expendedora-')).length).toBe(d.expendedoras);
-      expect(d.conos).toBeGreaterThanOrEqual(3);
-      expect(d.hologramas).toBeGreaterThanOrEqual(2);
-      expect(d.tuberias).toBeGreaterThanOrEqual(2);
+      expect(d.farolas).toBeGreaterThanOrEqual(2);
+      for (const k of ['expendedora-', 'farola-', 'rotulo-']) expect(a.world.lights.filter((l) => String(l.id).startsWith(k)).length).toBe(k === 'farola-' ? d.farolas : k === 'rotulo-' ? d.rotulos : d.expendedoras);
     }
   });
 

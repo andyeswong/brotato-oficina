@@ -42,7 +42,8 @@ export default defineLevel({
 // esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
 export const world: LevelWorld = {
   look: { palette: withCyberpunkRamps(worldPalette({
-    floor: ['#14162a', '#1e2238', '#2a304a', '#3a4262', '#4e5878'],
+    // La calzada (decorateCyberpunk la pinta con esta rampa), algo más clara que antes: el fondo se comía a los enemigos
+    floor: ['#16182a', '#222638', '#30364c', '#424a64', '#58627e'],
     wall: ['#181a2a', '#24283e', '#343a56', '#485072', '#606a8e'],
     cap: ['#20223a', '#2e3250', '#40466a', '#565e86', '#7078a0'],
     column: ['#22263a', '#3a4260', '#525c80', '#6e789c', '#8a94b8'],
@@ -52,7 +53,7 @@ export const world: LevelWorld = {
     neonPink: { colors: ['#5a1640', '#a02a78', '#e04cb4', '#ff8ad8', '#ffd0f0'], emissive: true },
     neonCyan: { colors: ['#0e3a4a', '#1a7088', '#28b4d0', '#7fe3ff', '#d0f8ff'], emissive: true },
   })), ...SAMPLE_PIECES, floor: cyberpunkFloor, facade: cyberpunkFacade, pillar: neonPillar, objects: true },
-  ambient: [0.42, 0.46, 0.66] as const,
+  ambient: [0.46, 0.5, 0.7] as const,
   // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)
-  decorate: (w, seed) => ({ ...decorateCyberpunk(w, seed) }),
+  decorate: (w, seed, layout, at) => ({ ...decorateCyberpunk(w, seed, layout, at) }),
 };
