@@ -143,6 +143,8 @@ export class BrotatoGame {
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
+    // ?ola=: este piso no llega cruzando una salida, así que nadie soltaría su caída y se quedaría sin paredes ni muebles
+    this.run.arena.settleFall();
     this.addMaia();
     this.placeWeapons();
     this.sync();

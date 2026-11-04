@@ -14,7 +14,13 @@ import { countPieces, fallPiece, FALL_MAX_PIECES } from './dropin';
 import { Furniture, KEEP_CLEAR, STRUCTURE_KG, type Rect } from './furniture';
 
 // El mundo de vóxeles de cada nivel: el `world` que exporta su module.ts (el look y la luz ambiente), por carpeta
-export interface LevelWorld { look: WorldLook; ambient: readonly [number, number, number] }
+// decorate: lo que el nivel pone en su mundo además de lo del generador (su aspecto: atravesable, no cambia la partida);
+// at.shop, dónde está el adorno de la tienda (la pieza central del piso)
+export interface LevelWorld {
+  look: WorldLook;
+  ambient: readonly [number, number, number];
+  decorate?: (world: World, seed: number, layout: Layout, at: { shop: Point | null }) => Record<string, number>;
+}
 const WORLDS = import.meta.glob<LevelWorld>('../../../content/brotato/levels/*/module.ts', { eager: true, import: 'world' });
 export function levelWorld(level: Pick<LevelModule, 'id'>): LevelWorld {
   const w = Object.entries(WORLDS).find(([path]) => path.includes(`/levels/${level.id}/`))?.[1];
@@ -22,7 +28,7 @@ export function levelWorld(level: Pick<LevelModule, 'id'>): LevelWorld {
   return w;
 }
 import { FOLIAGE_THEMES, addFoliage } from './foliage';
-import { addCables, addCups, addToxicGlow } from './decor';
+import { addCables, addToxicGlow } from './decor';
 import { GLASS_THEMES, addGlass } from './glass';
 import type { WorldState } from '@voxpix/world/state';
 import { DEFAULT_RULES, fits, moveBody, objectAhead, restZ, waterFactor } from '@voxpix/runtime/body';
@@ -98,7 +104,7 @@ export class Arena {
   // Cuántas rampas pasaron a vidrio (0 si el tema no lo lleva)
   glassRamps = 0;
   // Lo que puso sim/decor.ts: vóxeles de cable, luces sobre el tóxico, tazas (para las pruebas)
-  decor: { cables?: number; glows?: number; cups?: number } = {};
+  decor: { cables?: number; glows?: number; cups?: number; [k: string]: number | undefined } = {};
   // Los pisos (Andrés, 2026-10-26: "que cada ronda me abra la puerta a un nuevo piso"): el número del piso (0 = el
   // primero; null sin pisos) y su salida, cerrada hasta que se sale de la tienda. (x, y) es la loseta de suelo justo
   // dentro del hueco, en ejes del modelo; box, la caja del hueco para el resalte, como shopBox
@@ -139,9 +145,12 @@ export class Arena {
       if (prop) propBox = stampShopProp(w, level.theme, prop);
       if (veg) this.plants = addFoliage(w, dseed, start, { bushes: opts.bushes });
       if (glass) this.glassRamps = addGlass(w);
-      // Lo de cada tema que no es columna (sim/decor.ts): cables y luz sobre el tóxico en el cyberpunk, tazas en la oficina
+      // Lo de cada tema que no es columna (sim/decor.ts): cables y luz sobre el tóxico en el cyberpunk
       if (opts.foliage !== false && level.theme === 'cyberpunk') { this.decor.cables = addCables(w, mix(dseed, 31)); this.decor.glows = addToxicGlow(w); }
-      if (opts.foliage !== false && level.theme === 'oficina') this.decor.cups = addCups(w, mix(dseed, 32));
+      // Las tazas de la oficina (addCups) ya no: junto a los charcos se leían como piezas raras (MAIA, 2026-11-04)
+      // Lo que pone el propio nivel (el decorate de su world): va detrás, y esquiva lo que ya hay
+      const own = levelWorld(level).decorate;
+      if (opts.foliage !== false && own) Object.assign(this.decor, own(w, mix(dseed, 33), this.layout, { shop: prop }));
     };
     this.look = levelWorld(level).look;
     this.decorate = decorate;
