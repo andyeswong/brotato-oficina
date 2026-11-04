@@ -139,6 +139,8 @@ export function shop(run: Run): string[] {
 export function buyAll(run: Run): string[] {
   const bought: string[] = [];
   for (let guard = 0; guard < 20; guard++) {
+    // Para contar qué ofreció la tienda en las curvas (curve.test.ts, OFERTAS)
+    for (const o of run.shop.offers) if (o) (globalThis as { __ofertas?: Set<string> }).__ofertas?.add(o.id);
     const offers = run.shop.offers.map((o, i) => ({ o, i })).filter((x) => x.o && x.o.price <= run.materials);
     const owned = new Set(run.weapons.map((w) => w.id));
     const pick =

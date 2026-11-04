@@ -41,7 +41,9 @@ describe.skipIf(!process.env.CURVA)('curva de balance', () => {
       const ok = registry.has('weapon', FORZAR) ? run.addWeapon(FORZAR) : run.addItem(FORZAR);
       if (!ok.ok) throw new Error(`no se pudo forzar ${FORZAR}: ${ok.reason}`);
     }
+    const seen = ((globalThis as { __ofertas?: Set<string> }).__ofertas = new Set<string>());
     const r = await playRunAsync(run);
+    console.log(`OFERTAS ${seed} ${r.reached} ${[...seen].join(',')}`);
     rows.push(...r.rows);
     reached.push(r.reached);
     for (const id of new Set([...run.weapons.map((w) => w.id), ...run.items])) owned.set(id, (owned.get(id) ?? 0) + 1);
