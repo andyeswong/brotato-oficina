@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run } from '../../src/game/brotato/sim/Run';
-import { roster } from '../../src/game/brotato/ui/select';
+import { drawSelect, roster } from '../../src/game/brotato/ui/select';
+import type { Painter } from '../../src/game/brotato/ui/paint';
 
 const { registry } = validateContent(discoverContent());
 const lv = registry.level('oficina');
@@ -32,5 +33,30 @@ describe('personajes', () => {
     expect(c.stats.get('max-hp')).toBeGreaterThan(m.stats.get('max-hp'));
     expect(c.stats.get('armor')).toBeGreaterThan(m.stats.get('armor'));
     expect(c.stats.get('speed-pct')).toBeLessThan(m.stats.get('speed-pct'));
+  });
+
+  it('las flechas de la portada son grandes, y el retrato y el nombre no cambian de sitio entre agentes', () => {
+    for (const [W, H] of [[269, 384], [384, 216]] as const) {
+      const icons: number[][] = [];
+      const firstText: number[] = [];
+      roster(registry).forEach((_c, i) => {
+        const fills: number[][] = [];
+        const p: Painter = { width: W, height: H, fill: (x, y, w, h, color) => { if (color === '#fdf6ff') fills.push([x, y, w, h]); }, icon: (_r, x, y) => { icons.push([x, y]); return true; } };
+        const zones = drawSelect(p, registry, i, 'oficina');
+        const arrows = zones.filter((z) => z.action.type === 'move');
+        expect(arrows.length, `${W}x${H}`).toBe(2);
+        for (const a of arrows) {
+          expect(a.w).toBeGreaterThanOrEqual(30);
+          expect(a.h).toBeGreaterThanOrEqual(40);
+          expect(a.x).toBeGreaterThanOrEqual(0);
+          expect(a.x + a.w).toBeLessThanOrEqual(W);
+        }
+        const [l, r] = arrows as [typeof arrows[0], typeof arrows[0]];
+        expect(l.x + l.w).toBeLessThanOrEqual(icons[icons.length - 1]![0]!);
+        expect(r.x).toBeGreaterThan(l.x + l.w);
+        firstText.push(fills.length);
+      });
+      expect(new Set(icons.slice(-3).map((c) => c.join())).size, `${W}x${H}`).toBe(1);
+    }
   });
 });
