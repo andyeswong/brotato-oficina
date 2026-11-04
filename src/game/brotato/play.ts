@@ -91,6 +91,7 @@ export { HEADINGS } from '@voxpix/world/frame2d';
 // Para medir (fase 4), nunca en una partida normal: empezar en una oleada más avanzada y que MAIA no caiga, para
 // tener cientos de enemigos en pantalla el tiempo que dure la medida. Apagadas, la partida y su huella no cambian
 export interface TestOptions {
+  character?: string;   // no es de pruebas: quién juega (por defecto MAIA)
   startWave?: number;   // 1 = la primera
   immortal?: boolean;   // tras cada paso, MAIA recupera toda la vida
   meta?: Readonly<Record<string, number>>;   // no es de pruebas: las mejoras entre partidas que se compraron
@@ -136,7 +137,7 @@ export class BrotatoGame {
   constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule,
     private readonly test: TestOptions = {}) {
     const lv = level ?? pickLevel(registry.levels(), seed);
-    this.run = new Run(registry, registry.character('maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}) });
+    this.run = new Run(registry, registry.character(test.character ?? 'maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}) });
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
