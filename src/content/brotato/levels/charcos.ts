@@ -9,6 +9,7 @@ import { material } from '@voxpix/core';
 
 const BITE = 3.2;        // lo más que se come el borde
 const STRETCH = 1.5;     // lo más alargada que queda la mancha: su eje largo, como mucho 1,5 veces el corto (más 4)
+const SHRINK = 0.86;     // la elipse, un poco dentro de la caja del charco
 
 // floor(x, y): la losa de suelo seco que va en (x, y, 0). Devuelve cuántas celdas se secaron
 export function roundPuddles(world: World, seed: number, floor: (x: number, y: number) => number): number {
@@ -38,13 +39,17 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
       const c = queue[h]!, d = dist.get(c)!;
       for (const n of [c - 1, c + 1, c - W, c + W]) if (inP.has(n) && !dist.has(n)) { dist.set(n, d + 1); queue.push(n); }
     }
-    // La elipse: centrada en la caja, con el eje corto el de la caja y el largo recortado a STRETCH veces el corto
-    const mx = (x0 + x1 + 1) / 2, my = (y0 + y1 + 1) / 2, hw = (x1 - x0 + 1) / 2, hh = (y1 - y0 + 1) / 2;
+    // La elipse: centrada en el centroide del charco, con el eje corto el de la caja y el largo recortado a STRETCH
+    // veces el corto, y algo más pequeña que la caja (SHRINK): si la tocara, ese lado quedaría recto (MAIA: "base plana")
+    let mx = 0, my = 0;
+    for (const c of cells) { mx += (c % W) + 0.5; my += Math.floor(c / W) + 0.5; }
+    mx /= cells.length; my /= cells.length;
+    const hw = Math.min(mx - x0, x1 + 1 - mx), hh = Math.min(my - y0, y1 + 1 - my);
     const short = Math.min(hw, hh), long = Math.min(Math.max(hw, hh), short * STRETCH + 4);
-    const ex = hw >= hh ? long : short, ey = hw >= hh ? short : long;
+    const ex = (hw >= hh ? long : short) * SHRINK, ey = (hw >= hh ? short : long) * SHRINK;
     const keep = (c: number) => {
       const cx = c % W, cy = (c - cx) / W;
-      const wob = 0.9 + 0.1 * Math.sin(Math.atan2(cy + 0.5 - my, cx + 0.5 - mx) * 3 + seed % 7);
+      const wob = 0.92 + 0.08 * Math.sin(Math.atan2(cy + 0.5 - my, cx + 0.5 - mx) * 3 + seed % 7);
       if (((cx + 0.5 - mx) / ex) ** 2 + ((cy + 0.5 - my) / ey) ** 2 > wob * wob) return false;
       // El borde, mordido con un ruido suave (de 6 en 6 vóxeles, interpolado)
       const fx = cx / 6, fy = cy / 6, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
@@ -54,7 +59,7 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     };
     // Si se fuera a quedar en casi nada, se deja como estaba
     const drop = cells.filter((c) => !keep(c));
-    if (drop.length > cells.length * 0.85) continue;
+    if (drop.length > cells.length * 0.9) continue;
     for (const c of drop) {
       const x = c % W, y = (c - x) / W;
       wet[c] = 0;

@@ -296,7 +296,8 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
   if (shop) { pile(shop.x - 15, shop.y - 14, 6); pile(shop.x + 16, shop.y + 4, 5); }
 
   // En el centro, como las matas del medieval: grupos bajos (2 de alto como mucho) con huecos entre ellos, de hojas
-  // caídas, un cable suelto y algún papel. Lejos de las paredes, de los escritorios y de la copiadora
+  // caídas y algún papel. Lejos de las paredes, de los escritorios y de la copiadora. Sin cables: un trazo gris de un
+  // vóxel sobre el suelo gris se leía como una línea suelta (MAIA)
   const nearWall = (x: number, y: number, d: number) => {
     for (let k = -d; k <= d; k += 4) if (m.get(x + k, y, 8) || m.get(x, y + k, 8)) return true;
     return false;
@@ -310,15 +311,6 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
       put(x, y, 1, mat(R.hoja!, Math.floor(r() * 4)));
       if (r() < 0.4 && floorAt(x + 1, y)) put(x + 1, y, 1, mat(R.hoja!, 1 + Math.floor(r() * 3)));
       if (r() < 0.2) put(x, y, 2, mat(R.hoja!, 3));
-    }
-    if (r() < 0.6) {
-      let a = r() * Math.PI * 2, x = cx, y = cy;
-      const len = 10 + Math.floor(r() * 8);
-      for (let k = 0; k < len; k++) {
-        a += (r() - 0.5) * 0.8; x += Math.cos(a); y += Math.sin(a);
-        const xi = Math.round(x), yi = Math.round(y);
-        if (floorAt(xi, yi)) put(xi, yi, 1, mat(R.gris!, k % 5 === 0 ? 3 : 1));
-      }
     }
     if (r() < 0.7) {
       const x = Math.round(cx + (r() - 0.5) * 6), y = Math.round(cy + (r() - 0.5) * 6);
