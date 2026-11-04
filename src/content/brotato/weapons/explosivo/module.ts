@@ -1,6 +1,7 @@
 import { defineWeapon } from '../../../../game/brotato/api';
 
 // Catálogo 3 (MAIA, 2026-11-04): un comportamiento nuevo, distinto de los seis de antes. Los números salen de la curva.
+// Peso 0,5 en la tienda: con peso 1 diluían el catálogo (31-43 % de victorias con el árbol al máximo; con 0,5, 50-56 %).
 export default defineWeapon({
   format: 1,
   id: 'explosivo',
@@ -17,7 +18,7 @@ export default defineWeapon({
     { damage: 42, cooldown: 1.25, range: 150, critChance: 0.09, critMult: 2 },
   ],
   length: 12,   // del agarre a la punta (el modelo de cada mundo lo respeta)
-  shop: { price: 20, minWave: 3, order: 9 },
+  shop: { price: 20, weight: 0.5, minWave: 3, order: 9 },
   looks: {
     oficina: { name: 'Cartucho de tóner', description: 'Lo lanza en arco y revienta al caer: al que corre se le escapa.', model: 'armas-futuro/explosivo', projectile: 'armas-futuro/explosivo-proy' },
     medieval: { name: 'Bomba de mecha', description: 'Cae en arco y explota: al que corre se le escapa.', model: 'medieval/explosivo', projectile: 'medieval/explosivo-proy' },
