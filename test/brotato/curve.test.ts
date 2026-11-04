@@ -36,7 +36,7 @@ describe.skipIf(!process.env.CURVA)('curva de balance', () => {
   const reached: number[] = [];
   const owned = new Map<string, number>();
   it.each(SEEDS)('semilla %i', { timeout: 600_000 }, async (seed) => {
-    const run = new Run(registry, registry.character('maia'), registry.level(LEVEL), seed, META ? { meta: META } : {});
+    const run = new Run(registry, registry.character(process.env.PERSONAJE ?? 'maia'), registry.level(LEVEL), seed, META ? { meta: META } : {});
     if (FORZAR) {
       const ok = registry.has('weapon', FORZAR) ? run.addWeapon(FORZAR) : run.addItem(FORZAR);
       if (!ok.ok) throw new Error(`no se pudo forzar ${FORZAR}: ${ok.reason}`);
@@ -51,7 +51,7 @@ describe.skipIf(!process.env.CURVA)('curva de balance', () => {
     const sd = Math.sqrt(reached.reduce((a, b) => a + (b - mean) ** 2, 0) / (reached.length - 1 || 1));
     const ids = [...registry.weapons(), ...registry.items()].map((m) => m.id);
     const pct = ids.map((id) => `${id} ${Math.round((100 * (owned.get(id) ?? 0)) / reached.length)} %`).join(', ');
-    console.log(['', ...(process.env.FILAS ? rows : []), '', `${LEVEL}${FORZAR ? ` (forzando ${FORZAR})` : ''}${META ? ' (árbol al máximo)' : ''}: oleada alcanzada por semilla: ${reached.join(', ')} (11 = victoria)`,
+    console.log(['', ...(process.env.FILAS ? rows : []), '', `${LEVEL}${FORZAR ? ` (forzando ${FORZAR})` : ''}${META ? ' (árbol al máximo)' : ''}: oleada alcanzada por semilla: ${reached.join(', ')} (11 = victoria)${process.env.PERSONAJE ? ` · ${process.env.PERSONAJE}` : ''}`,
       `${LEVEL}: media ${mean.toFixed(2)} ± ${(sd / Math.sqrt(reached.length)).toFixed(2)} (error de la media, ${reached.length} semillas)`,
       `${LEVEL}: partidas que acaban con cada pieza: ${pct}`].join('\n'));
   });

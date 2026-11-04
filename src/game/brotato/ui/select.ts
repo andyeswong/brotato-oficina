@@ -33,6 +33,11 @@ export function selectKey(e: { code: string; key: string }, count: number, selec
   return null;
 }
 
+// Las agentes en el orden de la portada
+export function roster(registry: Registry): CharacterModule[] {
+  return [...registry.characters()].sort((a, b) => a.order - b.order);
+}
+
 // camera, sound y fichas: si quien llama los maneja, su línea o su botón en el menú
 export function drawSelect(p: Painter, registry: Registry, selected: number, theme: ThemeId, u = 1, camera?: string, sound?: boolean, fichas?: number): Zone<SelectAction>[] {
   const zones: Zone<SelectAction>[] = [];
@@ -93,8 +98,8 @@ export function drawSelect(p: Painter, registry: Registry, selected: number, the
   }
   if (hint) drawText(p, W - pad, H - pad - line, hint, UI.dim, { scale: u, align: 'right' });
 
-  const c = registry.characters()[selected];
-  if (c) agentCard(p, zones, registry, c, selected, theme, card.x, card.y, card.w, card.h, u, registry.characters().length > 1, !wide);
+  const all = roster(registry), c = all[selected];
+  if (c) agentCard(p, zones, registry, c, selected, theme, card.x, card.y, card.w, card.h, u, all.length > 1, !wide);
   return zones;
 }
 
