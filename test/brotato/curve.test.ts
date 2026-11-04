@@ -36,7 +36,7 @@ describe.skipIf(!process.env.CURVA)('curva de balance', () => {
   const reached: number[] = [];
   const owned = new Map<string, number>();
   it.each(SEEDS)('semilla %i', { timeout: 600_000 }, async (seed) => {
-    const run = new Run(registry, registry.character('maia'), registry.level(LEVEL), seed, META ? { meta: META } : {});
+    const run = new Run(registry, registry.character('maia'), registry.level(LEVEL), seed, { ...(META ? { meta: META } : {}), ...(process.env.JEFE ? { boss: process.env.JEFE } : {}) });
     if (FORZAR) {
       const ok = registry.has('weapon', FORZAR) ? run.addWeapon(FORZAR) : run.addItem(FORZAR);
       if (!ok.ok) throw new Error(`no se pudo forzar ${FORZAR}: ${ok.reason}`);

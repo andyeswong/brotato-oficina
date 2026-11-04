@@ -71,6 +71,10 @@ export interface EnemyApi {
   shoot(self: EnemySelf, angle: number, speed: number, opts?: { radius?: number; range?: number }): void;
   // Llama a `count` enemigos del módulo `enemy` alrededor de self, ya (sin aviso)
   summon(self: EnemySelf, enemy: string, count: number): void;
+  // Deja bajo self una zona que multiplica la velocidad de MAIA por slow mientras la pisa
+  zone(self: EnemySelf, opts: { radius: number; life: number; slow: number }): void;
+  // Un anillo de onda desde self con el daño de contacto del enemigo; se esquiva por sus huecos
+  ring(self: EnemySelf, opts: { speed: number; maxRadius: number; gaps: number; gapDeg: number; start?: number }): void;
 }
 
 // ---------- Comportamientos de arma ----------

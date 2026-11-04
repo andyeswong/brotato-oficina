@@ -49,7 +49,7 @@ export const lookSchema = z.strictObject({
   name: z.string().min(1),
   description: z.string().optional(),
   model: modelRef,
-  projectile: modelRef.optional(),   // armas: el modelo de lo que dispara
+  projectile: modelRef.optional(),   // armas y jefes: el modelo de lo que dispara
 });
 export type Look = z.infer<typeof lookSchema>;
 const looksSchema = z.strictObject({ oficina: lookSchema, medieval: lookSchema.optional(), cyberpunk: lookSchema.optional() });
@@ -249,6 +249,11 @@ export const enemySchema = z.strictObject({
   // Jefe (el del piso 10): la prórroga no lo quita, la oleada no se limpia mientras viva, y si no muere a tiempo
   // (BOSS_OVERTIME tras el final de la oleada) la partida se pierde por tiempo. La vista enseña su barra de vida
   boss: z.boolean().default(false),
+  // Solo de aspecto: la pose de cada mem.state de su comportamiento (<modelo>-<pose>), lo demás que trae consigo para
+  // precalentarlo, y dónde lleva la luz de los ojos en los ejes de su modelo
+  poses: z.record(z.string(), z.string()).default({}),
+  companions: z.array(idSchema).default([]),
+  eyes: z.tuple([z.number(), z.number(), z.number()]).optional(),
 });
 
 const shopEntrySchema = z.strictObject({

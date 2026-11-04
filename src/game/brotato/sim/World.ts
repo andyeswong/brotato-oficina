@@ -149,8 +149,37 @@ export type WorldFx =
 // hasta ella. left: la cruzó (lo siguiente es el piso nuevo). dead: cayó.
 export type WorldStatus = 'playing' | 'open' | 'dead' | 'cleared' | 'exit' | 'left';
 
+// Una zona que frena a MAIA mientras la pisa (la araña)
+export interface Zone {
+  readonly x: number;
+  readonly y: number;
+  readonly r: number;
+  readonly slow: number;               // multiplica su velocidad
+  t: number;                           // lo que le queda, en segundos
+}
+
+// Un anillo de onda por el suelo (el gólem): crece desde su centro y daña a quien cruce, salvo por sus huecos
+export interface Ring {
+  readonly x: number;
+  readonly y: number;
+  readonly speed: number;
+  readonly maxR: number;
+  readonly gaps: number;               // huecos repartidos por el círculo
+  readonly gapWidth: number;           // ancho de cada uno, en radianes
+  readonly start: number;              // dónde empieza el primero
+  readonly damage: number;
+  readonly source: string;
+  r: number;
+  done: boolean;                       // ya golpeó
+}
+
+export const ZONE_MAX = 8;
+export const RING_BAND = 5;            // vóxeles a cada lado del anillo en que da
+
 export interface WorldDeps {
   registry: Registry;
+  // El jefe que sale en lugar del que diga el grupo de la oleada (el sorteo de Run)
+  boss?: EnemyModule;
   wave: WaveModule;
   waveNumber: number;
   // El enemyDamageScale del nivel: multiplica el damagePerWave de los enemigos (1 si no se pone). Escala el contacto y
@@ -199,6 +228,8 @@ export class World {
   readonly projectiles: Projectile[] = [];
   readonly materials: Material[] = [];
   readonly telegraphs: Telegraph[] = [];
+  readonly zones: Zone[] = [];
+  readonly rings: Ring[] = [];
   readonly fx: WorldFx[] = [];
 
   private readonly hash = new SpatialHash<EnemyState>(32); // tamaño de celda: solo rendimiento, vale a cualquier escala
@@ -327,6 +358,7 @@ export class World {
     this.movePlayer(dt, move, dash);
     this.spawn(dt);
     this.moveEnemies(dt);
+    if (this.zones.length || this.rings.length) this.stepHazards(dt);
     this.rebuildHash();
     this.contactDamage();
     this.fireWeapons(dt);
@@ -355,6 +387,8 @@ export class World {
       this.enemies.length = 0;
       this.telegraphs.length = 0;
       this.projectiles.length = 0;
+      this.zones.length = 0;
+      this.rings.length = 0;
     }
   }
 
@@ -386,7 +420,7 @@ export class World {
       this.dash.t -= step;
     } else {
       // El agua frena (MAIA, 2026-10-24: igual a la jugadora que a los enemigos, hasta que Andrés diga otra cosa)
-      const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100) * arena.slowdown(p.x, p.y);
+      const speed = body.speed * (1 + this.deps.stat('speed-pct') / 100) * arena.slowdown(p.x, p.y) * this.zoneSlow(p);
       p.vx = move.x * speed;
       p.vy = move.y * speed;
       const force = this.deps.pushForce ?? 0;
@@ -448,6 +482,40 @@ export class World {
     }
   }
 
+  // Lo que frena la zona más fuerte que pisa; 1 si no pisa ninguna
+  private zoneSlow(p: Point): number {
+    let slow = 1;
+    for (const z of this.zones) if ((p.x - z.x) ** 2 + (p.y - z.y) ** 2 <= z.r * z.r && z.slow < slow) slow = z.slow;
+    return slow;
+  }
+
+  addZone(x: number, y: number, r: number, life: number, slow: number): void {
+    this.zones.push({ x, y, r, t: life, slow });
+    if (this.zones.length > ZONE_MAX) this.zones.shift();
+  }
+
+  addRing(ring: Omit<Ring, 'r' | 'done'>): void {
+    this.rings.push({ ...ring, r: 0, done: false });
+  }
+
+  private stepHazards(dt: number): void {
+    for (let i = this.zones.length - 1; i >= 0; i--) if ((this.zones[i]!.t -= dt) <= 0) this.zones.splice(i, 1);
+    const c = this.bodyCenter;
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const g = this.rings[i]!;
+      g.r += g.speed * dt;
+      if (g.r >= g.maxR) { this.rings.splice(i, 1); continue; }
+      if (g.done) continue;
+      const dx = c.x - g.x, dy = c.y - g.y, d = Math.hypot(dx, dy);
+      if (Math.abs(d - g.r) > RING_BAND) continue;
+      const sector = (Math.PI * 2) / g.gaps;
+      const off = (((Math.atan2(dy, dx) - g.start) % sector) + sector) % sector;
+      if (off < g.gapWidth) continue;
+      g.done = true;
+      this.hitPlayer(g.damage, g.source);
+    }
+  }
+
   // ---------- enemigos ----------
 
   // Los grupos de la oleada piden enemigos; primero sale un aviso y al segundo aparece el enemigo
@@ -455,7 +523,8 @@ export class World {
     const { wave, registry } = this.deps;
     wave.groups.forEach((g, i) => {
       while (this.time >= this.nextSpawn[i]! && this.nextSpawn[i]! < g.to && this.nextSpawn[i]! < wave.duration) {
-        const enemy = registry.enemy(g.enemy);
+        const named = registry.enemy(g.enemy);
+        const enemy = named.boss && this.deps.boss ? this.deps.boss : named;
         const center = this.spawnPoint(g.pattern);
         for (let n = 0; n < g.count; n++) {
           const pos = this.free(this.patternPoint(g.pattern, center, n, g.count));
@@ -829,6 +898,18 @@ class WorldEnemyApi implements EnemyApi {
       const a = (k / count) * Math.PI * 2, d = e.def.radius + 10;
       this.world.summon(enemy, e.x + Math.cos(a) * d, e.y + Math.sin(a) * d);
     }
+  }
+
+  zone(self: EnemySelf, opts: { radius: number; life: number; slow: number }): void {
+    this.world.addZone(self.x, self.y, opts.radius, opts.life, opts.slow);
+  }
+
+  ring(self: EnemySelf, opts: { speed: number; maxRadius: number; gaps: number; gapDeg: number; start?: number }): void {
+    const e = self as EnemyState;
+    this.world.addRing({
+      x: e.x, y: e.y, speed: opts.speed, maxR: opts.maxRadius, gaps: opts.gaps, gapWidth: (opts.gapDeg * Math.PI) / 180,
+      start: opts.start ?? 0, damage: e.contactDamage, source: `enemy:${e.def.id}`,
+    });
   }
 
   shoot(self: EnemySelf, angle: number, speed: number, opts: { radius?: number; range?: number } = {}): void {

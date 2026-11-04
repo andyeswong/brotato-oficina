@@ -19,6 +19,7 @@ export default defineEnemy({
   loot: { materials: 30, consumableChance: 0 },
   height: 28,
   boss: true,
+  poses: { 1: 'carga', 2: 'embiste' },
   looks: {
     oficina: { name: 'Jefe de planta', model: 'jefe/oficina' },
     medieval: { name: 'Minotauro', model: 'jefe/medieval' },

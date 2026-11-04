@@ -78,5 +78,11 @@ export function runDigest(run: Run, world: World | null = run.world, withWorld =
   for (const t of world.telegraphs) { h.num(t.x); h.num(t.y); h.num(t.t); h.str(t.enemy.id); }
   h.num(-7);
   for (const w of world.weapons) for (const v of [w.slot, w.tier, w.cooldown, w.angle, w.x, w.y, w.fireT, w.lunge]) h.num(v);
+  // Solo si hay: las huellas de las partidas sin zonas ni anillos no cambian
+  if (world.zones.length || world.rings.length) {
+    h.num(-8);
+    for (const z of world.zones) for (const v of [z.x, z.y, z.r, z.slow, z.t]) h.num(v);
+    for (const g of world.rings) for (const v of [g.x, g.y, g.r, g.done ? 1 : 0]) h.num(v);
+  }
   return h.hex();
 }

@@ -57,9 +57,8 @@ const BOB_S = 1.6;
 // Lo que flota el arma de la casilla `slot` en el tick `tick`, en vóxeles enteros: lo usan el arma y su fogonazo
 export const weaponBob = (tick: number, slot: number) => Math.round(Math.sin((tick * TICK * 2 * Math.PI) / BOB_S + slot * 2.1) * BOB_VOX);
 const LUNGE_VOX = 5;       // a qué altura sobre los pies flotan las armas
-// Las poses del jefe (models/brotato/jefe) y sus estados en el comportamiento boss
-const BOSS_POSES = ['carga', 'embiste'];
-const BOSS_WINDUP = 1, BOSS_DASH = 2;
+// El estado de un jefe en que tiembla (carga): las poses de cada uno van en su módulo
+const BOSS_WINDUP = 1;
 // La luz de los ojos del jefe, en los ejes de su modelo (el frente es -y): roja entre los dos ojos; en el cíborg, cian
 // en el ojo de metal (el derecho)
 const BOSS_EYES: Record<ThemeId, { kind: 'neon-pink' | 'neon-cyan'; color?: readonly [number, number, number]; radius: number; intensity: number; offset: readonly [number, number, number] }> = {
@@ -84,6 +83,7 @@ export { HEADINGS } from '@voxpix/world/frame2d';
 // Para medir (fase 4), nunca en una partida normal: empezar en una oleada más avanzada y que MAIA no caiga, para
 // tener cientos de enemigos en pantalla el tiempo que dure la medida. Apagadas, la partida y su huella no cambian
 export interface TestOptions {
+  boss?: string;        // ?jefe=: fuerza el jefe de la oleada 10 en vez de sortearlo
   startWave?: number;   // 1 = la primera
   immortal?: boolean;   // tras cada paso, MAIA recupera toda la vida
   meta?: Readonly<Record<string, number>>;   // no es de pruebas: las mejoras entre partidas que se compraron
@@ -129,7 +129,7 @@ export class BrotatoGame {
   constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule,
     private readonly test: TestOptions = {}) {
     const lv = level ?? pickLevel(registry.levels(), seed);
-    this.run = new Run(registry, registry.character('maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}) });
+    this.run = new Run(registry, registry.character('maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}), ...(test.boss ? { boss: test.boss } : {}) });
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
@@ -175,12 +175,15 @@ export class BrotatoGame {
       if (first) add(first, false);
       if (look.projectile) add(this.models.model(look.projectile), false);
     }
-    const enemies = new Set(this.run.level.waves.flatMap((id) => reg.wave(id).groups.map((g) => g.enemy)));
+    // De los jefes, solo el de esta partida y lo que trae consigo
+    const enemies = new Set(this.run.level.waves.flatMap((id) => reg.wave(id).groups.map((g) => g.enemy)).filter((id) => !reg.enemy(id).boss));
+    for (const id of [this.run.boss.id, ...this.run.boss.companions]) enemies.add(id);
     for (const id of enemies) {
       const e = reg.enemy(id), look = lookOf(e, this.theme);
       const walk = this.models.walk(look.model, e.id);
       for (const m of walk ? walk.frames : [this.models.model(look.model)]) add(m, true);
-      for (const pose of e.boss ? BOSS_POSES : []) { const m = this.models.pose?.(look.model, pose); if (m) add(m, true); }
+      for (const pose of Object.values(e.poses)) { const m = this.models.pose?.(look.model, pose); if (m) add(m, true); }
+      if (look.projectile) add(this.models.model(look.projectile), false);
     }
     add(this.models.model(`efectos/escupitajo-${this.theme}`), false);
     add(this.models.model(`efectos/material-${this.theme}`), false);
@@ -384,11 +387,12 @@ export class BrotatoGame {
       const walk = this.models.walk(look.model, e.def.id);
       let frame = walk ? walk.frames[Math.floor((this.tick * TICK * 1000) / walk.ms + e.uid) % walk.frames.length]! : this.models.model(look.model);
       const eyaw = Math.hypot(e.vx, e.vy) > 1 ? heading((Math.atan2(e.vx, -e.vy) * 180) / Math.PI) : undefined;
-      // El jefe: encorvado y temblando mientras carga, lanzado mientras embiste (boss: mem.state 1 y 2); quieto si no anda
+      // El jefe: la pose de su estado, y temblando mientras carga; quieto si no anda
       let shake = 0;
       if (e.def.boss) {
         const st = e.mem.state;
-        const pose = st === BOSS_WINDUP ? this.models.pose?.(look.model, 'carga') : st === BOSS_DASH ? this.models.pose?.(look.model, 'embiste') : null;
+        const name = st === undefined ? undefined : e.def.poses[st];
+        const pose = name ? this.models.pose?.(look.model, name) : null;
         if (pose) frame = pose;
         else if (eyaw === undefined) frame = this.models.model(look.model);
         if (st === BOSS_WINDUP) shake = (this.tick >> 1) % 2 ? 1 : -1;
@@ -397,7 +401,7 @@ export class BrotatoGame {
       if (id === undefined) {
         id = s.entities.add({ model: frame, x: Math.round(e.x), y: Math.round(e.y), z: e.z, facing: eyaw ?? 0, castsShadow: true });
         this.enemyIds.set(e.uid, id);
-        if (e.def.boss) this.bossLights.set(e.uid, s.lights.add({ ...BOSS_EYES[this.theme], x: e.x, y: e.y, z: e.z, follow: { entity: id, offset: BOSS_EYES[this.theme].offset } }));
+        if (e.def.boss) { const offset = e.def.eyes ?? BOSS_EYES[this.theme].offset; this.bossLights.set(e.uid, s.lights.add({ ...BOSS_EYES[this.theme], x: e.x, y: e.y, z: e.z, follow: { entity: id, offset } })); }
       } else {
         s.entities.move(id, Math.round(e.x) + shake, Math.round(e.y), e.z, eyaw ?? s.entities.get(id)!.yaw);
         s.entities.setModel(id, frame);
@@ -436,10 +440,8 @@ export class BrotatoGame {
 
   private shotModel(source: string): string {
     const [kind, id] = source.split(':') as [string, string];
-    if (kind === 'weapon') {
-      const look = lookOf(this.run.registry.weapon(id), this.theme);
-      if (look.projectile) return look.projectile;
-    }
+    const look = lookOf(kind === 'weapon' ? this.run.registry.weapon(id) : this.run.registry.enemy(id), this.theme);
+    if (look.projectile) return look.projectile;
     return `efectos/escupitajo-${this.theme}`;
   }
 }

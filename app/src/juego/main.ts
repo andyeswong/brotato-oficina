@@ -334,7 +334,7 @@ function newRun(after?: () => void): void {
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
     game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
       { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
-        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna') });
+        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna'), boss: registry.has('enemy', q.get('jefe') ?? '') ? q.get('jefe')! : undefined });
     quarter = 0;
     runStart = performance.now();
     bakeFloor();
@@ -581,7 +581,7 @@ function paintFx(vx: number, vy: number): void {
   gfx.clearRect(0, 0, VW, VH);
   if (g.phase === 'shop') { flashes.clear(); return; }
   const p = g.current.player;
-  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1), accent: ACCENTS[theme] };
+  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1), accent: ACCENTS[theme], ...(g.phase === 'wave' ? { zones: g.current.zones, rings: g.current.rings } : {}) };
   const fx = g.takeFx();
   for (const f of fx) {
     if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); audio.play('golpe'); }

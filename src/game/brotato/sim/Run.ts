@@ -1,6 +1,6 @@
 import type { GameApi, HookFn, Point } from '../api';
 import { metaDashCharges, metaModifiers, metaPushForce, metaStartMaterials } from '../meta/upgrades';
-import { MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type LevelModule } from '../registry/schemas';
+import { EnemyModule, MAX_WEAPONS, type CharacterModule, type CounterId, type HookEvent, type LevelModule } from '../registry/schemas';
 import type { Registry } from '../registry/validate';
 import { StatSheet, type StatDef } from '../stats/StatSheet';
 import { Arena } from './arena';
@@ -33,6 +33,8 @@ export class Run {
   readonly items: string[] = [];
   readonly shop: Shop;
   world: World | null = null;
+  // El jefe de la oleada 10 en esta partida: sale de la semilla, o de la opción boss al medir
+  readonly boss: EnemyModule;
   // El mundo de vóxeles de la oleada: con pisos, uno por oleada (sale de la semilla y del número de piso); sin ellos,
   // uno solo para toda la partida
   arena: Arena;
@@ -56,9 +58,10 @@ export class Run {
     readonly seed: number,
     // meta: los niveles de las mejoras entre partidas (meta/upgrades.ts); una entrada como la semilla
     // floors: false, una sola sala para toda la partida (las pruebas de antes de los pisos)
-    private readonly options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>>; floors?: boolean; holdFall?: boolean } = {},
+    private readonly options: { weapons?: string[]; foliage?: boolean; glass?: boolean; bushes?: boolean; meta?: Readonly<Record<string, number>>; floors?: boolean; holdFall?: boolean; boss?: string } = {},
   ) {
     this.rng = createRng(seed);
+    this.boss = registry.enemy(options.boss ?? pickBoss(registry, seed));
     this.floors = options.floors !== false;
     this.arena = this.buildArena(0);
     this.body = character.body;
@@ -131,6 +134,7 @@ export class Run {
     this.stats.invalidate();
     this.world = new World({
       registry: this.registry,
+      boss: this.boss,
       wave,
       waveNumber: this.waveNumber,
       spawn: this.level.spawn,
@@ -290,3 +294,11 @@ class RunApi implements GameApi {
     this.run.world?.dropMaterials(at, amount);
   }
 }
+
+// El sorteo del jefe (MAIA, 2026-11-04): reproducible con la semilla y con su propio generador, así que no gasta números
+// del de la partida y todo lo de antes de que aparezca es igual sea cual sea el jefe
+export function pickBoss(registry: Registry, seed: number): string {
+  const ids = registry.enemies().filter((e) => e.boss).map((e) => e.id).sort();
+  return ids[Math.floor(createRng((seed ^ BOSS_SALT) >>> 0)() * ids.length)]!;
+}
+const BOSS_SALT = 0x9e3779b9;

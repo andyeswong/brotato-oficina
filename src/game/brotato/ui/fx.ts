@@ -27,6 +27,9 @@ export interface FxScene {
   // La altura del suelo en (x, y): la X del aviso se apoya en él
   groundZ(x: number, y: number): number;
   accent?: string;   // el color del tema (la estela del dash)
+  // Lo que los jefes dejan en el suelo (zonas que frenan, anillos de onda); solo en esta capa, sin modelos
+  zones?: ReadonlyArray<{ x: number; y: number; r: number; t: number }>;
+  rings?: ReadonlyArray<{ x: number; y: number; r: number; gaps: number; gapWidth: number; start: number; done: boolean }>;
 }
 
 // Duraciones, en segundos (las del Brotato en Phaser)
@@ -44,6 +47,7 @@ const SCRAP_GRAVITY = 260;           // vóxeles/s², la de las gotas del mundo
 // Los trocitos NO son rojos: el material de la oficina es una chincheta roja y se confundirían con él al caer
 const SCRAP_COLORS = ['#fdf6ff', '#c9c3d9', '#8a94a6'] as const;
 const DIM = '#fdf6ff80';
+const ZONE_STEP = 4;                 // separación de la trama de una zona, en vóxeles
 // El destello de un golpe, como en el Brotato: el enemigo en blanco 60 ms y MAIA en rojo 90 ms
 export const FLASH_ENEMY = { color: [1, 1, 1] as const, s: 0.06 };
 export const FLASH_PLAYER = { color: [1, 0.2, 0.2] as const, s: 0.09 };
@@ -254,6 +258,26 @@ export class Effects {
     for (const t of telegraphs) {
       if (Math.floor(t.t * (t.t < 0.4 ? 16 : 8)) % 2 === 1) continue;
       for (const [x, y] of groundX(cam, t.x, t.y, scene.groundZ(t.x, t.y), TELEGRAPH_ARM)) dot(x, y, COLORS.bad);
+    }
+    // Las zonas, una trama de puntos que parpadea al acabarse; los anillos, un círculo con sus huecos
+    const accentZone = scene.accent ?? COLORS.bad;
+    for (const z of scene.zones ?? []) {
+      if (z.t < 1 && Math.floor(z.t * 8) % 2 === 1) continue;
+      const gz = scene.groundZ(z.x, z.y);
+      for (let dy = -z.r; dy <= z.r; dy += ZONE_STEP) for (let dx = -z.r; dx <= z.r; dx += ZONE_STEP) {
+        if (dx * dx + dy * dy > z.r * z.r) continue;
+        const [x, y] = ground(cam, z.x + dx, z.y + dy, gz);
+        dot(x, y, accentZone);
+      }
+    }
+    for (const g of scene.rings ?? []) {
+      const gz = scene.groundZ(g.x, g.y), n = Math.max(12, Math.ceil(Math.PI * 2 * g.r)), sector = (Math.PI * 2) / g.gaps;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2;
+        if ((((a - g.start) % sector) + sector) % sector < g.gapWidth) continue;
+        const [x, y] = ground(cam, g.x + Math.cos(a) * g.r, g.y + Math.sin(a) * g.r, gz);
+        dot(x, y, g.done ? DIM : COLORS.bad);
+      }
     }
     for (const f of this.puffs) {
       const r = PUFF_R0 + (PUFF_S - f.t) * PUFF_GROW;
