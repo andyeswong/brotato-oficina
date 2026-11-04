@@ -6,7 +6,10 @@
 //              negros; las piernas, el mueble gris con ruedas
 //   medieval   gólem de piedra: bloques de roca gris con musgo por arriba y grietas que brillan ámbar
 //   cyberpunk  mecha: placas de cromo negro, el visor de neón rosa, el núcleo cian en el pecho y los pistones
-// Unos 30 de ancho con los brazos, 16 de fondo y 35 de alto: radio 12 en el juego.
+// Dibujado (body) con unos 34 de ancho con los brazos, 23 de fondo y 35 de alto, y puesto a escala 1,3 (SCALE): unos
+// 44 x 30 x 45 vóxeles. Radio 12 en el juego. MAIA, tras verlo jugando: de perfil se leía como un tablón estrecho;
+// ahora el fondo es al menos 2/3 del frente, con una pieza en la espalda (la unidad de acabado de la copiadora, una joroba
+// de roca, la mochila del reactor), el panel saliente en el pecho y los puños por delante del cuerpo.
 // Ejes como el jefe (jefe_capas.px.js): cada capa z es un corte visto desde arriba, norte arriba (la espalda) y abajo
 // el frente, que mira a la cámara; pivote en el centro, los pies en z = 0.
 // Pilas:
@@ -36,7 +39,9 @@ ramps("Rre", "abcdf", "ghi", "jklm", "nop", "stuvw", "xyz", "ABC", "DEFGHI", "JK
 
 const RAMP = { eye: "Rre", beige: "abcdf", toner: "ghi", steel: "jklm", screen: "nop", rock: "stuvw", moss: "xyz",
   amber: "ABC", chrome: "DEFGHI", pink: "JKL", cyan: "MNO" }
-const MX = 17, MY = 17, W = 2 * MX + 1, H = 2 * MY + 1, LAYERS = 42
+const MX = 23, MY = 24, W = 2 * MX + 1, H = 2 * MY + 1, LAYERS = 54
+const SCALE = 1.3   // sobre las medidas del dibujo (body)
+const HD = 8.5      // medio fondo del torso
 
 const ell = (x, y, cx, cy, rx, ry) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
 function seg(p, a, b) {
@@ -55,34 +60,41 @@ function body(x, y, z, pose) {
   if (z <= HIP) {
     const step = left ? pose.legL : pose.legR
     const yy = y - step * (HIP - z) / HIP
-    if (z <= 1 && ell(ax, yy, 5, -0.8, 3.8, 4.2)) return { part: "foot" }
-    if (ell(ax, yy, 5, 0, 3.4, 3.4)) return { part: "leg" }
+    if (z <= 1 && ell(ax, yy, 5, -1, 4, 5.4)) return { part: "foot" }
+    if (ell(ax, yy, 5, 0, 3.6, 4.2)) return { part: "leg" }
   }
   // Lo de la cadera para arriba, inclinado hacia delante y bajado según la pose
   const zz = z + pose.drop - pose.bob, yy = y + Math.max(0, zz - HIP) * pose.lean
-  if (zz >= HIP && zz <= HIP + 3 && ell(x, yy, 0, 0, 8.4, 5.4)) return { part: "hips" }
+  if (zz >= HIP && zz <= HIP + 3 && ell(x, yy, 0, 0, 8.4, 7.4)) return { part: "hips" }
   // El torso: una caja de esquinas redondas, más ancha arriba
   if (zz > HIP + 3 && zz <= 28) {
-    const hw = 8.6 + (zz - HIP - 3) * 0.12, hd = 6
-    const cx = Math.max(0, ax - (hw - 2)), cy = Math.max(0, Math.abs(yy) - (hd - 2))
+    const hw = 8.6 + (zz - HIP - 3) * 0.12
+    const cx = Math.max(0, ax - (hw - 2)), cy = Math.max(0, Math.abs(yy) - (HD - 2))
     if (cx * cx + cy * cy <= 4.2) return { part: "torso", ty: yy, tz: zz }
   }
+  // El panel que sale del pecho, arriba a la derecha, y la pieza de la espalda
+  if (zz >= 23 && zz <= 26.5 && x >= -1 && x <= 7.5 && yy >= -HD - 2 - (zz - 23) * 0.3 && yy < -HD + 1) return { part: "panel", tz: zz }
+  if (zz >= 15 && zz <= 27) {
+    const cx = Math.max(0, ax - 4.5), cy = Math.max(0, yy - 11.5)
+    if (yy > HD - 2 && cx * cx + cy * cy <= 4) return { part: "back", tz: zz }
+  }
   // Hombros y cabeza, hundida entre ellos
-  if (Math.hypot(ax - 11, yy, zz - 26.5) <= 4.2) return { part: "shoulder" }
-  if (zz >= 28 && zz <= 34 && Math.abs(x) <= 4 && Math.abs(yy + 1.5) <= 3.5) return { part: "head", hy: yy, hz: zz }
+  if (Math.hypot(ax - 11, yy / 1.35, zz - 26.5) <= 4.4) return { part: "shoulder" }
+  if (zz >= 28 && zz <= 34 && Math.abs(x) <= 4.5 && Math.abs(yy + 1.5) <= 4.8) return { part: "head", hy: yy, hz: zz }
   // Brazos: del hombro al codo y del codo a la mano; puños grandes
   for (const side of [-1, 1]) {
-    const hand = pose.hands?.[side < 0 ? 0 : 1] ?? [side * 13, -1, 9 + pose.bob - pose.drop]
+    const hand = pose.hands?.[side < 0 ? 0 : 1] ?? [side * 13, -5, 9 + pose.bob - pose.drop]
     const sh = [side * 12, -Math.max(0, 26 - HIP) * pose.lean, 26 + pose.bob - pose.drop]
     const el = [(sh[0] + hand[0]) / 2 + side * 1.2, (sh[1] + hand[1]) / 2 + 1, (sh[2] + hand[2]) / 2]
     const p = [x, y, z]
-    if (Math.hypot(x - hand[0], y - hand[1], z - hand[2]) <= 3.9) return { part: "fist" }
-    if (seg(p, sh, el).d <= 3.1 || seg(p, el, hand).d <= 2.8) return { part: "arm", side, along: seg(p, sh, hand).t }
+    if (Math.hypot(x - hand[0], y - hand[1], z - hand[2]) <= 4.2) return { part: "fist" }
+    if (seg(p, sh, el).d <= 3.4 || seg(p, el, hand).d <= 3.1) return { part: "arm", side, along: seg(p, sh, hand).t }
   }
   return null
 }
 
-function material(world, x, y, z, b, front) {
+// x, y, z: en las medidas del dibujo (redondeadas); front y rear: si la cara de delante o la de atrás dan al aire
+function material(world, x, y, z, b, front, rear) {
   const ax = Math.abs(x)
   if (world === "oficina") {
     if (b.part === "head") {
@@ -92,9 +104,13 @@ function material(world, x, y, z, b, front) {
     if (b.part === "torso") {
       // El panel de control arriba delante (pantalla verde), y las bandejas de papel abajo (franjas blancas)
       if (front && b.tz >= 24 && b.tz <= 26 && x >= 1 && x <= 6) return "screen"
-      if (front && b.tz <= 21 && (b.tz % 3 === 0)) return ax <= 7 ? "steel" : "beige"
+      if (front && b.tz <= 21 && (Math.round(b.tz) % 3 === 0)) return ax <= 7 ? "steel" : "beige"
       return "beige"
     }
+    // El panel de control: la pantalla verde encima, el canto gris
+    if (b.part === "panel") return b.tz >= 25.5 && x >= 1 && x <= 6 ? "screen" : "steel"
+    // La unidad de acabado detrás: beige, con las ranuras de salida de papel
+    if (b.part === "back") return rear && Math.round(b.tz) % 3 === 0 && ax <= 4 ? "steel" : "beige"
     if (b.part === "hips") return "steel"
     if (b.part === "arm") return Math.round(b.along * 8) % 4 === 0 ? "beige" : "toner"
     if (b.part === "fist") return "steel"
@@ -103,6 +119,7 @@ function material(world, x, y, z, b, front) {
     return "steel"
   }
   if (world === "medieval") {
+    if (b.part === "panel" && front && (x + z) % 4 === 0) return "amber"
     if (b.part === "head" && front && b.hz >= 30 && b.hz <= 31 && ax >= 1 && ax <= 3) return "eye"
     // Grietas que brillan: una en zigzag por el pecho
     if (b.part === "torso" && front && Math.abs(x - Math.round(Math.sin(b.tz * 0.9) * 2)) <= 0 && b.tz >= 16 && b.tz <= 26) return "amber"
@@ -112,17 +129,21 @@ function material(world, x, y, z, b, front) {
   // cyberpunk
   if (b.part === "head") return front && b.hz >= 30 && b.hz <= 31 ? "pink" : "chrome"   // el visor
   if (b.part === "torso" && front && Math.hypot(x, b.tz - 22) <= 2.4) return "cyan"     // el núcleo
-  if (b.part === "torso" && (b.tz === 18 || b.tz === 27) ) return "pink"
+  if (b.part === "torso" && (Math.round(b.tz) === 18 || Math.round(b.tz) === 27)) return "pink"
   if (b.part === "arm" && Math.round(b.along * 10) % 3 === 0) return "steel"            // los pistones
   if (b.part === "shoulder" && front) return "pink"
+  if (b.part === "back" && rear && Math.round(b.tz) % 3 === 0 && ax <= 3.5) return "cyan"   // las rejillas del reactor
+  if (b.part === "panel") return front ? "pink" : "chrome"
   return "chrome"
 }
 
 function voxel(world, x, y, z, pose) {
-  const b = body(x, y, z, pose)
+  const S = SCALE, r = Math.round
+  const at = (a, c, d) => body(a / S, c / S, d / S, pose)
+  const b = at(x, y, z)
   if (!b) return null
-  const solid = (a, c, d) => body(a, c, d, pose) !== null
-  let mat = material(world, x, y, z, b, !solid(x, y - 1, z))
+  const solid = (a, c, d) => at(a, c, d) !== null
+  let mat = material(world, r(x / S), r(y / S), r(z / S), b, !solid(x, y - 1, z), !solid(x, y + 1, z))
   // El musgo del gólem de piedra, en lo que mira arriba
   if (world === "medieval" && mat === "rock" && !solid(x, y, z + 1) && (x * 7 + y * 13 + z * 3) % 4 !== 0) mat = "moss"
   const ramp = RAMP[mat]
@@ -140,14 +161,14 @@ function voxel(world, x, y, z, pose) {
 const STILL = { legL: 0, legR: 0, bob: 0, lean: 0, drop: 0 }
 const POSES = {
   "": STILL,
-  andar0: { ...STILL, legL: -3, legR: 3, hands: [[-13, 3, 9], [13, -4, 9]] },
+  andar0: { ...STILL, legL: -3, legR: 3, hands: [[-13, -1, 9], [13, -8, 9]] },
   andar1: { ...STILL, bob: 1 },
-  andar2: { ...STILL, legL: 3, legR: -3, hands: [[-13, -4, 9], [13, 3, 9]] },
+  andar2: { ...STILL, legL: 3, legR: -3, hands: [[-13, -8, 9], [13, -1, 9]] },
   andar3: { ...STILL, bob: 1 },
   // Agachado, hacia delante, los puños contra el suelo delante de los pies
-  golpe: { ...STILL, legL: -2, legR: -2, lean: 0.25, drop: 3, hands: [[-9, -11, 3], [9, -11, 3]] },
+  golpe: { ...STILL, legL: -2, legR: -2, lean: 0.25, drop: 3, hands: [[-9, -13, 3.5], [9, -13, 3.5]] },
   // El brazo derecho atrás y arriba, el izquierdo delante para apuntar
-  lanza: { ...STILL, legL: -2, legR: 2, lean: -0.05, hands: [[-13, -7, 15], [12, 6, 36]] },
+  lanza: { ...STILL, legL: -2, legR: 2, lean: -0.05, hands: [[-13, -10, 15], [12, 8, 36]] },
 }
 
 function stack(name, world, pose) {
