@@ -21,6 +21,10 @@ describe('personajes', () => {
     }
   });
 
+  it('nadie es más ancho que MAIA: los mapas garantizan el paso con su radio', () => {
+    for (const c of roster(registry)) expect(c.body.radius, c.id).toBeLessThanOrEqual(registry.character('maia').body.radius);
+  });
+
   it('cada uno empieza con su arma y sus estadísticas', () => {
     const b = new Run(registry, registry.character('becario'), lv, 1);
     const c = new Run(registry, registry.character('conserje'), lv, 1);

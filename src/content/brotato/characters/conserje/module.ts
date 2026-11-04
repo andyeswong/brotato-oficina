@@ -12,7 +12,7 @@ export default defineCharacter({
   order: 2,
 
   baseStats: { 'max-hp': 18 },
-  body: { radius: 6, centerY: 10, speed: 67, orbit: 14 },
+  body: { radius: 5, centerY: 10, speed: 67, orbit: 14 },
 
   modifiers: [
     { stat: 'armor', add: 4 },
