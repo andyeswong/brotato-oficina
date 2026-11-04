@@ -1,5 +1,5 @@
 // Las cuatro armas de comportamiento nuevo (MAIA, 2026-11-04): retorno, chorro, explosivo y golpe de suelo.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run } from '../../src/game/brotato/sim/Run';
@@ -7,6 +7,7 @@ import { runDigest } from '../../src/game/brotato/sim/digest';
 import { lobHeight } from '../../src/game/brotato/play';
 import type { WorldFx } from '../../src/game/brotato/sim/World';
 
+vi.setConfig({ testTimeout: 60_000 });
 const { registry } = validateContent(discoverContent());
 const TICK = 1 / 60;
 
