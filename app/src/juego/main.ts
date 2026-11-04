@@ -330,6 +330,9 @@ const flashes = new Flashes<EntityId>((id, c) => game?.state.entities.setTint(id
 const gfx = fxCanvas.getContext('2d')!;
 const fxPainter: Painter = { get width() { return VW; }, get height() { return VH; }, fill(x, y, w, h, color) { gfx.fillStyle = color; gfx.fillRect(x, y, w, h); }, icon: () => false };
 let drawn = '';                 // la firma de lo último pintado en la interfaz: solo se repinta si cambia
+// Si el navegador pierde el contexto de la GPU, el lienzo 2D se queda vacío y la firma no lo sabe: sin esto, la portada,
+// que no cambia sola, se veía en negro hasta tocar algo
+g2.canvas.addEventListener('contextrestored', () => { drawn = ''; });
 const keys = new Set<string>();
 
 function levelFor(s: number): LevelModule {
