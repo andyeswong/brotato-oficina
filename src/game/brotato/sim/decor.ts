@@ -85,12 +85,13 @@ function flat(world: World, x: number, y: number, z: number): boolean {
 // Cables por el suelo del cyberpunk (revisión de NARUTO: pocos y largos, de algo a algo): cada uno sale del pie de una
 // pared o de un pilar hacia dentro, sigue recto, gira en L una o dos veces y acaba al topar con otra cosa sólida. Solo
 // se tiende si es largo (MIN_CABLE); si no, se prueba otro sitio. Gris oscuro casi todos (más claro que el suelo);
-// alguno rosa. Devuelve cuántos vóxeles puso (para las pruebas)
+// alguno de otro gris. Devuelve cuántos vóxeles puso (para las pruebas)
 const MIN_CABLE = 40;
 export function addCables(world: World, seed: number): number {
   const base = addRamps(world, [
     { name: 'cable', colors: ['#1a1a26', '#2a2a3c', '#3c3c56', '#56567a'], material: 'atravesable' },
-    { name: 'cable de color', colors: ['#3a1030', '#7a1e5e', '#c0388e', '#f070c0'], material: 'atravesable' },
+    // Antes rosa: una línea fina rosa por el suelo se leía como un fallo de render (MAIA, 2026-11-04). Ahora, otro gris
+    { name: 'cable de color', colors: ['#1c1c28', '#2c2c3e', '#40405a', '#58587a'], material: 'atravesable' },
   ]);
   const r = rng(seed), want = Math.max(3, Math.round((world.width * world.depth) / 30000));
   const DX = [1, 0, -1, 0], DY = [0, 1, 0, -1];
@@ -193,7 +194,8 @@ export function addToxicGlow(world: World): number {
     if (cells.length < 120) continue;
     let sx = 0, sy = 0;
     for (const c of cells) { sx += c % W; sy += Math.floor(c / W); }
-    world.lights.push({ id: `toxico-${n++}`, kind: 'lantern', x: sx / cells.length + 0.5, y: sy / cells.length + 0.5, z: 6, color: [0.35, 1, 0.45], intensity: 0.7, radius: 56 });
+    // Verde azulado oscuro y suave (MAIA, 2026-11-04): el verde chillón competía con los materiales que se recogen
+    world.lights.push({ id: `toxico-${n++}`, kind: 'lantern', x: sx / cells.length + 0.5, y: sy / cells.length + 0.5, z: 6, color: [0.25, 0.7, 0.62], intensity: 0.4, radius: 56 });
   }
   return n;
 }

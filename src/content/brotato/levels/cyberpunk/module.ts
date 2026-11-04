@@ -1,7 +1,9 @@
 import { defineLevel } from '../../../../game/brotato/api';
-import { worldPalette, type WorldLook } from '@voxpix/world/build';
+import { worldPalette } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
 import { neonPillar } from '../../../../game/brotato/sim/decor';
+import type { LevelWorld } from '../../../../game/brotato/sim/arena';
+import { cyberpunkFacade, cyberpunkFloor, decorateCyberpunk, withCyberpunkRamps } from './look';
 
 // Calle de ciudad de noche: ventanas, tuberías y letreros de neón rosa y cian (arte de NARUTO,
 // arte/escenarios/cyberpunk).
@@ -35,19 +37,25 @@ export default defineLevel({
 });
 
 // El mundo de vóxeles del nivel (VoxPix 857c33d): cómo se ve (WorldLook: paleta, fuente, piezas) y su luz ambiente.
-// Copia de los temas de muestra de VoxPix (samples/themes) tal como estaban: el aspecto no cambia. Va aparte del
-// default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
-export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
-  look: { palette: worldPalette({
-    floor: ['#14162a', '#1e2238', '#2a304a', '#3a4262', '#4e5878'],
+// La paleta sale de los temas de muestra de VoxPix (samples/themes), con las rampas propias de look.ts detrás; el suelo,
+// la fachada y el decorado son los de look.ts. Va aparte del default porque lleva funciones (las piezas), que el
+// esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
+export const world: LevelWorld = {
+  look: { palette: withCyberpunkRamps(worldPalette({
+    // La calzada (decorateCyberpunk la pinta con esta rampa), algo más clara que antes: el fondo se comía a los enemigos
+    floor: ['#16182a', '#222638', '#30364c', '#424a64', '#58627e'],
     wall: ['#181a2a', '#24283e', '#343a56', '#485072', '#606a8e'],
     cap: ['#20223a', '#2e3250', '#40466a', '#565e86', '#7078a0'],
     column: ['#22263a', '#3a4260', '#525c80', '#6e789c', '#8a94b8'],
-    // Los charcos, de líquido tóxico verde que brilla solo (Andrés, 2026-10-26: "verde o morado")
-    water: { colors: ['#031406', '#08300f', '#125a1e', '#21903a', '#62d878'], emissive: true },
+    // Los charcos, de líquido tóxico (Andrés, 2026-10-26: "verde o morado")
+    // Ahora verde azulado oscuro, sin brillo propio y con un solo tono claro de reflejo (MAIA, 2026-11-04: el verde
+    // chillón era el color de los materiales que se recogen y competía con ellos)
+    water: ['#03100f', '#06201f', '#0c3432', '#145048', '#8ad8cc'],
     // Los neones brillan solos: las franjas de los pilares y los letreros de la fachada
     neonPink: { colors: ['#5a1640', '#a02a78', '#e04cb4', '#ff8ad8', '#ffd0f0'], emissive: true },
     neonCyan: { colors: ['#0e3a4a', '#1a7088', '#28b4d0', '#7fe3ff', '#d0f8ff'], emissive: true },
-  }), ...SAMPLE_PIECES, pillar: neonPillar, objects: true },
-  ambient: [0.42, 0.46, 0.66] as const,
+  })), ...SAMPLE_PIECES, floor: cyberpunkFloor, facade: cyberpunkFacade, pillar: neonPillar, objects: true },
+  ambient: [0.46, 0.5, 0.7] as const,
+  // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)
+  decorate: (w, seed, layout, at) => ({ ...decorateCyberpunk(w, seed, layout, at) }),
 };

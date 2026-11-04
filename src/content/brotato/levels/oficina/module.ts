@@ -1,7 +1,8 @@
 import { defineLevel } from '../../../../game/brotato/api';
-import { DEFAULT_WORLD_RAMPS, worldPalette, type WorldLook } from '@voxpix/world/build';
+import { DEFAULT_WORLD_RAMPS, worldPalette } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
-import { mamparaPillar } from '../../../../game/brotato/sim/decor';
+import type { LevelWorld } from '../../../../game/brotato/sim/arena';
+import { decorateOficina, oficinaFacade, oficinaFloor, oficinaPillar, withOficinaRamps } from './look';
 
 // Oficina de noche: losetas, escritorios con pantalla y apliques junto a las puertas (arte de NARUTO,
 // arte/escenarios/oficina).
@@ -49,22 +50,26 @@ export default defineLevel({
 });
 
 // El mundo de vóxeles del nivel (VoxPix 857c33d): cómo se ve (WorldLook: paleta, fuente, piezas) y su luz ambiente.
-// Copia de los temas de muestra de VoxPix (samples/themes) tal como estaban: el aspecto no cambia. Va aparte del
-// default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
-export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
-  look: { palette: worldPalette({
+// La paleta sale de los temas de muestra de VoxPix (samples/themes), con las rampas propias de look.ts detrás; el suelo,
+// la fachada y el decorado son los de look.ts. Va aparte del default porque lleva funciones (las piezas), que el
+// esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
+export const world: LevelWorld = {
+  look: { palette: withOficinaRamps(worldPalette({
     floor: ['#22262e', '#323844', '#464e5e', '#5e687c', '#76829a'],
     wall: ['#262a2e', '#3a4046', '#545c64', '#788088', '#98a0a8'],
     cap: ['#2c2a2a', '#403e3e', '#5c5a58', '#827e7a', '#a29e98'],
     column: ['#343234', '#525052', '#6e6c6c', '#8a8886', '#aaa8a4'],
     // Los charcos son café derramado (Andrés, 2026-10-26), opaco; y la tela de las mamparas, azul gris de oficina
     water: ['#160a04', '#2a160a', '#43260f', '#6a4424', '#c8a070'],   // arriba, la crema (NARUTO: que no parezca tierra)
-    cloth: ['#5c5a5e', '#76747a', '#908e96', '#aaa8b0', '#c6c4cc'],
+    cloth: ['#2e4e56', '#3e6670', '#507e88', '#6698a0', '#82b2b8'],   // la tela de las mamparas, verde azulada clara
     // Los muebles se empujan (Andrés, 2026-10-27): el peso sale de estas densidades (kg/m³). Macizos de madera, metal y
     // vidrio, un escritorio pesaba 430 kg y una mampara 826; así, unos 55 y 46 (aglomerado, tubo hueco, pantalla plana)
     wood: { colors: DEFAULT_WORLD_RAMPS.wood, props: { density: 150 } },
     metal: { colors: DEFAULT_WORLD_RAMPS.metal, props: { density: 300 } },
     screen: { colors: DEFAULT_WORLD_RAMPS.screen, props: { density: 600 } },
-  }), ...SAMPLE_PIECES, pillar: mamparaPillar, objects: true },
-  ambient: [0.7, 0.72, 0.8] as const,
+  })), ...SAMPLE_PIECES, floor: oficinaFloor, facade: oficinaFacade, pillar: oficinaPillar, objects: true },
+  // Más baja que antes (0,7): los charcos de luz de los tubos y las lámparas tienen que contrastar (MAIA, 2026-11-04)
+  ambient: [0.55, 0.57, 0.64] as const,
+  // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)
+  decorate: (w, seed, layout, at) => ({ ...decorateOficina(w, seed, layout, at) }),
 };
