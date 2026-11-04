@@ -1,7 +1,7 @@
 import { defineEnemy } from '../../../../game/brotato/api';
 
 // El jefe del piso 10 (comportamiento boss). La vida y el daño los fija la curva (MAIA, 2026-10-29: META=0 a ±0,1 de
-// calib y, con el árbol al máximo, 55-65 % de victorias). Un minotauro con la ropa de cada mundo
+// calib y, con el árbol al máximo, 55-65 % de victorias; con el catálogo y el suelo nuevos, contacto 5: 50-66 %). Un minotauro con la ropa de cada mundo
 // (models/brotato/jefe/jefe_capas.px.js)
 export default defineEnemy({
   format: 1,
@@ -10,7 +10,7 @@ export default defineEnemy({
   description: 'Carga y embiste arrastrando lo que pille. Llévalo contra algo duro: se queda aturdido.',
   hp: 1000,
   hpPerWave: 0,
-  contactDamage: 6,
+  contactDamage: 5,
   damagePerWave: 0,
   speed: 26,
   radius: 10,
