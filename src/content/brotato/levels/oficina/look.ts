@@ -12,6 +12,7 @@ import { material, type Ramp } from '@voxpix/core';
 import { M, worldNoise, type FacadeBuilder, type FloorBuilder, type World } from '@voxpix/world/build';
 import { sampleFacade } from '@voxpix/samples/pieces';
 import { NORTH, TILE, type Layout } from '@voxpix/worldgen';
+import { roundPuddles } from '../charcos';
 
 // Rampas propias, detrás de las del motor (M va de 0 a 14). Las que pintan el suelo y la fachada son sólidas, como el
 // suelo y la pared; las de encima, atravesables
@@ -142,7 +143,7 @@ function rng(seed: number): () => number {
 }
 
 export interface OficinaDecor {
-  alfombras: number; manchas: number; montones: number; plantas: number; cajas: number; fuentes: number;
+  secos: number; alfombras: number; manchas: number; montones: number; plantas: number; cajas: number; fuentes: number;
   lamparas: number; tubos: number; apliques: number;
 }
 
@@ -192,9 +193,15 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     }
     return null;
   };
-  const out: OficinaDecor = { alfombras: 0, manchas: 0, montones: 0, plantas: 0, cajas: 0, fuentes: 0, lamparas: 0, tubos: 0, apliques: 0 };
+  const out: OficinaDecor = { secos: 0, alfombras: 0, manchas: 0, montones: 0, plantas: 0, cajas: 0, fuentes: 0, lamparas: 0, tubos: 0, apliques: 0 };
   const shop = at.shop;
   const desks = layout.props.map((p) => ({ x0: p.x * TILE, x1: (p.x + p.w) * TILE - 1, yS: D - (p.y + p.h) * TILE, yN: D - 1 - p.y * TILE }));
+
+  // Los charcos de café, con borde orgánico (charcos.ts); lo que se seca, vinilo con sus juntas
+  out.secos = roundPuddles(world, seed, (x, y) => {
+    const lx = x & 15, ly = (D - 1 - y) & 15;
+    return mat(M.floor, lx === 0 || ly <= 1 || lx === 8 || ly === 8 || ly === 9 ? 1 : 2);
+  });
 
   // Moqueta: rectángulos limpios (salas y un pasillo) en losetas enteras, con el perfil de metal en el borde, y la
   // alfombra de la isla de la copiadora. Solo cambia el color del suelo
@@ -323,8 +330,9 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     const s = spotAgainstWall(along ? L : SLOT, along ? SLOT : L, 16);
     if (!s) continue;
     const [x, y] = s, horizontal = along;
-    const kinds = Array.from({ length: n }, (_, k) => (k === 0 ? 'planta' : ['planta', 'cajas', 'cajas', 'fuente', 'lampara'][Math.floor(r() * 5)]!));
-    if (lamps < 2 && g >= 1 && !kinds.includes('lampara')) { kinds[n - 1] = 'lampara'; lamps++; }
+    // Siempre una planta; dos o tres lámparas en todo el piso, una por grupo como mucho
+    const kinds = Array.from({ length: n }, (_, k) => (k === 0 ? 'planta' : ['planta', 'cajas', 'cajas', 'fuente'][Math.floor(r() * 4)]!));
+    if (lamps < 3 && g % 2 === 1) { kinds[n - 1] = 'lampara'; lamps++; }
     kinds.forEach((kind, k) => {
       const ox = horizontal ? x + k * SLOT : x, oy = horizontal ? y : y + k * SLOT;
       if (kind === 'planta') plant(ox, oy); else if (kind === 'cajas') boxes(ox, oy); else if (kind === 'fuente') cooler(ox, oy); else lamp(ox, oy);

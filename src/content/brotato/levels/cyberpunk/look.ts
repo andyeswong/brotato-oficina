@@ -11,6 +11,7 @@ import { material, type Ramp } from '@voxpix/core';
 import { M, worldNoise, type FacadeBuilder, type FloorBuilder, type World } from '@voxpix/world/build';
 import { sampleFacade, sampleFloor } from '@voxpix/samples/pieces';
 import { NORTH, TILE, type Layout } from '@voxpix/worldgen';
+import { roundPuddles } from '../charcos';
 
 // Rampas propias, detrás de las del motor (M va de 0 a 14)
 const EXTRA: Array<Ramp & { key: string }> = [
@@ -109,7 +110,7 @@ function rng(seed: number): () => number {
 }
 
 export interface CyberpunkDecor {
-  calzada: number; alcantarillas: number; contenedores: number; bolsas: number; expendedoras: number; conos: number;
+  secos: number; calzada: number; alcantarillas: number; contenedores: number; bolsas: number; expendedoras: number; conos: number;
   hologramas: number; farolas: number; rotulos: number; tuberias: number;
 }
 
@@ -158,11 +159,17 @@ export function decorateCyberpunk(world: World, seed: number, layout: Layout, at
     }
     return null;
   };
-  const out: CyberpunkDecor = { calzada: 0, alcantarillas: 0, contenedores: 0, bolsas: 0, expendedoras: 0, conos: 0, hologramas: 0, farolas: 0, rotulos: 0, tuberias: 0 };
+  const out: CyberpunkDecor = { secos: 0, calzada: 0, alcantarillas: 0, contenedores: 0, bolsas: 0, expendedoras: 0, conos: 0, hologramas: 0, farolas: 0, rotulos: 0, tuberias: 0 };
   const shop = at.shop ?? { x: W / 2, y: D / 2 };
   const sx = Math.round(shop.x), sy = Math.round(shop.y);
   const manholes: Array<{ x: number; y: number }> = [];
   MANHOLES.set(world, manholes);
+
+  // Los charcos tóxicos, con borde orgánico (charcos.ts); lo que se seca, acera (la calzada se pinta encima después)
+  out.secos = roundPuddles(world, seed, (x, y) => {
+    const lx = x & 15, ly = (D - 1 - y) & 15;
+    return lx === 0 || ly <= 1 ? mat(M.floor, 1) : mat(R.acera!, lx === 8 || ly === 8 || ly === 9 ? 1 : 2);
+  });
 
   // ---- la calzada: dos calles que se cruzan en la tienda (una de este a oeste y otra de norte a sur), de asfalto
   // liso con grietas y parches, la línea discontinua en medio, pasos de cebra al llegar al cruce y el bordillo claro

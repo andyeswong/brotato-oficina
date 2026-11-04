@@ -1,6 +1,7 @@
 // El aspecto de la oficina y del cyberpunk (levels/*/look.ts, NARUTO 2026-11-04): sus losetas, su fachada y lo que
 // ponen por el suelo no cambian la partida: cada vóxel que pone el decorado se atraviesa, no quita ninguno, y lo que para
-// un disparo es lo mismo con él que sin él. Y sale entero y siempre igual para la misma semilla.
+// un disparo es lo mismo con él que sin él. La única excepción, acordada con FERN: los charcos se redondean quitando
+// agua (nunca añadiendo). Y sale entero y siempre igual para la misma semilla.
 import { describe, expect, it, vi } from 'vitest';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
@@ -13,7 +14,8 @@ const { registry } = validateContent(discoverContent());
 const SHOT_Z = 8;
 
 // Lo que cambia el decorado (con él frente a sin él): los vóxeles que pone, por rampa; los que pone y paran el paso
-// (ninguno); los que quita (ninguno), y los que repinta (las losas del suelo) sin cambiar lo que son para la partida
+// (ninguno, salvo el suelo de los charcos que se secan); los que quita (ninguno), y los que repinta (las losas del
+// suelo) sin cambiar lo que son para la partida
 function decorVoxels(a: Arena, b: Arena): { added: Map<string, number>; blocking: string[]; removed: number; repainted: number; changed: string[] } {
   const ma = a.world.model, mb = b.world.model, ta = materialsOf(ma.palette)!, tb = materialsOf(mb.palette)!;
   const added = new Map<string, number>(), blocking: string[] = [], changed: string[] = [];
@@ -23,6 +25,8 @@ function decorVoxels(a: Arena, b: Arena): { added: Map<string, number>; blocking
     if (va === vb) continue;
     if (!va) { removed++; continue; }
     const ramp = ma.palette.ramps[Math.floor((va - 1) / 16)]!.name;
+    // Donde un charco se secó (charcos.ts, acordado con FERN): el suelo que rellena su cuenca
+    if (!a.world.wet[y * a.world.width + x] && b.world.wet[y * b.world.width + x]) { added.set('charco seco', (added.get('charco seco') ?? 0) + 1); continue; }
     if (vb) {
       repainted++;
       if (ta.blocks[va] !== tb.blocks[vb] || ta.bed[va] !== tb.bed[vb] || ta.climb[va] !== tb.climb[vb]) changed.push(`${x},${y},${z} ${ramp}`);
@@ -45,10 +49,16 @@ describe('el aspecto de la oficina y del cyberpunk', () => {
         expect(d.blocking.slice(0, 5), `semilla ${seed} piso ${floor}`).toEqual([]);
         expect(d.removed).toBe(0);
         expect(d.changed.slice(0, 5)).toEqual([]);
+        // Los charcos solo pierden agua: lo mojado con el decorado está mojado sin él
+        let wetA = 0, wetB = 0;
+        for (let i = 0; i < a.world.wet.length; i++) { wetA += a.world.wet[i]!; wetB += b.world.wet[i]!; if (a.world.wet[i]) expect(b.world.wet[i]).toBe(1); }
+        expect(wetB - wetA).toBe(a.decor.secos);
+        expect(a.decor.secos).toBeGreaterThan(0);
         // Las luces del mundo caben en las que pinta la GPU en un cuadro (MAX_LIGHTS, con la que lleva MAIA)
         expect(a.world.lights.length).toBeLessThanOrEqual(MAX_LIGHTS - 2);
-        // Y lo que ve la partida, igual: donde se apoya el pie y lo que para un disparo, en cada columna
+        // Y lo que ve la partida, igual fuera de los charcos secados: donde se apoya el pie y lo que para un disparo
         for (let y = 0; y < a.world.depth; y += 3) for (let x = 0; x < a.world.width; x += 3) {
+          if (b.world.wet[y * b.world.width + x]) continue;
           if (b.world.model.get(x, y, 2) && b.world.model.palette.ramps[Math.floor((b.world.model.get(x, y, 2) - 1) / 16)]!.name === 'agua') continue;
           expect(a.state.solidAt(x, y, a.floorZ + SHOT_Z)).toBe(b.state.solidAt(x, y, b.floorZ + SHOT_Z));
         }
