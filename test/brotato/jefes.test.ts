@@ -1,6 +1,9 @@
 // Los jefes nuevos y su sorteo (MAIA, 2026-11-04): reproducible con la semilla, sin gastar números de la partida, con
 // una mecánica que no es embestir.
 import { describe, expect, it, vi } from 'vitest';
+import { Model, material } from '@voxpix/core';
+import { BrotatoGame, type Models } from '../../src/game/brotato/play';
+import { lookOf } from '../../src/game/brotato/looks';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
 import { Run, pickBoss } from '../../src/game/brotato/sim/Run';
@@ -136,3 +139,23 @@ describe('encajada', () => {
     expect(run.arena.fits(w.player.x, w.player.y, w.player.z, run.body.radius)).toBe(true);
   });
 });
+
+// El gólem se para para golpear y entonces se ve su modelo quieto, no un cuadro de andar: sin precargarlo se horneaba al
+// primer golpe de cada rumbo, a 26 ms por sprite con el gólem macizo (puerta final, 2026-11-04)
+describe('la precarga del jefe', () => {
+  const pal = { ramps: [{ name: 'g', colors: ['#202020', '#606060', '#a0a0a0'] }] };
+  const cube = (h: number) => { const m = new Model(pal, `c${h}`); for (let z = 0; z < h; z++) m.set(0, 0, z, material(0, 1)); return m; };
+  const cache = new Map<string, Model>();
+  const one = (k: string) => cache.get(k) ?? (cache.set(k, cube(2)), cache.get(k)!);
+  const models: Models = { model: one, walk: (ref) => ({ frames: [one(ref + '#0'), one(ref + '#1')], ms: 100 }) };
+  const player = { model: cube(6), walk: [cube(7)], walkMs: 100 };
+  for (const boss of ['jefe', 'arana', 'golem']) for (const level of ['oficina', 'medieval', 'cyberpunk']) {
+    it(`${boss} en ${level}: su modelo quieto va en la lista`, { timeout: 60_000 }, () => {
+      const g = new BrotatoGame(registry, 7, models, player, registry.level(level), { boss });
+      const listed = new Set(g.preloadModels().map((it) => it.model));
+      const ref = lookOf(g.run.boss, g.theme).model;
+      expect(listed.has(one(ref)), ref).toBe(true);
+    });
+  }
+});
+

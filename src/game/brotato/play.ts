@@ -195,6 +195,8 @@ export class BrotatoGame {
       const e = reg.enemy(id), look = lookOf(e, this.theme);
       const walk = this.models.walk(look.model, e.id);
       for (const m of walk ? walk.frames : [this.models.model(look.model)]) add(m, true);
+      // El jefe parado se ve con su modelo quieto, no con un cuadro de andar (loop de sync, más abajo)
+      if (e.boss) add(this.models.model(look.model), true);
       for (const pose of Object.values(e.poses)) { const m = this.models.pose?.(look.model, pose); if (m) add(m, true); }
       if (look.projectile) add(this.models.model(look.projectile), false);
     }

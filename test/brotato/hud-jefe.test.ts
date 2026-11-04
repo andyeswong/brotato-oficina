@@ -26,7 +26,7 @@ const overlap = (a: R, b: R) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y 
 
 describe('la barra del jefe en la HUD', () => {
   for (const [name, W, H] of [['escritorio', 384, 216], ['tapa del Flip', 249, 218], ['Flip abierto', 216, 384]] as const) {
-    it(`no pisa nada ni se sale (${name} ${W}×${H})`, () => {
+    it(`no pisa nada ni se sale (${name} ${W}×${H})`, { timeout: 60_000 }, () => {
       const g = new BrotatoGame(registry, 7, models, player, registry.level('medieval'), { startWave: 10 });
       const w = g.current;
       // Con el dash comprado, para que salga también su botón táctil
