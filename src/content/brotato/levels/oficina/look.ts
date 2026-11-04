@@ -27,6 +27,11 @@ const EXTRA: Array<Ramp & { key: string }> = [
   { key: 'salida', name: 'luz de salida', colors: ['#0a3a1c', '#14783a', '#2ec062', '#9cf8b8'], emissive: true },
   { key: 'nota', name: 'nota adhesiva', colors: ['#6a5810', '#a8901c', '#e0c430', '#fff07a'] },
   { key: 'notaRosa', name: 'nota rosa', colors: ['#6a2440', '#a83a68', '#e06498', '#ffa8cc'] },
+  // La orilla de los charcos (charcos.ts, rim): la cara del escalón sobre el agua se hornea un tono por debajo de la de
+  // arriba y con la mitad de luz, y se veía como un contorno negro. Aquí ese tono de abajo es uno más claro que la losa:
+  // la cara queda como el vinilo de al lado, y la de arriba, igual que siempre (la losa, en el 2; la junta, en el 1)
+  { key: 'orilla', name: 'orilla de charco', colors: ['#5e687c', '#5e687c', '#464e5e', '#5e687c', '#76829a'] },
+  { key: 'orillaJunta', name: 'orilla de charco, junta', colors: ['#464e5e', '#323844', '#464e5e', '#5e687c', '#76829a'] },
   { key: 'alfombra', name: 'alfombra', colors: ['#4a3e34', '#5a4c40', '#6a5a4c', '#7c6a5a', '#8e7c6a'] },
   // Encima
   { key: 'papel', name: 'papel', colors: ['#7c8090', '#aeb2bc', '#d6d8de', '#f4f5f8'], material: 'atravesable' },
@@ -233,7 +238,9 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
   // El suelo entero, en losetas de 32 (slab): encima de la junta de 16 del motor
   for (let y = 0; y < D; y++) for (let x = 0; x < W; x++) repaint(x, y, slab(x, y, D));
   // Los charcos de café, en manchas redondas (charcos.ts); lo que se seca, vinilo
-  out.secos = roundPuddles(world, seed, (x, y) => slab(x, y, D));
+  out.secos = roundPuddles(world, seed, (x, y) => slab(x, y, D), {
+    flat: true, rim: (_x, _y, v) => (v === mat(M.floor, 2) ? mat(R.orilla!, 2) : v === mat(M.floor, 1) ? mat(R.orillaJunta!, 1) : v),
+  });
 
   // Moqueta: rectángulos limpios (salas y un pasillo) en losetas enteras, con el perfil de metal en el borde, y la
   // alfombra de la isla de la copiadora. Solo cambia el color del suelo

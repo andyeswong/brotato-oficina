@@ -5,15 +5,24 @@
 // el medieval no lo usa). Va en el decorate del nivel, antes de que exista el agua del estado: la celda que se seca
 // pierde su cuenca, se rellena de suelo hasta z = 0 y su losa es la que diga `floor`.
 import { M, worldNoise, type World } from '@voxpix/world/build';
-import { material } from '@voxpix/core';
+import { decode, material } from '@voxpix/core';
 
 const BITE = 3.2;        // lo más que se come el borde
 const STRETCH = 1.5;     // lo más alargada que queda la mancha: su eje largo, como mucho 1,5 veces el corto (más 4)
 const SHRINK = 0.86;     // la elipse, un poco dentro de la caja del charco
 const CORE = 0.7;        // lo hondo, otra elipse concéntrica a esta escala (MAIA: "parecen montículos")
 
+// Charcos planos (oficina; MAIA: "siguen leyéndose como montículos"): lo que da volumen a una mancha es su centro más
+// hondo y oscuro, el borde mordido (cada muesca es un rincón que la oclusión del horneado oscurece: un contorno negro) y que
+// en pantalla salga casi redonda. Con `flat` la elipse es más ancha que honda (ASPECT en ejes del modelo; la cámara la
+// aplasta otro tanto), lisa, toda de 1 de hondo, y la losa del fondo sube un tono donde la oclusión le quitaría uno.
+// `rim` repinta la losa seca de alrededor (z = 0), cuya cara vertical sobre el charco el horneado deja en sombra
+export interface PuddleShape { flat?: boolean; rim?: (x: number, y: number, v: number) => number }
+const ASPECT = 1.5;
+
 // floor(x, y): la losa de suelo seco que va en (x, y, 0). Devuelve cuántas celdas se secaron
-export function roundPuddles(world: World, seed: number, floor: (x: number, y: number) => number): number {
+export function roundPuddles(world: World, seed: number, floor: (x: number, y: number) => number, shape: PuddleShape = {}): number {
+  const flat = shape.flat ?? false;
   const W = world.width, D = world.depth, wet = world.wet, m = world.model;
   const seen = new Uint8Array(W * D);
   let dried = 0;
@@ -47,7 +56,7 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     mx /= cells.length; my /= cells.length;
     const hw = Math.min(mx - x0, x1 + 1 - mx), hh = Math.min(my - y0, y1 + 1 - my);
     const short = Math.min(hw, hh), long = Math.min(Math.max(hw, hh), short * STRETCH + 4);
-    const ex = (hw >= hh ? long : short) * SHRINK, ey = (hw >= hh ? short : long) * SHRINK;
+    const ex = (flat ? hw : hw >= hh ? long : short) * SHRINK, ey = (flat ? Math.min(hh, hw / ASPECT) : hw >= hh ? short : long) * SHRINK;
     // Cuánto de la elipse ocupa la celda: 1 en el borde (con su ondulación), 0 en el centro
     const reach = (c: number) => {
       const cx = c % W, cy = (c - cx) / W;
@@ -57,6 +66,7 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     const keep = (c: number) => {
       const cx = c % W, cy = (c - cx) / W;
       if (reach(c) > 1) return false;
+      if (flat) return true;
       // El borde, mordido con un ruido suave (de 6 en 6 vóxeles, interpolado)
       const fx = cx / 6, fy = cy / 6, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
       const n = (a: number, b: number) => worldNoise(a, b, 77, seed);
@@ -78,11 +88,33 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     // somera solo en el otro, y la mancha se leía como un montículo de base plana. Fuera de la elipse de dentro el
     // fondo sube al de la orilla, con su losa en z = -1 (agua de 1 de hondo, que frena igual que la de 2): solo se quita agua
     for (const c of cells) {
-      if (!wet[c] || reach(c) <= CORE) continue;
+      if (!wet[c] || (!flat && reach(c) <= CORE)) continue;
       const x = c % W, y = (c - x) / W;
       if (m.floorAt(x, y) >= 0) continue;
       for (let z = m.zMin; z < -1; z++) if (!m.get(x, y, z)) m.set(x, y, z, material(M.floor, (z & 1) === 0 ? 0 : 1));
       m.set(x, y, -1, floor(x, y));
+    }
+    // La oclusión del horneado (core/render.ts) baja un tono la cara de arriba con 5 o más de sus 8 vecinas llenas en
+    // el plano de encima: en el fondo del charco, las celdas pegadas a la orilla. Su losa sube ese tono
+    if (flat) for (const c of cells) {
+      if (!wet[c]) continue;
+      const x = c % W, y = (c - x) / W, z = m.floorAt(x, y) - 1;
+      let occ = 0;
+      for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) if ((a || b) && m.get(x + a, y + b, z + 1)) occ++;
+      const v = m.get(x, y, z);
+      if (occ < 5 || !v) continue;
+      const { ramp, tone } = decode(v), n = m.palette.ramps[ramp]?.colors.length ?? 0;
+      if (tone + 1 < n) m.set(x, y, z, material(ramp, tone + 1));
+    }
+    if (shape.rim) for (const c of cells) {
+      if (!wet[c]) continue;
+      const x = c % W, y = (c - x) / W;
+      for (let b = -1; b <= 1; b++) for (let a = -1; a <= 1; a++) {
+        const nx = x + a, ny = y + b, j = ny * W + nx;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= D || wet[j] || m.floorAt(nx, ny) !== 1) continue;
+        const v = m.get(nx, ny, 0);
+        if (v) m.set(nx, ny, 0, shape.rim(nx, ny, v));
+      }
     }
   }
   return dried;
