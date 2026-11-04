@@ -17,6 +17,11 @@ export type SelectAction = { type: 'start'; index: number } | { type: 'move'; de
 
 export const PORTRAIT_W = 32; // caja del retrato a escala x1
 export const PORTRAIT_H = 48;
+// Las flechas de cambiar de agente: su zona de toque, a escala x1 (un dedo, en la vista del Flip)
+export const ARROW_W = 32;
+// Apaisada caben menos píxeles de ficha y cada uno se ve más grande en pantalla: 18 son 40 px CSS en un móvil tumbado
+export const ARROW_W_WIDE = 18;
+const ARROW_MIN_H = 44;
 export const THEME_NAMES: Record<ThemeId, string> = { oficina: 'Oficina', medieval: 'Medieval', cyberpunk: 'Cyberpunk' };
 export const GAME_TITLE = 'Brotato';
 export const GAME_SUBTITLE = 'de la oficina';
@@ -31,6 +36,11 @@ export function selectKey(e: { code: string; key: string }, count: number, selec
   if (e.key === 'm' || e.key === 'M') return { type: 'sound' };
   if (e.key === 'u' || e.key === 'U') return { type: 'meta' };
   return null;
+}
+
+// Las agentes en el orden de la portada
+export function roster(registry: Registry): CharacterModule[] {
+  return [...registry.characters()].sort((a, b) => a.order - b.order);
 }
 
 // camera, sound y fichas: si quien llama los maneja, su línea o su botón en el menú
@@ -93,8 +103,8 @@ export function drawSelect(p: Painter, registry: Registry, selected: number, the
   }
   if (hint) drawText(p, W - pad, H - pad - line, hint, UI.dim, { scale: u, align: 'right' });
 
-  const c = registry.characters()[selected];
-  if (c) agentCard(p, zones, registry, c, selected, theme, card.x, card.y, card.w, card.h, u, registry.characters().length > 1, !wide);
+  const all = roster(registry), c = all[selected];
+  if (c) agentCard(p, zones, registry, c, selected, theme, card.x, card.y, card.w, card.h, u, all.length > 1, !wide);
   return zones;
 }
 
@@ -120,41 +130,60 @@ function agentCard(p: Painter, zones: Zone<SelectAction>[], registry: Registry, 
   x: number, y: number, w: number, h: number, u: number, several: boolean, stacked: boolean): void {
   const pad = 5 * u, accent = ACCENTS[theme];
   panel(p, x, y, w, h, { fill: UI.panelHi, accent, edge: accent });
+  // Las flechas van a los lados del retrato y con sitio para el dedo: apaisada les hace falta su propio hueco
+  const aw = (stacked ? ARROW_W : ARROW_W_WIDE) * u, side = several && !stacked ? aw : 0;
   const ps = stacked
-    ? Math.max(1, Math.min(3, Math.floor((w - 2 * pad) / (PORTRAIT_W * u)), Math.floor((h * 0.45) / (PORTRAIT_H * u))))
+    ? Math.max(1, Math.min(3, Math.floor((w - 2 * pad - 2 * ARROW_W * u) / (PORTRAIT_W * u)), Math.floor((h * 0.45) / (PORTRAIT_H * u))))
     : Math.max(1, Math.min(3, Math.floor((h - 2 * pad) / (PORTRAIT_H * u)), Math.floor((w * 0.3) / (PORTRAIT_W * u))));
   const pw = PORTRAIT_W * u * ps, ph = PORTRAIT_H * u * ps;
-  const tx = stacked ? x + pad : x + pad + pw + 5 * u;
+  const tx = stacked ? x + pad : x + pad + 2 * side + pw + 5 * u;
   const maxChars = Math.max(6, Math.floor((x + w - pad - tx) / (CHAR_W * u)));
-  const lines: Array<{ text: string; color: string; scale: number; gap?: number }> = [];
-  const nameScale = textWidth(c.name, 2 * u) <= x + w - pad - tx ? 2 * u : u;
-  lines.push({ text: c.name, color: COLORS.text, scale: nameScale, gap: 0 });
-  for (const l of wrapText(c.description ?? '', maxChars)) lines.push({ text: l, color: COLORS.dim, scale: u });
   const stats = new Map<string, StatModule>(registry.stats().map((s) => [s.id, s]));
-  (c.modifiers ?? []).forEach((m, k) => {
-    const d = describeModifier(m, stats);
-    wrapText(d.text, maxChars).forEach((l, j) => lines.push({ text: l, color: d.good ? COLORS.good : COLORS.bad, scale: u, gap: k === 0 && j === 0 ? 3 * u : 0 }));
-  });
-  const weapons = (c.startingWeapons ?? []).map((id) => lookOf(registry.weapon(id), theme).name);
-  if (weapons.length > 0) {
-    // Cada arma en su línea, para que el nombre no se parta
-    lines.push({ text: 'empieza con:', color: COLORS.gold, scale: u, gap: 3 * u });
-    for (const name of weapons) for (const l of wrapText(name, maxChars)) lines.push({ text: l, color: COLORS.gold, scale: u });
-  }
-  // Lo que cabe en alto; si sobra sitio, centrado (apilada, el retrato y el texto juntos)
+  const linesOf = (who: CharacterModule) => {
+    const lines: Array<{ text: string; color: string; scale: number; gap?: number }> = [];
+    const nameScale = textWidth(who.name, 2 * u) <= x + w - pad - tx ? 2 * u : u;
+    lines.push({ text: who.name, color: COLORS.text, scale: nameScale, gap: 0 });
+    for (const l of wrapText(who.description ?? '', maxChars)) lines.push({ text: l, color: COLORS.dim, scale: u });
+    // Lo que su base cambia frente a la de la estadística (la vida del Becario y de la Conserje) también es ventaja o desventaja
+    const fromBase = Object.entries(who.baseStats ?? {}).flatMap(([stat, v]) => { const add = v - (stats.get(stat)?.base ?? v); return add ? [{ stat, add }] : []; });
+    [...fromBase, ...(who.modifiers ?? [])].forEach((m, k) => {
+      const d = describeModifier(m, stats);
+      wrapText(d.text, maxChars).forEach((l, j) => lines.push({ text: l, color: d.good ? COLORS.good : COLORS.bad, scale: u, gap: k === 0 && j === 0 ? 3 * u : 0 }));
+    });
+    const weapons = (who.startingWeapons ?? []).map((id) => lookOf(registry.weapon(id), theme).name);
+    if (weapons.length > 0) {
+      // Cada arma en su línea, para que el nombre no se parta
+      lines.push({ text: 'empieza con:', color: COLORS.gold, scale: u, gap: 3 * u });
+      for (const name of weapons) for (const l of wrapText(name, maxChars)) lines.push({ text: l, color: COLORS.gold, scale: u });
+    }
+    return lines;
+  };
+  // Lo que cabe en alto
   const room = h - 2 * pad - (stacked ? ph + 4 * u : 0);
-  const shown: typeof lines = [];
+  const heightOf = (l: { scale: number; gap?: number }) => (l.gap ?? 0) + FONT_SIZE * l.scale;
+  const shown: ReturnType<typeof linesOf> = [];
   let used = 0;
-  for (const l of lines) {
-    const lh = (l.gap ?? 0) + FONT_SIZE * l.scale;
-    if (used + lh > room) break;
-    shown.push(l); used += lh;
+  for (const l of linesOf(c)) {
+    if (used + heightOf(l) > room) break;
+    shown.push(l); used += heightOf(l);
   }
-  let ty = y + pad + Math.max(0, Math.floor((room - used) / 2));
+  // Centrado según la ficha más alta de todas, para que el retrato y el nombre no se muevan al cambiar de agente
+  const tallest = Math.max(...roster(registry).map((who) => linesOf(who).reduce((sum, l) => sum + heightOf(l), 0)));
+  let ty = y + pad + Math.max(0, Math.floor((room - tallest) / 2));
+  let portraitY: number, leftX: number, rightX: number;
   if (stacked) {
-    p.icon({ kind: 'character', id: c.id }, x + Math.floor((w - pw) / 2), ty, pw, ph);
+    const px = x + Math.floor((w - pw) / 2);
+    p.icon({ kind: 'character', id: c.id }, px, ty, pw, ph);
+    portraitY = ty;
+    leftX = px - aw;
+    rightX = px + pw;
     ty += ph + 4 * u;
-  } else p.icon({ kind: 'character', id: c.id }, x + pad, y + Math.floor((h - ph) / 2), pw, ph);
+  } else {
+    portraitY = y + Math.floor((h - ph) / 2);
+    p.icon({ kind: 'character', id: c.id }, x + pad + side, portraitY, pw, ph);
+    leftX = x + pad;
+    rightX = x + pad + side + pw;
+  }
   for (const l of shown) {
     ty += l.gap ?? 0;
     drawText(p, tx, ty, l.text, l.color, { scale: l.scale });
@@ -163,10 +192,19 @@ function agentCard(p: Painter, zones: Zone<SelectAction>[], registry: Registry, 
   zones.push({ x, y, w, h, action: { type: 'start', index: i } });
   // Con más de una agente, flechas para cambiar (van después: ganan a la ficha)
   if (several) {
-    const aw = 10 * u;
-    drawText(p, x + 2 * u, y + Math.floor(h / 2) - 4 * u, '«', accent, { scale: u });
-    drawText(p, x + w - 2 * u, y + Math.floor(h / 2) - 4 * u, '»', accent, { scale: u, align: 'right' });
-    zones.push({ x, y, w: aw, h, action: { type: 'move', delta: -1 } });
-    zones.push({ x: x + w - aw, y, w: aw, h, action: { type: 'move', delta: 1 } });
+    const cy = portraitY + Math.floor(ph / 2), zh = Math.max(ARROW_MIN_H * u, ph);
+    chevron(p, leftX + Math.floor(aw / 2), cy, -1, u, accent);
+    chevron(p, rightX + Math.floor(aw / 2), cy, 1, u, accent);
+    zones.push({ x: leftX, y: cy - Math.floor(zh / 2), w: aw, h: zh, action: { type: 'move', delta: -1 } });
+    zones.push({ x: rightX, y: cy - Math.floor(zh / 2), w: aw, h: zh, action: { type: 'move', delta: 1 } });
+  }
+}
+
+// Una flecha grande: dos trazos en ángulo que apuntan a dir (-1, izquierda; 1, derecha)
+function chevron(p: Painter, cx: number, cy: number, dir: -1 | 1, u: number, color: string): void {
+  const size = 7 * u, thick = 3 * u;
+  for (let k = -size; k < size; k += u) {
+    const off = size - Math.abs(k);
+    p.fill(cx + dir * off - Math.floor(thick / 2), cy + k, thick, u, color);
   }
 }

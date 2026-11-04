@@ -9,7 +9,7 @@ import { TICK } from '@voxpix/world/state';
 import type { Registry } from './registry/validate';
 import type { LevelModule, ThemeId } from './registry/schemas';
 import { Run } from './sim/Run';
-import { FIRE_ANIM_TIME, type World as Wave, type WorldFx } from './sim/World';
+import { FIRE_ANIM_TIME, type World as Wave, type WorldFx, type Zone } from './sim/World';
 import { pickLevel } from './sim/arena';
 import { lookOf } from './looks';
 import { STRUCTURE_KG } from './sim/furniture';
@@ -67,6 +67,13 @@ const BOSS_EYES: Record<ThemeId, { kind: 'neon-pink' | 'neon-cyan'; color?: read
   cyberpunk: { kind: 'neon-cyan', radius: 40, intensity: 1, offset: [2.5, -6, 33.5] },
 };
 const SHOT_Z = 7;         // y vuelan los disparos
+const RETURN_SPIN = 15;   // grados por tick que gira lo que va y vuelve
+const LOB_HEIGHT = 0.4;   // lo alto que sube un tiro en arco, por vóxel de recorrido
+// La altura de un tiro en arco a falta de `left` de `total`
+export function lobHeight(total: number, left: number): number {
+  const f = Math.min(1, Math.max(0, 1 - left / total));
+  return 4 * f * (1 - f) * total * LOB_HEIGHT;
+}
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
 const FX_KEEP = 256;
 
@@ -84,6 +91,8 @@ export { HEADINGS } from '@voxpix/world/frame2d';
 // tener cientos de enemigos en pantalla el tiempo que dure la medida. Apagadas, la partida y su huella no cambian
 export interface TestOptions {
   boss?: string;        // ?jefe=: fuerza el jefe de la oleada 10 en vez de sortearlo
+  weapons?: string[];   // ?armas=a,b: empieza con esas armas, para medir y para las láminas
+  character?: string;   // no es de pruebas: quién juega (por defecto MAIA)
   startWave?: number;   // 1 = la primera
   immortal?: boolean;   // tras cada paso, MAIA recupera toda la vida
   meta?: Readonly<Record<string, number>>;   // no es de pruebas: las mejoras entre partidas que se compraron
@@ -124,12 +133,13 @@ export class BrotatoGame {
   private readonly bossLights = new Map<number, number | string>();
   private readonly shotIds = new Map<number, EntityId>();
   private readonly materialIds = new Map<number, EntityId>();
+  private readonly zoneIds = new Map<object, EntityId>();
   private fx: WorldFx[] = [];
 
   constructor(registry: Registry, seed: number, private readonly models: Models, private readonly player: PlayerLooks, level?: LevelModule,
     private readonly test: TestOptions = {}) {
     const lv = level ?? pickLevel(registry.levels(), seed);
-    this.run = new Run(registry, registry.character('maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}), ...(test.boss ? { boss: test.boss } : {}) });
+    this.run = new Run(registry, registry.character(test.character ?? 'maia'), lv, seed, { ...(test.meta ? { meta: test.meta } : {}), ...(test.waitFloor ? { holdFall: true } : {}), ...(test.weapons ? { weapons: test.weapons } : {}), ...(test.boss ? { boss: test.boss } : {}) });
     this.theme = lv.theme;
     if (test.startWave) this.run.waveIndex = Math.max(0, Math.min(lv.waves.length, test.startWave) - 1);
     this.wave = this.run.startWave();
@@ -185,6 +195,7 @@ export class BrotatoGame {
       for (const pose of Object.values(e.poses)) { const m = this.models.pose?.(look.model, pose); if (m) add(m, true); }
       if (look.projectile) add(this.models.model(look.projectile), false);
     }
+    if (this.run.boss.behavior === 'spider') add(this.models.model(`jefe/zona-${this.theme}`), false);
     add(this.models.model(`efectos/escupitajo-${this.theme}`), false);
     add(this.models.model(`efectos/material-${this.theme}`), false);
     // Lo que flota en el agua (los nenúfares de la vegetación): no da sombra
@@ -321,6 +332,7 @@ export class BrotatoGame {
     this.enemyIds.clear();
     this.bossLights.clear();
     this.shotIds.clear();
+    this.zoneIds.clear();
     this.materialIds.clear();
     this.carryId = null;
     this.addMaia();
@@ -418,13 +430,20 @@ export class BrotatoGame {
     for (const pr of this.wave.projectiles) {
       flying.add(pr.uid);
       let id = this.shotIds.get(pr.uid);
-      const syaw = heading((Math.atan2(pr.vx, -pr.vy) * 180) / Math.PI);
+      // Lo que va y vuelve gira en el aire; el tiro en arco sube y baja
+      const syaw = pr.returns ? heading(this.tick * RETURN_SPIN) : heading((Math.atan2(pr.vx, -pr.vy) * 180) / Math.PI);
+      const sz = p.z + SHOT_Z + (pr.lob ? Math.round(lobHeight(pr.lob.total, pr.travel)) : 0);
       if (id === undefined) {
-        id = s.entities.add({ model: this.models.model(this.shotModel(pr.source)), x: Math.round(pr.x), y: Math.round(pr.y), z: p.z + SHOT_Z, facing: syaw, castsShadow: false });
+        id = s.entities.add({ model: this.models.model(this.shotModel(pr.source)), x: Math.round(pr.x), y: Math.round(pr.y), z: sz, facing: syaw, castsShadow: false });
         this.shotIds.set(pr.uid, id);
-      } else s.entities.move(id, Math.round(pr.x), Math.round(pr.y), p.z + SHOT_Z, syaw);
+      } else s.entities.move(id, Math.round(pr.x), Math.round(pr.y), sz, syaw);
     }
     for (const [uid, id] of this.shotIds) if (!flying.has(uid)) { s.entities.remove(id); this.shotIds.delete(uid); }
+    // Lo que deja la araña en el suelo
+    for (const z of this.wave.zones) if (!this.zoneIds.has(z)) {
+      this.zoneIds.set(z, s.entities.add({ model: this.models.model(`jefe/zona-${this.theme}`), x: Math.round(z.x), y: Math.round(z.y), z: p.z, facing: 0, castsShadow: false }));
+    }
+    for (const [z, id] of this.zoneIds) if (!this.wave.zones.includes(z as Zone)) { s.entities.remove(id); this.zoneIds.delete(z); }
     // Materiales sueltos
     const lying = new Set<number>();
     for (const m of this.wave.materials) {

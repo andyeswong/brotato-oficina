@@ -101,8 +101,8 @@ export interface Projectile {
   readonly owner: 'player' | 'enemy';
   x: number;
   y: number;
-  readonly vx: number;
-  readonly vy: number;
+  vx: number;
+  vy: number;
   readonly angle: number;
   readonly damage: number;
   readonly critChance: number;
@@ -113,6 +113,13 @@ export interface Projectile {
   readonly hit: Set<number>;
   readonly source: string;             // "weapon:tiro" o "enemy:escupidor"
   readonly anim?: string;              // nombre semántico en sprites.anims del módulo source
+  // Va y vuelve: al acabar el alcance o chocar da la vuelta (back) y persigue al cuerpo, atravesando lo que haya
+  readonly returns?: boolean;
+  back?: boolean;
+  // Tiro en arco: pasa por encima de todo y cae donde apuntó; total es el recorrido entero (la vista dibuja el arco)
+  readonly lob?: { readonly total: number };
+  // Al acabar, daño en área: el daño del proyectil por factor, a todo lo que esté a radius
+  readonly blast?: { readonly radius: number; readonly factor: number };
 }
 
 export interface Material {
@@ -141,7 +148,11 @@ export type WorldFx =
   | { type: 'heal'; amount: number }
   | { type: 'dash'; x: number; y: number; z: number }
   // Un arma de MAIA soltó un proyectil desde su boca (x, y), apuntando a angle: el fogonazo de la vista. z: los pies
-  | { type: 'muzzle'; x: number; y: number; z: number; angle: number; slot: number };
+  | { type: 'muzzle'; x: number; y: number; z: number; angle: number; slot: number }
+  // Un chorro: el cono que acaba de dañar, para que la vista pinte sus gotas. z: los pies
+  | { type: 'spray'; x: number; y: number; z: number; angle: number; reach: number; half: number }
+  // Daño en área (explosión, onda de un golpe de suelo): su centro y su radio. z: los pies
+  | { type: 'blast'; x: number; y: number; z: number; radius: number };
 
 // playing: se juega (también la prórroga: el tiempo acabó y quedan enemigos vivos, que hay que matar). open: tiempo
 // cumplido y 0 vivos, la oleada está limpia y la entrada a la tienda brilla en el mapa (Andrés, 2026-10-25). cleared:
@@ -738,7 +749,7 @@ export class World {
   }
 
   // Estocada o barrido: todo enemigo dentro de la franja recibe el golpe una vez
-  meleeHit(shot: WeaponShot, reach: number, width: number, source: string): void {
+  meleeHit(shot: WeaponShot, reach: number, width: number, source: string, hits?: Set<number>): void {
     const cos = Math.cos(shot.angle);
     const sin = Math.sin(shot.angle);
     const weapon = this.weapons.find((w) => `weapon:${w.def.id}` === source);
@@ -751,8 +762,36 @@ export class World {
       const along = ex * cos + ey * sin;
       const across = Math.abs(-ex * sin + ey * cos);
       if (along < -e.def.radius || along > reach + e.def.radius || across > width / 2 + e.def.radius) continue;
+      hits?.add(e.uid);
       this.damageEnemy(e, shot.damage, shot.critChance, shot.critMult, source);
     }
+  }
+
+  // Chorro: todo lo que esté en el cono (half, en radianes, a cada lado de angle) recibe el golpe
+  coneHit(shot: WeaponShot, reach: number, half: number, source: string): void {
+    const limit = Math.cos(half);
+    const cos = Math.cos(shot.angle);
+    const sin = Math.sin(shot.angle);
+    for (const e of [...this.hash.query(shot.x, shot.y, reach + this.maxEnemyRadius * 2, this.near)]) {
+      const ex = e.x - shot.x;
+      const ey = e.y - shot.y;
+      const d = Math.hypot(ex, ey);
+      if (d > reach + e.def.radius) continue;
+      if (d > e.def.radius && (ex * cos + ey * sin) / d < limit) continue;
+      this.damageEnemy(e, shot.damage, shot.critChance, shot.critMult, source);
+    }
+    this.fx.push({ type: 'spray', x: shot.x, y: shot.y, z: this.player.z, angle: shot.angle, reach, half });
+  }
+
+  // Daño en área alrededor de (x, y); skip: los uid que ya recibieron el golpe de este mismo ataque
+  blast(x: number, y: number, radius: number, damage: number, critChance: number, critMult: number, source: string, skip?: Set<number>): void {
+    for (const e of [...this.hash.query(x, y, radius + this.maxEnemyRadius * 2, this.near)]) {
+      if (skip?.has(e.uid)) continue;
+      const min = radius + e.def.radius;
+      if ((e.x - x) ** 2 + (e.y - y) ** 2 > min * min) continue;
+      this.damageEnemy(e, damage, critChance, critMult, source);
+    }
+    this.fx.push({ type: 'blast', x, y, z: this.player.z, radius });
   }
 
   private moveProjectiles(dt: number): void {
@@ -762,15 +801,33 @@ export class World {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.travel -= Math.hypot(p.vx, p.vy) * dt;
-      let gone = p.travel <= 0 || arena.shotBlocked(p.x, p.y); // fuera, o paredes, columnas y muebles
+      // De vuelta: persigue al cuerpo y desaparece al llegar; nada lo para
+      if (p.back) {
+        const c = this.bodyCenter, speed = Math.hypot(p.vx, p.vy);
+        const dx = c.x - p.x, dy = c.y - p.y, d = Math.hypot(dx, dy);
+        if (d <= p.radius + this.deps.body.radius + speed * dt) { this.projectiles.splice(i, 1); continue; }
+        p.vx = (dx / d) * speed;
+        p.vy = (dy / d) * speed;
+        p.travel = 1;
+      }
+      let gone = p.travel <= 0 || (!p.lob && !p.back && arena.shotBlocked(p.x, p.y)); // fuera, o paredes, columnas y muebles
       // Lo que para en un mueble le quita vida
       if (gone && p.travel > 0) {
         // Un mueble roto suelta materiales según lo que pesaba (furniture.ts, furnitureLoot)
         const kg = arena.hitShot(p.x, p.y, p.damage, p.owner);
         if (kg) this.dropMaterials({ x: p.x, y: p.y }, furnitureLoot(kg));
       }
+      // Lo que va y vuelve da la vuelta aquí, y a la vuelta puede volver a golpear a los mismos
+      if (gone && p.returns) {
+        p.back = true;
+        p.hit.clear();
+        p.travel = 1;
+        gone = false;
+      }
 
-      if (!gone && p.owner === 'player') {
+      if (p.lob) {
+        // En el aire: no toca a nadie hasta caer
+      } else if (!gone && p.owner === 'player') {
         for (const e of [...this.hash.query(p.x, p.y, p.radius + this.maxEnemyRadius * 2, this.near)]) {
           if (!e.alive || p.hit.has(e.uid)) continue;
           const dx = e.x - p.x;
@@ -792,7 +849,10 @@ export class World {
           gone = true;
         }
       }
-      if (gone) this.projectiles.splice(i, 1);
+      if (gone) {
+        if (p.blast) this.blast(p.x, p.y, p.blast.radius, p.damage * p.blast.factor, p.critChance, p.critMult, p.source);
+        this.projectiles.splice(i, 1);
+      }
     }
   }
 
@@ -940,7 +1000,7 @@ class WorldWeaponApi implements WeaponApi {
 
   constructor(private readonly world: World, readonly rng: () => number) {}
 
-  projectile(shot: WeaponShot, opts: { angle?: number; speed: number; pierce?: number; radius?: number; anim?: string }): void {
+  projectile(shot: WeaponShot, opts: { angle?: number; speed: number; pierce?: number; radius?: number; anim?: string; returns?: boolean }): void {
     const angle = opts.angle ?? shot.angle;
     this.world.addProjectile({
       owner: 'player',
@@ -957,8 +1017,42 @@ class WorldWeaponApi implements WeaponApi {
       pierce: opts.pierce ?? 0,
       source: this.source,
       anim: opts.anim,
+      ...(opts.returns ? { returns: true } : {}),
     });
     this.world.fx.push({ type: 'muzzle', x: shot.x, y: shot.y, z: this.world.player.z, angle, slot: this.slot });
+  }
+
+  lob(shot: WeaponShot, opts: { speed: number; radius: number; factor?: number }): void {
+    const total = Math.max(1, Math.min(shot.range, Math.hypot(shot.target.x - shot.x, shot.target.y - shot.y)));
+    this.world.addProjectile({
+      owner: 'player',
+      x: shot.x,
+      y: shot.y,
+      vx: Math.cos(shot.angle) * opts.speed,
+      vy: Math.sin(shot.angle) * opts.speed,
+      angle: shot.angle,
+      damage: shot.damage,
+      critChance: shot.critChance,
+      critMult: shot.critMult,
+      radius: 3,
+      travel: total,
+      pierce: 0,
+      source: this.source,
+      lob: { total },
+      blast: { radius: opts.radius, factor: opts.factor ?? 1 },
+    });
+    this.world.fx.push({ type: 'muzzle', x: shot.x, y: shot.y, z: this.world.player.z, angle: shot.angle, slot: this.slot });
+  }
+
+  cone(shot: WeaponShot, opts: { reach: number; half: number }): void {
+    this.world.coneHit(shot, opts.reach, opts.half, this.source);
+  }
+
+  slam(shot: WeaponShot, opts: { reach: number; width: number; radius: number; factor: number }): void {
+    const hits = new Set<number>();
+    this.world.meleeHit(shot, opts.reach, opts.width, this.source, hits);
+    const x = shot.x + Math.cos(shot.angle) * (opts.reach / 2), y = shot.y + Math.sin(shot.angle) * (opts.reach / 2);
+    this.world.blast(x, y, opts.radius, shot.damage * opts.factor, shot.critChance, shot.critMult, this.source, hits);
   }
 
   melee(shot: WeaponShot, opts: { reach: number; width: number }): void {

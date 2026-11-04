@@ -27,8 +27,7 @@ export interface FxScene {
   // La altura del suelo en (x, y): la X del aviso se apoya en él
   groundZ(x: number, y: number): number;
   accent?: string;   // el color del tema (la estela del dash)
-  // Lo que los jefes dejan en el suelo (zonas que frenan, anillos de onda); solo en esta capa, sin modelos
-  zones?: ReadonlyArray<{ x: number; y: number; r: number; t: number }>;
+  // Los anillos de onda de los jefes: solo en esta capa, sin modelos
   rings?: ReadonlyArray<{ x: number; y: number; r: number; gaps: number; gapWidth: number; start: number; done: boolean }>;
 }
 
@@ -47,7 +46,6 @@ const SCRAP_GRAVITY = 260;           // vóxeles/s², la de las gotas del mundo
 // Los trocitos NO son rojos: el material de la oficina es una chincheta roja y se confundirían con él al caer
 const SCRAP_COLORS = ['#fdf6ff', '#c9c3d9', '#8a94a6'] as const;
 const DIM = '#fdf6ff80';
-const ZONE_STEP = 4;                 // separación de la trama de una zona, en vóxeles
 // El destello de un golpe, como en el Brotato: el enemigo en blanco 60 ms y MAIA en rojo 90 ms
 export const FLASH_ENEMY = { color: [1, 1, 1] as const, s: 0.06 };
 export const FLASH_PLAYER = { color: [1, 0.2, 0.2] as const, s: 0.09 };
@@ -61,6 +59,12 @@ const DUST_COLORS = ['#c9c3d9', '#8a94a6'] as const;
 // El fogonazo de un disparo de MAIA (Andrés, 2026-10-29): en la boca del arma, a la altura a la que flotan (play.ts,
 // WEAPON_Z 5, y 1 más al centro del modelo), un punto claro y una llamarada corta hacia donde apunta; 2-3 cuadros
 export const MUZZLE_S = 0.07;
+// El chorro y el daño en área (FERN, 2026-11-04): solo en esta capa, sin modelos, que duran poco y no ocupan el atlas
+export const SPRAY_S = 0.18;
+export const SPRAY_MAX = 24;
+const SPRAY_DROPS = 14;
+export const BLAST_S = 0.28;
+export const BLAST_MAX = 24;
 export const MUZZLE_Z = 6;
 const MUZZLE_LEN = 4;                      // vóxeles de la llamarada
 // Lo que nace por detrás de la punta de la simulación (def.length): en la pose de disparo (anim0, MAIA) el cañón
@@ -186,12 +190,15 @@ export class Effects {
   private floating: Floating[] = [];
   private puffs: Puff[] = [];
   private muzzles: Muzzle[] = [];
+  private sprays: Array<{ x: number; y: number; z: number; angle: number; reach: number; half: number; t: number; seed: number }> = [];
+  private spraySeq = 0;
+  private blasts: Array<{ x: number; y: number; z: number; r: number; t: number }> = [];
   private scraps: Scrap[] = [];
   private trail: TrailPoint[] = [];
   private dashSeq = 0;
 
   get count(): number {
-    return this.floating.length + this.puffs.length + this.scraps.length + this.trail.length + this.muzzles.length;
+    return this.floating.length + this.puffs.length + this.scraps.length + this.trail.length + this.muzzles.length + this.sprays.length + this.blasts.length;
   }
 
   // Lo que anunció la simulación desde el último cuadro
@@ -214,6 +221,14 @@ export class Effects {
           this.muzzles.push({ x: fx.x, y: fx.y, z: fx.z, angle: fx.angle, t: MUZZLE_S });
           if (this.muzzles.length > MUZZLE_MAX) this.muzzles.splice(0, this.muzzles.length - MUZZLE_MAX);
           break;
+        case 'spray':
+          this.sprays.push({ x: fx.x, y: fx.y, z: fx.z, angle: fx.angle, reach: fx.reach, half: fx.half, t: SPRAY_S, seed: ++this.spraySeq });
+          if (this.sprays.length > SPRAY_MAX) this.sprays.splice(0, this.sprays.length - SPRAY_MAX);
+          break;
+        case 'blast':
+          this.blasts.push({ x: fx.x, y: fx.y, z: fx.z, r: fx.radius, t: BLAST_S });
+          if (this.blasts.length > BLAST_MAX) this.blasts.splice(0, this.blasts.length - BLAST_MAX);
+          break;
         default: break;   // spawn y pickup no se dibujan (el enemigo y el contador ya se ven)
       }
     }
@@ -235,6 +250,8 @@ export class Effects {
     this.floating = this.floating.filter((f) => (f.life -= dt) > 0);
     this.puffs = this.puffs.filter((f) => (f.t -= dt) > 0);
     this.muzzles = this.muzzles.filter((f) => (f.t -= dt) > 0);
+    this.sprays = this.sprays.filter((f) => (f.t -= dt) > 0);
+    this.blasts = this.blasts.filter((f) => (f.t -= dt) > 0);
     this.scraps = this.scraps.filter((s) => {
       s.life -= dt;
       s.vz -= SCRAP_GRAVITY * dt;
@@ -245,7 +262,7 @@ export class Effects {
   }
 
   clear(): void {
-    this.floating = []; this.puffs = []; this.scraps = []; this.trail = []; this.muzzles = [];
+    this.floating = []; this.puffs = []; this.scraps = []; this.trail = []; this.muzzles = []; this.sprays = []; this.blasts = [];
   }
 
   // Pinta todo en la vista: (vx, vy) es la esquina de la vista en la imagen del horneado
@@ -259,17 +276,7 @@ export class Effects {
       if (Math.floor(t.t * (t.t < 0.4 ? 16 : 8)) % 2 === 1) continue;
       for (const [x, y] of groundX(cam, t.x, t.y, scene.groundZ(t.x, t.y), TELEGRAPH_ARM)) dot(x, y, COLORS.bad);
     }
-    // Las zonas, una trama de puntos que parpadea al acabarse; los anillos, un círculo con sus huecos
-    const accentZone = scene.accent ?? COLORS.bad;
-    for (const z of scene.zones ?? []) {
-      if (z.t < 1 && Math.floor(z.t * 8) % 2 === 1) continue;
-      const gz = scene.groundZ(z.x, z.y);
-      for (let dy = -z.r; dy <= z.r; dy += ZONE_STEP) for (let dx = -z.r; dx <= z.r; dx += ZONE_STEP) {
-        if (dx * dx + dy * dy > z.r * z.r) continue;
-        const [x, y] = ground(cam, z.x + dx, z.y + dy, gz);
-        dot(x, y, accentZone);
-      }
-    }
+    // Los anillos, un círculo con sus huecos
     for (const g of scene.rings ?? []) {
       const gz = scene.groundZ(g.x, g.y), n = Math.max(12, Math.ceil(Math.PI * 2 * g.r)), sector = (Math.PI * 2) / g.gaps;
       for (let k = 0; k < n; k++) {
@@ -299,6 +306,24 @@ export class Effects {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) dot(x0 + dx, y0 + dy, MUZZLE_FLAME);
       }
       dot(x0, y0, MUZZLE_CORE);
+    }
+    // El chorro: gotas que salen de la boca y se abren hasta el final del cono
+    const hot = scene.accent ?? COLORS.text;
+    for (const f of this.sprays) {
+      const age = 1 - f.t / SPRAY_S;
+      for (let k = 0; k < SPRAY_DROPS; k++) {
+        const h = hash(f.seed, k);
+        const reach = f.reach * (((h & 255) / 255) * 0.5 + age * 0.5);
+        const a = f.angle + (((h >>> 8) & 255) / 127.5 - 1) * f.half;
+        const [x, y] = ground(cam, f.x + Math.cos(a) * reach, f.y + Math.sin(a) * reach, f.z + MUZZLE_Z);
+        dot(x, y, k % 3 === 0 ? COLORS.text : hot);
+      }
+    }
+    // El daño en área: dos anillos en el suelo que crecen hasta su radio
+    for (const f of this.blasts) {
+      const age = 1 - f.t / BLAST_S;
+      for (const [x, y] of groundRing(cam, f.x, f.y, f.z, Math.max(1, f.r * age))) dot(x, y, age < 0.5 ? COLORS.text : hot);
+      for (const [x, y] of groundRing(cam, f.x, f.y, f.z, Math.max(1, f.r * age * 0.6))) dot(x, y, hot);
     }
     // La estela: cada tramo entre dos puntos seguidos del mismo dash, una línea por altura; la mitad final, atenuada.
     // Solo detrás de MAIA, no sobre ella

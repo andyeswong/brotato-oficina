@@ -10,6 +10,7 @@ export default defineCharacter({
   name: 'MAIA',
   description: 'Coordinadora. Cuantas más armas distintas lleva, mejor rinde cada una; ella misma no corre tanto.',
   tags: ['alpha', 'lider'],
+  order: 0,
 
   baseStats: { 'max-hp': 10 },
 

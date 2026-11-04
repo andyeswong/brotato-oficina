@@ -25,13 +25,13 @@ import { discoverContent } from '../../../src/game/brotato/registry/discover';
 import { validateContent } from '../../../src/game/brotato/registry/validate';
 import type { LevelModule, ThemeId } from '../../../src/game/brotato/registry/schemas';
 import { pickLevel } from '../../../src/game/brotato/sim/arena';
-import { BrotatoGame, type GameInput, type Models } from '../../../src/game/brotato/play';
+import { BrotatoGame, type GameInput, type Models, type PlayerLooks } from '../../../src/game/brotato/play';
 import { skipTo } from '../../../src/game/brotato/skip';
 import { FallGate, bakeFinal } from '../../../src/game/brotato/fallgate';
 import { lookOf } from '../../../src/game/brotato/looks';
 import { hit, type IconRef, type Painter, type Zone } from '../../../src/game/brotato/ui/paint';
 import { applyShop, drawShop, shopKey, type ShopAction, type ShopMessage, type ShopPending } from '../../../src/game/brotato/ui/shop';
-import { drawSelect, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
+import { drawSelect, roster, selectKey, type SelectAction } from '../../../src/game/brotato/ui/select';
 import { applyMeta, drawMeta, metaKey, type MetaAction, type MetaMessage } from '../../../src/game/brotato/ui/meta';
 import { loadProgress, saveProgress } from '../../../src/game/brotato/meta/store';
 import { fichasEarned } from '../../../src/game/brotato/meta/upgrades';
@@ -116,6 +116,18 @@ const maiaWalk = walkFrames(maiaModel);
 // Lo que miden MAIA y un bicho (los textos de los efectos salen justo encima de la cabeza)
 const MAIA_H = (maiaModel.bounds()?.maxZ ?? 30) + 1;
 const ENEMY_H = 12;
+// El cuerpo de cada agente: MAIA es el modelo de VoxPix con su walk; las demás, personajes/<id> con su paso dibujado
+const looks = new Map<string, PlayerLooks>([['maia', { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }]]);
+function looksOf(id: string): PlayerLooks {
+  let l = looks.get(id);
+  if (!l) {
+    const ref = `personajes/${id}`;
+    const walk = models.walk(ref, id)!;
+    l = { model: model(ref), walk: walk.frames, walkMs: walk.ms };
+    looks.set(id, l);
+  }
+  return l;
+}
 
 
 // ---- lienzos: el del mundo, el de los efectos y, encima, el de la interfaz, a la misma resolución y escala
@@ -208,7 +220,7 @@ function iconModel(ref: IconRef): VoxelSource | null {
   switch (ref.kind) {
     case 'weapon': return model(lookOf(registry.weapon(ref.id), theme).model);
     case 'item': { const icon = lookOf(registry.item(ref.id), theme).icon; return icon ? model(icon) : null; }
-    case 'character': return ref.id === 'maia' ? maiaModel : null;
+    case 'character': return looksOf(ref.id).model as Model;
     case 'material': return model(`efectos/material-${ref.id}`);
   }
 }
@@ -289,7 +301,8 @@ const slowLog: Array<{ at: number; frameMs: number; bgMs: number; rebakeMs: numb
 (window as unknown as { __lentos: typeof slowLog }).__lentos = slowLog;
 let ticks: FixedLoop | null = null;
 let budget = new FrameBudget(3);
-let selected = 0;
+// ?personaje=becario la elige sin pasar por la portada
+let selected = Math.max(0, roster(registry).findIndex((c) => c.id === q.get('personaje')));
 let shopMessage: ShopMessage | null = null;
 const shopPending: ShopPending = { swap: null };
 let endAt = 0;                  // performance.now() en que apareció el fin (para la gracia)
@@ -317,6 +330,9 @@ const flashes = new Flashes<EntityId>((id, c) => game?.state.entities.setTint(id
 const gfx = fxCanvas.getContext('2d')!;
 const fxPainter: Painter = { get width() { return VW; }, get height() { return VH; }, fill(x, y, w, h, color) { gfx.fillStyle = color; gfx.fillRect(x, y, w, h); }, icon: () => false };
 let drawn = '';                 // la firma de lo último pintado en la interfaz: solo se repinta si cambia
+// Si el navegador pierde el contexto de la GPU, los lienzos 2D se quedan vacíos (y los iconos guardados) y la firma no lo sabe: sin esto, la portada,
+// que no cambia sola, se veía en negro hasta tocar algo
+g2.canvas.addEventListener('contextrestored', () => { drawn = ''; icons.clear(); });
 const keys = new Set<string>();
 
 function levelFor(s: number): LevelModule {
@@ -332,9 +348,10 @@ function newRun(after?: () => void): void {
     level = levelFor(seed);
     theme = level.theme;
     // Sin luz en la mano al empezar (decisión de Andrés): la ficha de MAIA guarda su carryLight por si se consigue luego
-    game = new BrotatoGame(registry, seed, models, { model: maiaModel, walk: maiaWalk, walkMs: WALK_FRAME_MS }, level,
-      { startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
-        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna'), boss: registry.has('enemy', q.get('jefe') ?? '') ? q.get('jefe')! : undefined });
+    const who = roster(registry)[selected] ?? roster(registry)[0]!;
+    game = new BrotatoGame(registry, seed, models, looksOf(who.id), level,
+      { character: who.id, startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
+        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna'), weapons: q.get('armas')?.split(',').filter((id) => registry.has('weapon', id)), boss: registry.has('enemy', q.get('jefe') ?? '') ? q.get('jefe')! : undefined });
     quarter = 0;
     runStart = performance.now();
     bakeFloor();
@@ -527,7 +544,6 @@ function toSelect(): void {
   game = null; baked = null; ticks = null; cur = null; views.clear(); pending.clear(); bgJobs = []; toUpload = [];
   fallGate.reset();
   flashes.clear(); effects.clear(); gfx.clearRect(0, 0, VW, VH);
-  selected = 0;
   screen = 'select';
 }
 
@@ -581,12 +597,14 @@ function paintFx(vx: number, vy: number): void {
   gfx.clearRect(0, 0, VW, VH);
   if (g.phase === 'shop') { flashes.clear(); return; }
   const p = g.current.player;
-  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1), accent: ACCENTS[theme], ...(g.phase === 'wave' ? { zones: g.current.zones, rings: g.current.rings } : {}) };
+  const scene: FxScene = { player: { x: p.x, y: p.y, z: p.z }, playerHeight: MAIA_H, enemyHeight: ENEMY_H, groundZ: (x, y) => g.run.arena.restZ(x, y, 1), accent: ACCENTS[theme], ...(g.phase === 'wave' ? { rings: g.current.rings } : {}) };
   const fx = g.takeFx();
   for (const f of fx) {
     if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); audio.play('golpe'); }
     else if (f.type === 'player-hit') { flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s); audio.play('dano'); }
     else if (f.type === 'enemy-die') audio.play('muerte');
+    else if (f.type === 'spray') audio.play('disparo');
+    else if (f.type === 'blast') audio.play('muerte');
     else if (f.type === 'pickup') audio.play('recoger');
     else if (f.type === 'dash') { flashes.flash(g.playerId, FLASH_DASH.color, DASH_TIME); audio.play('dash'); }
   }
@@ -753,7 +771,7 @@ function act(action: ShopAction | SelectAction | HudAction | MetaAction): void {
   } else if (action.type === 'enter') {
     enterQueued = true;
   } else if (action.type === 'start') {
-    if (registry.characters()[action.index]) newRun();
+    if (roster(registry)[action.index]) { selected = action.index; newRun(); }
   } else if (action.type === 'move') {
     const n = registry.characters().length;
     selected = (selected + action.delta + n) % n;
@@ -784,7 +802,7 @@ addEventListener('keydown', (e) => {
     return;
   }
   if (k === 'm' && screen !== 'select') { audio.toggleMuted(); return; }
-  if (screen === 'select') { const a = selectKey(e, registry.characters().length, selected); if (a) act(a); }
+  if (screen === 'select') { const a = selectKey(e, roster(registry).length, selected); if (a) act(a); }
   else if (screen === 'meta') { const a = metaKey(e); if (a) { e.preventDefault(); act(a); } }
   else if (screen === 'end') { if (performance.now() - endAt >= END_GRACE_S * 1000) toSelect(); }
   else if (game?.phase === 'shop') { const a = shopKey(e, game.run, shopPending.swap); if (a) { e.preventDefault(); act(a); } }

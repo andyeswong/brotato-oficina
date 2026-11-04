@@ -129,6 +129,7 @@ export const statSchema = z
 export const characterSchema = z.strictObject({
   ...manifest,
   kind: z.literal('character'),
+  order: z.number().default(0),   // el orden en la portada: la primera es la que sale elegida
   baseStats: z.record(idSchema, z.number()).optional(),
   modifiers: z.array(modifierSchema).optional(),
   startingWeapons: z.array(idSchema).optional(),
