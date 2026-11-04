@@ -16,7 +16,7 @@ export default defineWeapon({
     { damage: 30, cooldown: 1.65, range: 34, critChance: 0.09, critMult: 2 },
     { damage: 46, cooldown: 1.5, range: 36, critChance: 0.11, critMult: 2 },
   ],
-  length: 18,   // del agarre a la punta (el modelo de cada mundo lo respeta)
+  length: 17,   // del agarre a la punta (el modelo de cada mundo lo respeta)
   shop: { price: 17, minWave: 2, order: 10 },
   looks: {
     oficina: { name: 'Sello gigante', description: 'Lento: lo de delante recibe el golpe entero y la onda alcanza alrededor.', model: 'armas-futuro/golpe-suelo' },

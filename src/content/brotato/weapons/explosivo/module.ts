@@ -8,15 +8,15 @@ export default defineWeapon({
   description: 'Tiro en arco que explota al caer: al que corre se le escapa.',
   tags: ['distancia'],
   behavior: 'lob',
-  params: { speed: 130, radius: 24 },
-  scaling: { 'ranged-damage': 0.7 },
+  params: { speed: 170, radius: 30 },
+  scaling: { 'ranged-damage': 1 },
   tiers: [
-    { damage: 8, cooldown: 1.8, range: 130, critChance: 0.03, critMult: 2 },
-    { damage: 13, cooldown: 1.7, range: 136, critChance: 0.05, critMult: 2 },
-    { damage: 21, cooldown: 1.55, range: 142, critChance: 0.07, critMult: 2 },
-    { damage: 34, cooldown: 1.4, range: 150, critChance: 0.09, critMult: 2 },
+    { damage: 10, cooldown: 1.6, range: 130, critChance: 0.03, critMult: 2 },
+    { damage: 16, cooldown: 1.5, range: 136, critChance: 0.05, critMult: 2 },
+    { damage: 26, cooldown: 1.4, range: 142, critChance: 0.07, critMult: 2 },
+    { damage: 42, cooldown: 1.25, range: 150, critChance: 0.09, critMult: 2 },
   ],
-  length: 14,   // del agarre a la punta (el modelo de cada mundo lo respeta)
+  length: 12,   // del agarre a la punta (el modelo de cada mundo lo respeta)
   shop: { price: 20, minWave: 3, order: 9 },
   looks: {
     oficina: { name: 'Cartucho de tóner', description: 'Lo lanza en arco y revienta al caer: al que corre se le escapa.', model: 'armas-futuro/explosivo', projectile: 'armas-futuro/explosivo-proy' },

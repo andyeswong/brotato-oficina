@@ -53,7 +53,7 @@ describe('armas nuevas', () => {
     expect(lobs).toBeGreaterThan(2);
     const blasts = fxOf(w.fx, 'blast');
     expect(blasts.length).toBeGreaterThan(1);
-    expect(blasts[0]!.radius).toBe(24);
+    expect(blasts[0]!.radius).toBe(30);
     expect(fxOf(w.fx, 'enemy-hit').length).toBeGreaterThan(0);
   });
 

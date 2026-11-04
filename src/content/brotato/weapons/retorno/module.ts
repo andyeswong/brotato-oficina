@@ -16,7 +16,7 @@ export default defineWeapon({
     { damage: 13, cooldown: 1.2, range: 100, critChance: 0.08, critMult: 2 },
     { damage: 21, cooldown: 1.05, range: 106, critChance: 0.1, critMult: 2 },
   ],
-  length: 14,   // del agarre a la punta (el modelo de cada mundo lo respeta)
+  length: 8,   // del agarre a la punta (el modelo de cada mundo lo respeta)
   shop: { price: 18, minWave: 2, order: 7 },
   looks: {
     oficina: { name: 'Cinta métrica', description: 'La lanza y la recoge: corta a la ida y a la vuelta.', model: 'armas-futuro/retorno', projectile: 'armas-futuro/retorno-proy' },
