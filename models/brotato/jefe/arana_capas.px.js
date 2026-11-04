@@ -4,8 +4,9 @@
 //              negro; las patas, cables con el conector de plástico y los contactos dorados en la punta
 //   medieval   araña de cripta: hueso viejo con marcas moradas oscuras y una calavera en el abdomen
 //   cyberpunk  dron araña: cromo negro con franjas de neón rosa y las articulaciones cian
-// Ojos rojos encendidos en las tres (la seña de enemigo; el dron, cian con el centro rojo). Unos 26 de ancho con las
-// patas, 22 de fondo y 15 de alto: radio 9 en el juego.
+// Ojos rojos encendidos en las tres (la seña de enemigo; el dron, cian con el centro rojo). Más grande que el minotauro,
+// para que se note jefe nada más aparecer (MAIA): unos 40 de ancho con las patas, 33 de fondo y 21 de alto (el cuerpo a
+// escala 1,5 del dibujo de abajo). La versión de oficina, más clara que el suelo de oficina, que es oscuro.
 // Ejes como el jefe (jefe_capas.px.js): cada capa z es un corte visto desde arriba, norte arriba (atrás) y abajo el
 // frente, que mira a la cámara; pivote en el centro, las patas en z = 0.
 // Pilas:
@@ -20,8 +21,8 @@
 
 pal({
   R: "#7a1426", r: "#d8314a", e: "#ff8a8a",                                  // ojos
-  a: "#16181e", b: "#24272f", c: "#363a44", d: "#4c5260",                    // plástico oscuro del switch
-  f: "#0c0c10", g: "#1c1c24", h: "#2e2e3a", i: "#44445a",                    // cable negro
+  a: "#2a2e38", b: "#3c414e", c: "#525866", d: "#6c7484",                    // plástico gris del switch
+  f: "#16161e", g: "#2a2a36", h: "#3e3e52", i: "#5a5a76",                    // cable negro
   j: "#0e5a2a", k: "#2ee070", l: "#b0ffd0",                                  // luces verdes
   m: "#2a4a6a", n: "#5a8ac0", o: "#a8d0f0",                                  // conector de plástico
   p: "#a88a2a", q: "#f0d060",                                                // contactos dorados
@@ -38,7 +39,8 @@ ramps("Rre", "abcd", "fghi", "jkl", "mno", "pq", "stuvw", "xyz", "ABCDE", "FGH",
 
 const RAMP = { eye: "Rre", box: "abcd", cable: "fghi", led: "jkl", plug: "mno", gold: "pq", bone: "stuvw", purple: "xyz",
   chrome: "ABCDE", pink: "FGH", cyan: "IJK", oil: "LMNO" }
-const MX = 16, MY = 16, W = 2 * MX + 1, H = 2 * MY + 1, LAYERS = 20
+const MX = 22, MY = 22, W = 2 * MX + 1, H = 2 * MY + 1, LAYERS = 30
+const SCALE = 1.5, CRIA = 0.3   // el jefe y la cría, sobre las medidas del dibujo (body)
 
 const ell3 = (x, y, z, cx, cy, cz, rx, ry, rz) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 + ((z - cz) / rz) ** 2 <= 1
 // Distancia de un punto al segmento a-b, y dónde cae a lo largo (0 en a, 1 en b)
@@ -93,12 +95,13 @@ function body(x, y, z, pose, scale) {
 }
 
 // De qué está hecho cada vóxel en cada mundo
-function material(world, x, y, z, b, pose) {
+function material(world, x, y, z, b, pose, front) {
   if (b.part === "eye") return world === "cyberpunk" ? (Math.abs(x) <= 2 ? "eye" : "cyan") : "eye"
   if (b.part === "spinneret") return world === "oficina" ? "led" : world === "medieval" ? "purple" : "pink"
   if (world === "oficina") {
-    if (b.part === "thorax") return z >= 9 + pose.body && (x + y) % 3 === 0 ? "led" : "box"
-    if (b.part === "abdomen") return Math.abs(b.ay) <= 4.5 && Math.round(b.az * 1.2) % 2 === 0 ? "cable" : "box"   // la bobina
+    // El switch: dos filas de luces verdes por delante y arriba; la bobina, cable negro con franjas de cable azul
+    if (b.part === "thorax") return (z >= 13 && (y + 40) % 3 === 0 && (x + 40) % 3 !== 2) || (front && Math.abs(x) <= 4 && z % 3 === 0 && (x + 40) % 3 !== 2) ? "led" : "box"
+    if (b.part === "abdomen") return Math.abs(b.ay) <= 4.5 ? (Math.round(b.az * 1.2) % 3 === 0 ? "plug" : "cable") : "box"   // la bobina
     if (b.part === "fang") return "gold"
     if (b.part === "foot") return Math.abs(x) % 2 === 0 ? "gold" : "plug"
     if (b.part === "joint") return "plug"
@@ -129,7 +132,7 @@ function voxel(world, x, y, z, pose, scale) {
   const b = body(x, y, z, pose, scale)
   if (!b) return null
   const solid = (a, c, d) => body(a, c, d, pose, scale) !== null
-  const mat = material(world, x, y, z, b, pose)
+  const mat = material(world, x, y, z, b, pose, !solid(x, y - 1, z))
   const ramp = RAMP[mat]
   if (mat === "eye") return z % 2 === 0 ? ramp[2] : ramp[1]
   let k = Math.floor((ramp.length - 1) / 2)
@@ -170,9 +173,9 @@ function stack(name, world, pose, scale) {
 }
 
 for (const world of ["oficina", "medieval", "cyberpunk"]) {
-  for (const [pose, def] of Object.entries(POSES)) stack(pose ? `arana-${world}-${pose}` : `arana-${world}`, world, def, 1)
-  // La cría: la misma, a un 30 %, solo quieta y andando
-  for (const pose of ["", "andar0", "andar1", "andar2", "andar3"]) stack(pose ? `cria-${world}-${pose}` : `cria-${world}`, world, POSES[pose], 0.3)
+  for (const [pose, def] of Object.entries(POSES)) stack(pose ? `arana-${world}-${pose}` : `arana-${world}`, world, def, SCALE)
+  // La cría: la misma, pequeña (7 de ancho), solo quieta y andando
+  for (const pose of ["", "andar0", "andar1", "andar2", "andar3"]) stack(pose ? `cria-${world}-${pose}` : `cria-${world}`, world, POSES[pose], CRIA)
 }
 
 // ---- la zona que frena: 52 x 52, plana (z = 0), centrada en el origen
