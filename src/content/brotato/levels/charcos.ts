@@ -10,6 +10,7 @@ import { material } from '@voxpix/core';
 const BITE = 3.2;        // lo más que se come el borde
 const STRETCH = 1.5;     // lo más alargada que queda la mancha: su eje largo, como mucho 1,5 veces el corto (más 4)
 const SHRINK = 0.86;     // la elipse, un poco dentro de la caja del charco
+const CORE = 0.7;        // lo hondo, otra elipse concéntrica a esta escala (MAIA: "parecen montículos")
 
 // floor(x, y): la losa de suelo seco que va en (x, y, 0). Devuelve cuántas celdas se secaron
 export function roundPuddles(world: World, seed: number, floor: (x: number, y: number) => number): number {
@@ -47,10 +48,15 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     const hw = Math.min(mx - x0, x1 + 1 - mx), hh = Math.min(my - y0, y1 + 1 - my);
     const short = Math.min(hw, hh), long = Math.min(Math.max(hw, hh), short * STRETCH + 4);
     const ex = (hw >= hh ? long : short) * SHRINK, ey = (hw >= hh ? short : long) * SHRINK;
-    const keep = (c: number) => {
+    // Cuánto de la elipse ocupa la celda: 1 en el borde (con su ondulación), 0 en el centro
+    const reach = (c: number) => {
       const cx = c % W, cy = (c - cx) / W;
       const wob = 0.92 + 0.08 * Math.sin(Math.atan2(cy + 0.5 - my, cx + 0.5 - mx) * 3 + seed % 7);
-      if (((cx + 0.5 - mx) / ex) ** 2 + ((cy + 0.5 - my) / ey) ** 2 > wob * wob) return false;
+      return Math.sqrt(((cx + 0.5 - mx) / ex) ** 2 + ((cy + 0.5 - my) / ey) ** 2) / wob;
+    };
+    const keep = (c: number) => {
+      const cx = c % W, cy = (c - cx) / W;
+      if (reach(c) > 1) return false;
       // El borde, mordido con un ruido suave (de 6 en 6 vóxeles, interpolado)
       const fx = cx / 6, fy = cy / 6, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
       const n = (a: number, b: number) => worldNoise(a, b, 77, seed);
@@ -67,6 +73,16 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
       for (let z = m.zMin; z < 0; z++) if (!m.get(x, y, z)) m.set(x, y, z, material(M.floor, (z & 1) === 0 ? 0 : 1));
       m.set(x, y, 0, floor(x, y));
       dried++;
+    }
+    // Lo hondo era la cuenca del generador, que no está centrada en la mancha: llegaba hasta un borde y dejaba orilla
+    // somera solo en el otro, y la mancha se leía como un montículo de base plana. Fuera de la elipse de dentro el
+    // fondo sube al de la orilla, con su losa en z = -1 (agua de 1 de hondo, que frena igual que la de 2): solo se quita agua
+    for (const c of cells) {
+      if (!wet[c] || reach(c) <= CORE) continue;
+      const x = c % W, y = (c - x) / W;
+      if (m.floorAt(x, y) >= 0) continue;
+      for (let z = m.zMin; z < -1; z++) if (!m.get(x, y, z)) m.set(x, y, z, material(M.floor, (z & 1) === 0 ? 0 : 1));
+      m.set(x, y, -1, floor(x, y));
     }
   }
   return dried;
