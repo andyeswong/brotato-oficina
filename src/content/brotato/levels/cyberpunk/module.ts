@@ -1,7 +1,9 @@
 import { defineLevel } from '../../../../game/brotato/api';
-import { worldPalette, type WorldLook } from '@voxpix/world/build';
+import { worldPalette } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
 import { neonPillar } from '../../../../game/brotato/sim/decor';
+import type { LevelWorld } from '../../../../game/brotato/sim/arena';
+import { cyberpunkFacade, cyberpunkFloor, decorateCyberpunk, withCyberpunkRamps } from './look';
 
 // Calle de ciudad de noche: ventanas, tuberías y letreros de neón rosa y cian (arte de NARUTO,
 // arte/escenarios/cyberpunk).
@@ -35,10 +37,11 @@ export default defineLevel({
 });
 
 // El mundo de vóxeles del nivel (VoxPix 857c33d): cómo se ve (WorldLook: paleta, fuente, piezas) y su luz ambiente.
-// Copia de los temas de muestra de VoxPix (samples/themes) tal como estaban: el aspecto no cambia. Va aparte del
-// default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
-export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
-  look: { palette: worldPalette({
+// La paleta sale de los temas de muestra de VoxPix (samples/themes), con las rampas propias de look.ts detrás; el suelo,
+// la fachada y el decorado son los de look.ts. Va aparte del default porque lleva funciones (las piezas), que el
+// esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
+export const world: LevelWorld = {
+  look: { palette: withCyberpunkRamps(worldPalette({
     floor: ['#14162a', '#1e2238', '#2a304a', '#3a4262', '#4e5878'],
     wall: ['#181a2a', '#24283e', '#343a56', '#485072', '#606a8e'],
     cap: ['#20223a', '#2e3250', '#40466a', '#565e86', '#7078a0'],
@@ -48,6 +51,8 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     // Los neones brillan solos: las franjas de los pilares y los letreros de la fachada
     neonPink: { colors: ['#5a1640', '#a02a78', '#e04cb4', '#ff8ad8', '#ffd0f0'], emissive: true },
     neonCyan: { colors: ['#0e3a4a', '#1a7088', '#28b4d0', '#7fe3ff', '#d0f8ff'], emissive: true },
-  }), ...SAMPLE_PIECES, pillar: neonPillar, objects: true },
+  })), ...SAMPLE_PIECES, floor: cyberpunkFloor, facade: cyberpunkFacade, pillar: neonPillar, objects: true },
   ambient: [0.42, 0.46, 0.66] as const,
+  // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)
+  decorate: (w, seed) => ({ ...decorateCyberpunk(w, seed) }),
 };

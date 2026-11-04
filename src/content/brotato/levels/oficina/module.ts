@@ -1,7 +1,9 @@
 import { defineLevel } from '../../../../game/brotato/api';
-import { DEFAULT_WORLD_RAMPS, worldPalette, type WorldLook } from '@voxpix/world/build';
+import { DEFAULT_WORLD_RAMPS, worldPalette } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
 import { mamparaPillar } from '../../../../game/brotato/sim/decor';
+import type { LevelWorld } from '../../../../game/brotato/sim/arena';
+import { decorateOficina, oficinaFacade, oficinaFloor, withOficinaRamps } from './look';
 
 // Oficina de noche: losetas, escritorios con pantalla y apliques junto a las puertas (arte de NARUTO,
 // arte/escenarios/oficina).
@@ -49,10 +51,11 @@ export default defineLevel({
 });
 
 // El mundo de vóxeles del nivel (VoxPix 857c33d): cómo se ve (WorldLook: paleta, fuente, piezas) y su luz ambiente.
-// Copia de los temas de muestra de VoxPix (samples/themes) tal como estaban: el aspecto no cambia. Va aparte del
-// default porque lleva funciones (las piezas), que el esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
-export const world: { look: WorldLook; ambient: readonly [number, number, number] } = {
-  look: { palette: worldPalette({
+// La paleta sale de los temas de muestra de VoxPix (samples/themes), con las rampas propias de look.ts detrás; el suelo,
+// la fachada y el decorado son los de look.ts. Va aparte del default porque lleva funciones (las piezas), que el
+// esquema del nivel no valida; lo lee sim/arena.ts (levelWorld)
+export const world: LevelWorld = {
+  look: { palette: withOficinaRamps(worldPalette({
     floor: ['#22262e', '#323844', '#464e5e', '#5e687c', '#76829a'],
     wall: ['#262a2e', '#3a4046', '#545c64', '#788088', '#98a0a8'],
     cap: ['#2c2a2a', '#403e3e', '#5c5a58', '#827e7a', '#a29e98'],
@@ -65,6 +68,8 @@ export const world: { look: WorldLook; ambient: readonly [number, number, number
     wood: { colors: DEFAULT_WORLD_RAMPS.wood, props: { density: 150 } },
     metal: { colors: DEFAULT_WORLD_RAMPS.metal, props: { density: 300 } },
     screen: { colors: DEFAULT_WORLD_RAMPS.screen, props: { density: 600 } },
-  }), ...SAMPLE_PIECES, pillar: mamparaPillar, objects: true },
+  })), ...SAMPLE_PIECES, floor: oficinaFloor, facade: oficinaFacade, pillar: mamparaPillar, objects: true },
   ambient: [0.7, 0.72, 0.8] as const,
+  // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)
+  decorate: (w, seed, layout) => ({ ...decorateOficina(w, seed, layout) }),
 };
