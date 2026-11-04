@@ -68,6 +68,13 @@ const BOSS_EYES: Record<ThemeId, { kind: 'neon-pink' | 'neon-cyan'; color?: read
   cyberpunk: { kind: 'neon-cyan', radius: 40, intensity: 1, offset: [2.5, -6, 33.5] },
 };
 const SHOT_Z = 7;         // y vuelan los disparos
+const RETURN_SPIN = 15;   // grados por tick que gira lo que va y vuelve
+const LOB_HEIGHT = 0.4;   // lo alto que sube un tiro en arco, por vóxel de recorrido
+// La altura de un tiro en arco a falta de `left` de `total`
+export function lobHeight(total: number, left: number): number {
+  const f = Math.min(1, Math.max(0, 1 - left / total));
+  return 4 * f * (1 - f) * total * LOB_HEIGHT;
+}
 // Los efectos que se guardan si la vista no los recoge (las pruebas, o ?ir= que simula sin pintar): los más viejos se tiran
 const FX_KEEP = 256;
 
@@ -414,11 +421,13 @@ export class BrotatoGame {
     for (const pr of this.wave.projectiles) {
       flying.add(pr.uid);
       let id = this.shotIds.get(pr.uid);
-      const syaw = heading((Math.atan2(pr.vx, -pr.vy) * 180) / Math.PI);
+      // Lo que va y vuelve gira en el aire; el tiro en arco sube y baja
+      const syaw = pr.returns ? heading(this.tick * RETURN_SPIN) : heading((Math.atan2(pr.vx, -pr.vy) * 180) / Math.PI);
+      const sz = p.z + SHOT_Z + (pr.lob ? Math.round(lobHeight(pr.lob.total, pr.travel)) : 0);
       if (id === undefined) {
-        id = s.entities.add({ model: this.models.model(this.shotModel(pr.source)), x: Math.round(pr.x), y: Math.round(pr.y), z: p.z + SHOT_Z, facing: syaw, castsShadow: false });
+        id = s.entities.add({ model: this.models.model(this.shotModel(pr.source)), x: Math.round(pr.x), y: Math.round(pr.y), z: sz, facing: syaw, castsShadow: false });
         this.shotIds.set(pr.uid, id);
-      } else s.entities.move(id, Math.round(pr.x), Math.round(pr.y), p.z + SHOT_Z, syaw);
+      } else s.entities.move(id, Math.round(pr.x), Math.round(pr.y), sz, syaw);
     }
     for (const [uid, id] of this.shotIds) if (!flying.has(uid)) { s.entities.remove(id); this.shotIds.delete(uid); }
     // Materiales sueltos

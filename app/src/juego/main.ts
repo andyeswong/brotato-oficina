@@ -587,6 +587,8 @@ function paintFx(vx: number, vy: number): void {
     if (f.type === 'enemy-hit') { const id = g.enemyEntity(f.uid); if (id !== undefined) flashes.flash(id, FLASH_ENEMY.color, FLASH_ENEMY.s); audio.play('golpe'); }
     else if (f.type === 'player-hit') { flashes.flash(g.playerId, FLASH_PLAYER.color, FLASH_PLAYER.s); audio.play('dano'); }
     else if (f.type === 'enemy-die') audio.play('muerte');
+    else if (f.type === 'spray') audio.play('disparo');
+    else if (f.type === 'blast') audio.play('muerte');
     else if (f.type === 'pickup') audio.play('recoger');
     else if (f.type === 'dash') { flashes.flash(g.playerId, FLASH_DASH.color, DASH_TIME); audio.play('dash'); }
   }

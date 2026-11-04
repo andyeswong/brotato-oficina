@@ -90,7 +90,14 @@ export interface WeaponShot {
 export interface WeaponApi {
   rng(): number;
   // Un proyectil del jugador. anim: nombre semántico en sprites.anims del arma (p. ej. 'projectile')
-  projectile(shot: WeaponShot, opts: { angle?: number; speed: number; pierce?: number; radius?: number; anim?: string }): void;
+  // returns: al acabar el alcance o chocar vuelve al cuerpo, volviendo a golpear por el camino
+  projectile(shot: WeaponShot, opts: { angle?: number; speed: number; pierce?: number; radius?: number; anim?: string; returns?: boolean }): void;
+  // Tiro en arco al objetivo: no choca en el aire y al caer hace daño en área de radio radius (daño por factor)
+  lob(shot: WeaponShot, opts: { speed: number; radius: number; factor?: number }): void;
+  // Golpe a todo lo que esté en un cono desde el arma: half es el medio ángulo, en radianes
+  cone(shot: WeaponShot, opts: { reach: number; half: number }): void;
+  // Golpe cuerpo a cuerpo con onda: la franja recibe el daño entero y lo demás a radius del impacto, el daño por factor
+  slam(shot: WeaponShot, opts: { reach: number; width: number; radius: number; factor: number }): void;
   // Golpe cuerpo a cuerpo instantáneo: una franja desde el arma hacia angle, de largo reach y ancho width
   melee(shot: WeaponShot, opts: { reach: number; width: number }): void;
 }
