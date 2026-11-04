@@ -32,22 +32,22 @@ describe('los adornos de cada tema', () => {
     for (const [x, y] of clear) expect(arena.restZ(x + 0.5, y + 0.5, 1), `${x},${y}`).toBe(arena.floorZ);
   });
 
-  it('oficina: tazas tumbadas junto al café, que tampoco paran nada', () => {
-    let cups = 0;
-    for (const seed of [1, 2, 3, 4, 5, 6]) {
+  it('oficina: sin tazas junto al café (MAIA, 2026-11-04: se leían como piezas raras en la punta de los charcos)', () => {
+    for (const seed of [1, 2, 3]) {
       const arena = new Arena(registry.level('oficina'), seed);
-      cups += arena.decor.cups ?? 0;
-      for (const [x, y, z] of [...voxelsOf(arena, 'taza blanca'), ...voxelsOf(arena, 'taza roja')]) expect(arena.state.solidAt(x, y, z)).toBe(false);
+      expect(arena.decor.cups).toBeUndefined();
+      expect(arena.world.model.palette.ramps.some((r) => r.name.startsWith('taza'))).toBe(false);
     }
-    expect(cups).toBeGreaterThanOrEqual(6);
   });
 
-  it('el líquido: café opaco en la oficina, tóxico que brilla en el cyberpunk, agua de siempre en el medieval', () => {
+  it('el líquido: café opaco en la oficina, tóxico verde azulado oscuro en el cyberpunk, agua de siempre en el medieval', () => {
     const water = (id: string) => new Arena(registry.level(id), 1).world.model.palette.ramps.find((r) => r.name === 'agua')!;
     expect(water('oficina').emissive).toBeFalsy();
     expect(water('oficina').colors[2]).toBe('#43260f');
     expect(water('oficina').colors[4]).toBe('#c8a070');
-    expect(water('cyberpunk').emissive).toBe(true);
+    // Ya no brilla solo: el verde chillón competía con los materiales (MAIA, 2026-11-04); un solo reflejo claro arriba
+    expect(water('cyberpunk').emissive).toBeFalsy();
+    expect(water('cyberpunk').colors[4]).toBe('#8ad8cc');
     expect(water('medieval').colors).toEqual(['#0e1a2e', '#16304a', '#1f4a66', '#2f6a86', '#5a9ab4']);
   });
 

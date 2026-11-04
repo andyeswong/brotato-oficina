@@ -28,7 +28,7 @@ export function levelWorld(level: Pick<LevelModule, 'id'>): LevelWorld {
   return w;
 }
 import { FOLIAGE_THEMES, addFoliage } from './foliage';
-import { addCables, addCups, addToxicGlow } from './decor';
+import { addCables, addToxicGlow } from './decor';
 import { GLASS_THEMES, addGlass } from './glass';
 import type { WorldState } from '@voxpix/world/state';
 import { DEFAULT_RULES, fits, moveBody, objectAhead, restZ, waterFactor } from '@voxpix/runtime/body';
@@ -145,9 +145,9 @@ export class Arena {
       if (prop) propBox = stampShopProp(w, level.theme, prop);
       if (veg) this.plants = addFoliage(w, dseed, start, { bushes: opts.bushes });
       if (glass) this.glassRamps = addGlass(w);
-      // Lo de cada tema que no es columna (sim/decor.ts): cables y luz sobre el tóxico en el cyberpunk, tazas en la oficina
+      // Lo de cada tema que no es columna (sim/decor.ts): cables y luz sobre el tóxico en el cyberpunk
       if (opts.foliage !== false && level.theme === 'cyberpunk') { this.decor.cables = addCables(w, mix(dseed, 31)); this.decor.glows = addToxicGlow(w); }
-      if (opts.foliage !== false && level.theme === 'oficina') this.decor.cups = addCups(w, mix(dseed, 32));
+      // Las tazas de la oficina (addCups) ya no: junto a los charcos se leían como piezas raras (MAIA, 2026-11-04)
       // Lo que pone el propio nivel (el decorate de su world): va detrás, y esquiva lo que ya hay
       const own = levelWorld(level).decorate;
       if (opts.foliage !== false && own) Object.assign(this.decor, own(w, mix(dseed, 33), this.layout, { shop: prop }));

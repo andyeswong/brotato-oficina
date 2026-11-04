@@ -1,13 +1,14 @@
-// Charcos con borde orgánico (NARUTO, 2026-11-04; MAIA: "los rectángulos duros son lo más feo"). El generador los hace
-// de losetas enteras, rectángulos; aquí se redondean sus esquinas y se muerde el borde con un ruido suave. Solo se
+// Charcos en mancha redonda (NARUTO, 2026-11-04; MAIA: "los rectángulos duros son lo más feo", y luego "siguen
+// pareciendo barras"). El generador los hace de losetas enteras, rectángulos y a veces barras de una loseta de ancho;
+// aquí cada charco se queda en una elipse poco alargada dentro de su caja, con el borde mordido por un ruido suave. Solo se
 // QUITA agua, nunca se añade (acordado con FERN: cambia por dónde se frena, y él recalibra la oficina y el cyberpunk;
 // el medieval no lo usa). Va en el decorate del nivel, antes de que exista el agua del estado: la celda que se seca
 // pierde su cuenca, se rellena de suelo hasta z = 0 y su losa es la que diga `floor`.
 import { M, worldNoise, type World } from '@voxpix/world/build';
 import { material } from '@voxpix/core';
 
-const CORNER = 10;       // radio de las esquinas redondeadas, en vóxeles (menos en los charcos pequeños)
 const BITE = 3.2;        // lo más que se come el borde
+const STRETCH = 1.5;     // lo más alargada que queda la mancha: su eje largo, como mucho 1,5 veces el corto (más 4)
 
 // floor(x, y): la losa de suelo seco que va en (x, y, 0). Devuelve cuántas celdas se secaron
 export function roundPuddles(world: World, seed: number, floor: (x: number, y: number) => number): number {
@@ -37,12 +38,14 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
       const c = queue[h]!, d = dist.get(c)!;
       for (const n of [c - 1, c + 1, c - W, c + W]) if (inP.has(n) && !dist.has(n)) { dist.set(n, d + 1); queue.push(n); }
     }
-    const rc = Math.min(CORNER, (x1 - x0) / 3, (y1 - y0) / 3);
+    // La elipse: centrada en la caja, con el eje corto el de la caja y el largo recortado a STRETCH veces el corto
+    const mx = (x0 + x1 + 1) / 2, my = (y0 + y1 + 1) / 2, hw = (x1 - x0 + 1) / 2, hh = (y1 - y0 + 1) / 2;
+    const short = Math.min(hw, hh), long = Math.min(Math.max(hw, hh), short * STRETCH + 4);
+    const ex = hw >= hh ? long : short, ey = hw >= hh ? short : long;
     const keep = (c: number) => {
       const cx = c % W, cy = (c - cx) / W;
-      // Las esquinas de la caja, redondeadas
-      const dx = Math.min(cx - x0, x1 - cx), dy = Math.min(cy - y0, y1 - cy);
-      if (dx < rc && dy < rc && Math.hypot(rc - dx - 0.5, rc - dy - 0.5) > rc) return false;
+      const wob = 0.9 + 0.1 * Math.sin(Math.atan2(cy + 0.5 - my, cx + 0.5 - mx) * 3 + seed % 7);
+      if (((cx + 0.5 - mx) / ex) ** 2 + ((cy + 0.5 - my) / ey) ** 2 > wob * wob) return false;
       // El borde, mordido con un ruido suave (de 6 en 6 vóxeles, interpolado)
       const fx = cx / 6, fy = cy / 6, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
       const n = (a: number, b: number) => worldNoise(a, b, 77, seed);
@@ -51,7 +54,7 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     };
     // Si se fuera a quedar en casi nada, se deja como estaba
     const drop = cells.filter((c) => !keep(c));
-    if (drop.length > cells.length * 0.6) continue;
+    if (drop.length > cells.length * 0.85) continue;
     for (const c of drop) {
       const x = c % W, y = (c - x) / W;
       wet[c] = 0;

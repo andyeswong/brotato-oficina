@@ -5,7 +5,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { discoverContent } from '../../src/game/brotato/registry/discover';
 import { validateContent } from '../../src/game/brotato/registry/validate';
-import { Arena } from '../../src/game/brotato/sim/arena';
+import { Arena, levelWorld } from '../../src/game/brotato/sim/arena';
+import { mamparaPillar } from '../../src/game/brotato/sim/decor';
+import { buildWorldState } from '@voxpix/world/build';
 import { materialsOf } from '@voxpix/core';
 import { MAX_LIGHTS } from '@voxpix/view/gpu/shaders';
 
@@ -88,6 +90,25 @@ describe('el aspecto de la oficina y del cyberpunk', () => {
       expect(d.expendedoras).toBeGreaterThanOrEqual(1);
       expect(d.farolas).toBeGreaterThanOrEqual(2);
       for (const k of ['expendedora-', 'farola-', 'rotulo-']) expect(a.world.lights.filter((l) => String(l.id).startsWith(k)).length).toBe(k === 'farola-' ? d.farolas : k === 'rotulo-' ? d.rotulos : d.expendedoras);
+    }
+  });
+
+  it('oficina: la mampara alta pesa, ocupa y bloquea lo mismo que la de sim/decor.ts', () => {
+    const look = levelWorld(registry.level('oficina')).look;
+    for (const seed of [3, 7, 11]) {
+      const layout = new Arena(registry.level('oficina'), seed, { floor: seed % 4 }).layout;
+      const a = buildWorldState(layout, look).state, b = buildWorldState(layout, { ...look, pillar: mamparaPillar }).state;
+      const pa = [...a.objects].filter((o) => o.kind === 'pillar'), pb = [...b.objects].filter((o) => o.kind === 'pillar');
+      expect(pa.length, `semilla ${seed}`).toBeGreaterThan(0);
+      expect(pa.map((o) => o.mass)).toEqual(pb.map((o) => o.mass));
+      expect(pa.map((o) => [o.x, o.y])).toEqual(pb.map((o) => [o.x, o.y]));
+      // Lo que ve la partida en cada columna: dónde se apoya el pie y lo que para un disparo
+      for (let y = 0; y < a.solid.depth; y++) for (let x = 0; x < a.solid.width; x++) {
+        if (a.solid.walkAt(x, y) !== b.solid.walkAt(x, y)) expect(`${x},${y} ${a.solid.walkAt(x, y)}`).toBe(`${x},${y} ${b.solid.walkAt(x, y)}`);
+        if (a.solidAt(x, y, 1 + SHOT_Z) !== b.solidAt(x, y, 1 + SHOT_Z)) expect(`${x},${y} disparo`).toBe('igual');
+      }
+      // Y es más alta: llega a z 14
+      expect(pa.some((o) => { for (let i = 2; i < o.cells.length; i += 4) if (o.z + o.cells[i]! >= 14) return true; return false; })).toBe(true);
     }
   });
 

@@ -47,8 +47,10 @@ export const world: LevelWorld = {
     wall: ['#181a2a', '#24283e', '#343a56', '#485072', '#606a8e'],
     cap: ['#20223a', '#2e3250', '#40466a', '#565e86', '#7078a0'],
     column: ['#22263a', '#3a4260', '#525c80', '#6e789c', '#8a94b8'],
-    // Los charcos, de líquido tóxico verde que brilla solo (Andrés, 2026-10-26: "verde o morado")
-    water: { colors: ['#031406', '#08300f', '#125a1e', '#21903a', '#62d878'], emissive: true },
+    // Los charcos, de líquido tóxico (Andrés, 2026-10-26: "verde o morado")
+    // Ahora verde azulado oscuro, sin brillo propio y con un solo tono claro de reflejo (MAIA, 2026-11-04: el verde
+    // chillón era el color de los materiales que se recogen y competía con ellos)
+    water: ['#03100f', '#06201f', '#0c3432', '#145048', '#8ad8cc'],
     // Los neones brillan solos: las franjas de los pilares y los letreros de la fachada
     neonPink: { colors: ['#5a1640', '#a02a78', '#e04cb4', '#ff8ad8', '#ffd0f0'], emissive: true },
     neonCyan: { colors: ['#0e3a4a', '#1a7088', '#28b4d0', '#7fe3ff', '#d0f8ff'], emissive: true },

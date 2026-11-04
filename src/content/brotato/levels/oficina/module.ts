@@ -1,9 +1,8 @@
 import { defineLevel } from '../../../../game/brotato/api';
 import { DEFAULT_WORLD_RAMPS, worldPalette } from '@voxpix/world/build';
 import { SAMPLE_PIECES } from '@voxpix/samples/pieces';
-import { mamparaPillar } from '../../../../game/brotato/sim/decor';
 import type { LevelWorld } from '../../../../game/brotato/sim/arena';
-import { decorateOficina, oficinaFacade, oficinaFloor, withOficinaRamps } from './look';
+import { decorateOficina, oficinaFacade, oficinaFloor, oficinaPillar, withOficinaRamps } from './look';
 
 // Oficina de noche: losetas, escritorios con pantalla y apliques junto a las puertas (arte de NARUTO,
 // arte/escenarios/oficina).
@@ -62,13 +61,13 @@ export const world: LevelWorld = {
     column: ['#343234', '#525052', '#6e6c6c', '#8a8886', '#aaa8a4'],
     // Los charcos son café derramado (Andrés, 2026-10-26), opaco; y la tela de las mamparas, azul gris de oficina
     water: ['#160a04', '#2a160a', '#43260f', '#6a4424', '#c8a070'],   // arriba, la crema (NARUTO: que no parezca tierra)
-    cloth: ['#5c5a5e', '#76747a', '#908e96', '#aaa8b0', '#c6c4cc'],
+    cloth: ['#2e4e56', '#3e6670', '#507e88', '#6698a0', '#82b2b8'],   // la tela de las mamparas, verde azulada clara
     // Los muebles se empujan (Andrés, 2026-10-27): el peso sale de estas densidades (kg/m³). Macizos de madera, metal y
     // vidrio, un escritorio pesaba 430 kg y una mampara 826; así, unos 55 y 46 (aglomerado, tubo hueco, pantalla plana)
     wood: { colors: DEFAULT_WORLD_RAMPS.wood, props: { density: 150 } },
     metal: { colors: DEFAULT_WORLD_RAMPS.metal, props: { density: 300 } },
     screen: { colors: DEFAULT_WORLD_RAMPS.screen, props: { density: 600 } },
-  })), ...SAMPLE_PIECES, floor: oficinaFloor, facade: oficinaFacade, pillar: mamparaPillar, objects: true },
+  })), ...SAMPLE_PIECES, floor: oficinaFloor, facade: oficinaFacade, pillar: oficinaPillar, objects: true },
   // Más baja que antes (0,7): los charcos de luz de los tubos y las lámparas tienen que contrastar (MAIA, 2026-11-04)
   ambient: [0.55, 0.57, 0.64] as const,
   // Su suelo, su fachada y lo que pone por el suelo (look.ts, NARUTO 2026-11-04)

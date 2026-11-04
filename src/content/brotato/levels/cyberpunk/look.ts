@@ -37,16 +37,12 @@ export const CYBERPUNK_RAMPS: Ramp[] = EXTRA.map(({ key: _k, ...r }) => r);
 const mat = (ramp: number, tone: number) => material(ramp, Math.max(0, tone));
 const rampOf = (v: number) => Math.floor((v - 1) / 16);
 
-// ---- suelo: aceras de losas de 8 (la junta de 16 la pone el motor) y las rejillas de muestra. La calzada se pinta
-// después, en decorateCyberpunk, que sabe dónde va el cruce. Sin las franjas de neón del suelo (MAIA: parecían un fallo)
-export const cyberpunkFloor: FloorBuilder = (site) => {
-  const { kind, cx, cy, lx, ly, seed } = site;
-  if (kind.includes('rejilla')) return sampleFloor(site);
-  let tone = site.tone;
-  if (lx === 8 || ly === 8 || ly === 9) tone -= 1;
-  else if (kind.includes('gastado') && worldNoise(cx * 2 + (lx >> 3), cy * 2 + (ly >> 3), 7, seed) > 0.7) tone += 1;
-  return mat(R.acera!, Math.min(4, tone));
-};
+// ---- suelo: aceras de losas grandes, de 32, con la junta solo un tono más oscura (MAIA: la losa pequeña con la junta
+// oscura se veía como una pared de ladrillo), y las rejillas de muestra. El motor pinta su junta de 16; decorateCyberpunk
+// repinta las aceras con slab y luego la calzada, porque sabe dónde va el cruce. Sin las franjas de neón del suelo
+// (MAIA: parecían un fallo)
+export const cyberpunkFloor: FloorBuilder = (site) => (site.kind.includes('rejilla') ? sampleFloor(site) : mat(R.acera!, 2));
+const slab = (x: number, y: number, D: number) => mat(R.acera!, (x & 31) === 0 || ((D - 1 - y) & 31) <= 1 ? 1 : 2);
 
 // ---- fachada: todo en la cara de la pared o en huecos tallados. Los rótulos de neón y las ventanas, los de muestra
 const z16 = (height: number) => (z: number) => Math.max(1, Math.min(height - 2, Math.round((z * height) / 16)));
@@ -165,11 +161,13 @@ export function decorateCyberpunk(world: World, seed: number, layout: Layout, at
   const manholes: Array<{ x: number; y: number }> = [];
   MANHOLES.set(world, manholes);
 
-  // Los charcos tóxicos, con borde orgánico (charcos.ts); lo que se seca, acera (la calzada se pinta encima después)
-  out.secos = roundPuddles(world, seed, (x, y) => {
-    const lx = x & 15, ly = (D - 1 - y) & 15;
-    return lx === 0 || ly <= 1 ? mat(M.floor, 1) : mat(R.acera!, lx === 8 || ly === 8 || ly === 9 ? 1 : 2);
-  });
+  // Las aceras, en losas de 32 (slab), encima de la junta de 16 del motor; las rejillas se quedan
+  for (let y = 0; y < D; y++) for (let x = 0; x < W; x++) {
+    const v = m.get(x, y, 0);
+    if (v && (rampOf(v) === M.floor || rampOf(v) === R.acera) && !world.wet[y * W + x]) m.set(x, y, 0, slab(x, y, D));
+  }
+  // Los charcos tóxicos, en manchas redondas (charcos.ts); lo que se seca, acera (la calzada se pinta encima después)
+  out.secos = roundPuddles(world, seed, (x, y) => slab(x, y, D));
 
   // ---- la calzada: dos calles que se cruzan en la tienda (una de este a oeste y otra de norte a sur), de asfalto
   // liso con grietas y parches, la línea discontinua en medio, pasos de cebra al llegar al cruce y el bordillo claro

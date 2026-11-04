@@ -9,7 +9,7 @@
 //   debe engañar, así que lo alto (plantas, cajas, fuentes de agua, lámparas) va contra la pared, lo del centro es
 //   bajo (montones de papel) y los tubos cuelgan por encima de las cabezas.
 import { material, type Ramp } from '@voxpix/core';
-import { M, worldNoise, type FacadeBuilder, type FloorBuilder, type World } from '@voxpix/world/build';
+import { M, worldNoise, type FacadeBuilder, type FloorBuilder, type PillarBuilder, type World } from '@voxpix/world/build';
 import { sampleFacade } from '@voxpix/samples/pieces';
 import { NORTH, TILE, type Layout } from '@voxpix/worldgen';
 import { roundPuddles } from '../charcos';
@@ -17,7 +17,9 @@ import { roundPuddles } from '../charcos';
 // Rampas propias, detrás de las del motor (M va de 0 a 14). Las que pintan el suelo y la fachada son sólidas, como el
 // suelo y la pared; las de encima, atravesables
 const EXTRA: Array<Ramp & { key: string }> = [
-  { key: 'moqueta', name: 'moqueta', colors: ['#1e2228', '#282d35', '#333943', '#404753', '#4f5764'] },
+  // Las moquetas, de tono medio y con color: nunca más oscuras que el vinilo de alrededor (MAIA: si no, parecen agujeros)
+  { key: 'moqueta', name: 'moqueta verde azulada', colors: ['#2c4244', '#36504f', '#41605e', '#4e706d', '#5e827e'] },
+  { key: 'moquetaB', name: 'moqueta burdeos', colors: ['#3e2a30', '#4e343c', '#604048', '#704c56', '#825a64'] },
   { key: 'mancha', name: 'mancha de café', colors: ['#1a120c', '#281c12', '#36261a', '#4a3424'] },
   { key: 'rojo', name: 'rojo extintor', colors: ['#3a0c0e', '#6e1418', '#a82024', '#d8402e', '#f88060'] },
   { key: 'corcho', name: 'corcho', colors: ['#3a2414', '#5a3a20', '#7a5430', '#9a7044'] },
@@ -25,7 +27,7 @@ const EXTRA: Array<Ramp & { key: string }> = [
   { key: 'salida', name: 'luz de salida', colors: ['#0a3a1c', '#14783a', '#2ec062', '#9cf8b8'], emissive: true },
   { key: 'nota', name: 'nota adhesiva', colors: ['#6a5810', '#a8901c', '#e0c430', '#fff07a'] },
   { key: 'notaRosa', name: 'nota rosa', colors: ['#6a2440', '#a83a68', '#e06498', '#ffa8cc'] },
-  { key: 'alfombra', name: 'alfombra', colors: ['#2a2420', '#3a322a', '#4a4036', '#5c5044', '#6e6252'] },
+  { key: 'alfombra', name: 'alfombra', colors: ['#4a3e34', '#5a4c40', '#6a5a4c', '#7c6a5a', '#8e7c6a'] },
   // Encima
   { key: 'papel', name: 'papel', colors: ['#7c8090', '#aeb2bc', '#d6d8de', '#f4f5f8'], material: 'atravesable' },
   { key: 'carton', name: 'cartón', colors: ['#4a3018', '#6e4a26', '#946836', '#b88a50', '#dcb27a'], material: 'atravesable' },
@@ -36,18 +38,49 @@ const EXTRA: Array<Ramp & { key: string }> = [
   { key: 'blancoP', name: 'plástico blanco', colors: ['#7c8090', '#a6aab6', '#cfd2da', '#eef0f4'], material: 'atravesable' },
   { key: 'tubo', name: 'tubo fluorescente', colors: ['#5a7080', '#9ab8c8', '#d8f0ff', '#ffffff'], material: 'atravesable', emissive: true },
   { key: 'pantalla', name: 'pantalla de lámpara', colors: ['#7a4a18', '#c07a28', '#f0b04a', '#ffe08a'], material: 'atravesable', emissive: true },
+  { key: 'hoja', name: 'hoja caída', colors: ['#1a3a1c', '#2a5428', '#3c7034', '#5a9048'], material: 'atravesable' },
+  // Lo alto de la mampara (oficinaPillar): atravesable y sin peso, para que la masa y la colisión no cambien
+  { key: 'telaAlta', name: 'tela alta de mampara', colors: ['#2e4e56', '#3e6670', '#507e88', '#6698a0', '#82b2b8'], material: 'atravesable', props: { density: 0 } },
+  { key: 'marcoAlto', name: 'marco alto de mampara', colors: ['#4a505c', '#6e7684', '#a0a8b4', '#c8d0da', '#e8ecf2'], material: 'atravesable', props: { density: 0 } },
 ];
 const R = Object.fromEntries(EXTRA.map((r, k) => [r.key, 15 + k])) as Record<string, number>;
 export const OFICINA_RAMPS: Ramp[] = EXTRA.map(({ key: _k, ...r }) => r);
 const mat = (ramp: number, tone: number) => material(ramp, Math.max(0, tone));
 const rampOf = (v: number) => Math.floor((v - 1) / 16);
 
-// ---- suelo: vinilo en rejilla cuadrada de 8 (la junta de 16 la pone el motor), tranquilo: sobre él tiene que
-// destacar todo lo demás. La moqueta y las manchas se pintan después, en decorateOficina, que sabe dónde está cada cosa
-export const oficinaFloor: FloorBuilder = ({ kind, cx, cy, lx, ly, tone, seed }) => {
-  if (lx === 8 || ly === 8 || ly === 9) tone -= 1;
-  else if (kind.includes('gastado') && worldNoise(cx * 2 + (lx >> 3), cy * 2 + (ly >> 3), 7, seed) > 0.7) tone += 1;
-  return mat(M.floor, Math.min(4, tone));
+// ---- suelo: vinilo en losetas grandes, de 32, con la junta solo un tono más oscura (MAIA: con la cámara 2:1, la
+// loseta pequeña y la junta oscura se ven como una pared de ladrillo). Es el fondo: tranquilo, sin losetas claras
+// sueltas. El motor pinta su junta de 16; decorateOficina repinta todo el suelo con slab, y luego la moqueta y las
+// manchas, porque sabe dónde está cada cosa
+export const oficinaFloor: FloorBuilder = () => mat(M.floor, 2);
+const slab = (x: number, y: number, D: number) => mat(M.floor, (x & 31) === 0 || ((D - 1 - y) & 31) <= 1 ? 1 : 2);
+
+// ---- la mampara (MAIA: "parecen sillas grises bajas"): la de sim/decor.ts (mamparaPillar), más alta y clara, con
+// tela de color. Misma huella y mismo bloqueo: los 12 vóxeles de abajo ocupan las mismas celdas que allí, y metal y tela
+// pesan lo mismo en la oficina (300 kg/m³), así que la masa es la misma; lo de encima (z 12 a 14) es atravesable y sin
+// peso. aspecto.test.ts lo comprueba contra mamparaPillar
+const MAMPARA_LOW = 12, MAMPARA_H = 15;
+export const oficinaPillar: PillarBuilder = ({ model, x0, y0, x1, y1, noise }) => {
+  const corner = Math.floor(noise(x0, y0, 0) * 4);
+  const ax = corner & 1 ? x1 - 2 : x0 + 1, ay = corner & 2 ? y1 - 2 : y0 + 1;   // la esquina de la L
+  const panel = (xa: number, ya: number, xb: number, yb: number) => {
+    for (let x = Math.min(xa, xb); x <= Math.max(xa, xb); x++) for (let y = Math.min(ya, yb); y <= Math.max(ya, yb); y++) {
+      for (let z = 0; z < MAMPARA_H; z++) {
+        const end = x === Math.min(xa, xb) || x === Math.max(xa, xb) || y === Math.min(ya, yb) || y === Math.max(ya, yb);
+        const post = end && (xa === xb ? y === ya || y === yb : x === xa || x === xb);
+        const high = z >= MAMPARA_LOW, tone = 2 + (noise(x, y, z) > 0.85 ? 1 : 0) + (z > 8 ? 1 : 0);
+        let val: number;
+        if (z === MAMPARA_H - 1) val = mat(R.marcoAlto!, 3);                        // el canto de arriba, claro
+        else if (z < 2) val = mat(M.metal, 1);                                       // el zócalo
+        else if (post) val = high ? mat(R.marcoAlto!, 2) : mat(M.metal, 4);         // los postes
+        else val = high ? mat(R.telaAlta!, tone) : mat(M.cloth, tone);               // la tela
+        model.set(x, y, z, val);
+      }
+    }
+  };
+  const dx = corner & 1 ? -1 : 1, dy = corner & 2 ? -1 : 1;
+  panel(ax, ay, ax + dx * 13, ay + dy);
+  panel(ax, ay, ax + dx, ay + dy * 13);
 };
 
 // ---- fachada. Todo se pinta en la cara de la pared (y = faceY) o dentro de un hueco tallado: nada sale delante
@@ -143,8 +176,8 @@ function rng(seed: number): () => number {
 }
 
 export interface OficinaDecor {
-  secos: number; alfombras: number; manchas: number; montones: number; plantas: number; cajas: number; fuentes: number;
-  lamparas: number; tubos: number; apliques: number;
+  secos: number; alfombras: number; manchas: number; montones: number; matas: number; plantas: number; cajas: number;
+  fuentes: number; lamparas: number; tubos: number; apliques: number;
 }
 
 // shop: dónde está el adorno de la tienda (la copiadora), en ejes del modelo: la pieza central del piso
@@ -193,15 +226,14 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     }
     return null;
   };
-  const out: OficinaDecor = { secos: 0, alfombras: 0, manchas: 0, montones: 0, plantas: 0, cajas: 0, fuentes: 0, lamparas: 0, tubos: 0, apliques: 0 };
+  const out: OficinaDecor = { secos: 0, alfombras: 0, manchas: 0, montones: 0, matas: 0, plantas: 0, cajas: 0, fuentes: 0, lamparas: 0, tubos: 0, apliques: 0 };
   const shop = at.shop;
   const desks = layout.props.map((p) => ({ x0: p.x * TILE, x1: (p.x + p.w) * TILE - 1, yS: D - (p.y + p.h) * TILE, yN: D - 1 - p.y * TILE }));
 
-  // Los charcos de café, con borde orgánico (charcos.ts); lo que se seca, vinilo con sus juntas
-  out.secos = roundPuddles(world, seed, (x, y) => {
-    const lx = x & 15, ly = (D - 1 - y) & 15;
-    return mat(M.floor, lx === 0 || ly <= 1 || lx === 8 || ly === 8 || ly === 9 ? 1 : 2);
-  });
+  // El suelo entero, en losetas de 32 (slab): encima de la junta de 16 del motor
+  for (let y = 0; y < D; y++) for (let x = 0; x < W; x++) repaint(x, y, slab(x, y, D));
+  // Los charcos de café, en manchas redondas (charcos.ts); lo que se seca, vinilo
+  out.secos = roundPuddles(world, seed, (x, y) => slab(x, y, D));
 
   // Moqueta: rectángulos limpios (salas y un pasillo) en losetas enteras, con el perfil de metal en el borde, y la
   // alfombra de la isla de la copiadora. Solo cambia el color del suelo
@@ -215,6 +247,7 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     return n;
   };
   const rooms: Array<[number, number, number, number]> = [];
+  const carpets = [R.moqueta!, R.moquetaB!];
   for (let t = 0; t < 60 && rooms.length < 4; t++) {
     const corridor = rooms.length === 3, vertical = r() < 0.5;
     let w = corridor ? 2 : 4 + Math.floor(r() * 4), h = corridor ? 12 + Math.floor(r() * 8) : 3 + Math.floor(r() * 3);
@@ -224,7 +257,7 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     if (rooms.some(([a, b, c, d]) => rect[0] <= c + TILE && a <= rect[2] + TILE && rect[1] <= d + TILE && b <= rect[3] + TILE)) continue;
     if (shop && shop.x > rect[0] - 40 && shop.x < rect[2] + 40 && shop.y > rect[1] - 40 && shop.y < rect[3] + 40) continue;
     rooms.push(rect);
-    if (carpet(...rect, R.moqueta!) > 200) out.alfombras++;
+    if (carpet(...rect, carpets[rooms.length % 2]!) > 200) out.alfombras++;
   }
   if (shop) { const s = 26; if (carpet(Math.round(shop.x) - s, Math.round(shop.y) - s, Math.round(shop.x) + s, Math.round(shop.y) + s, R.alfombra!) > 200) out.alfombras++; }
 
@@ -261,6 +294,47 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
   };
   for (const d of desks) pile(d.x0 + 4 + r() * (d.x1 - d.x0 - 8), d.yS - 3 - r() * 5, 4 + Math.floor(r() * 4));
   if (shop) { pile(shop.x - 15, shop.y - 14, 6); pile(shop.x + 16, shop.y + 4, 5); }
+
+  // En el centro, como las matas del medieval: grupos bajos (2 de alto como mucho) con huecos entre ellos, de hojas
+  // caídas, un cable suelto y algún papel. Lejos de las paredes, de los escritorios y de la copiadora
+  const nearWall = (x: number, y: number, d: number) => {
+    for (let k = -d; k <= d; k += 4) if (m.get(x + k, y, 8) || m.get(x, y + k, 8)) return true;
+    return false;
+  };
+  const floorAt = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < D && !!m.get(x, y, 0) && !world.wet[y * W + x];
+  const tuft = (cx: number, cy: number) => {
+    const leaves = 6 + Math.floor(r() * 5);
+    for (let k = 0; k < leaves; k++) {
+      const a = r() * Math.PI * 2, d = r() * 5, x = Math.round(cx + Math.cos(a) * d), y = Math.round(cy + Math.sin(a) * d * 0.8);
+      if (!floorAt(x, y)) continue;
+      put(x, y, 1, mat(R.hoja!, Math.floor(r() * 4)));
+      if (r() < 0.4 && floorAt(x + 1, y)) put(x + 1, y, 1, mat(R.hoja!, 1 + Math.floor(r() * 3)));
+      if (r() < 0.2) put(x, y, 2, mat(R.hoja!, 3));
+    }
+    if (r() < 0.6) {
+      let a = r() * Math.PI * 2, x = cx, y = cy;
+      const len = 10 + Math.floor(r() * 8);
+      for (let k = 0; k < len; k++) {
+        a += (r() - 0.5) * 0.8; x += Math.cos(a); y += Math.sin(a);
+        const xi = Math.round(x), yi = Math.round(y);
+        if (floorAt(xi, yi)) put(xi, yi, 1, mat(R.gris!, k % 5 === 0 ? 3 : 1));
+      }
+    }
+    if (r() < 0.7) {
+      const x = Math.round(cx + (r() - 0.5) * 6), y = Math.round(cy + (r() - 0.5) * 6);
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 3; dx++) if (floorAt(x + dx, y + dy)) put(x + dx, y + dy, 1, mat(R.papel!, 3));
+    }
+    claim(Math.round(cx) - 7, Math.round(cy) - 7, Math.round(cx) + 7, Math.round(cy) + 7, 0);
+    out.matas++;
+  };
+  for (let g = 0, t = 0; g < 4 && t < 300; t++) {
+    const gx = 40 + r() * (W - 80), gy = 40 + r() * (D - NORTH * TILE - 80);
+    if (nearWall(Math.round(gx), Math.round(gy), 28) || (shop && Math.hypot(gx - shop.x, gy - shop.y) < 50)) continue;
+    if (desks.some((d) => gx > d.x0 - 20 && gx < d.x1 + 20 && gy > d.yS - 24 && gy < d.yN + 8)) continue;
+    const n = 3 + Math.floor(r() * 3);
+    for (let k = 0; k < n; k++) { const a = (k / n) * Math.PI * 2 + r(), d = 10 + r() * 14; tuft(gx + Math.cos(a) * d, gy + Math.sin(a) * d); }
+    g++;
+  }
 
   // Plantas en maceta: un ficus (copa de hojas) o una sansevieria (hojas largas de pie); ocupan 7 x 7
   const plant = (x: number, y: number) => {
@@ -319,7 +393,7 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
       if (Math.abs(dx) + Math.abs(dy) > (z === 20 ? 2 : 3)) continue;
       put(cx + dx, cy + dy, z, mat(R.pantalla!, z === 20 ? 3 : Math.abs(dx) === 2 || Math.abs(dy) === 2 ? 1 : 2));
     }
-    world.lights.push({ id: `lampara-${out.lamparas}`, kind: 'lamp', x: cx + 0.5, y: cy + 0.5, z: 18.5, intensity: 0.85, radius: 76 });
+    world.lights.push({ id: `lampara-${out.lamparas}`, kind: 'lamp', x: cx + 0.5, y: cy + 0.5, z: 18.5, intensity: 1.15, radius: 100 });
     out.lamparas++;
   };
   // Grupos contra la pared, con huecos entre ellos: dos o tres cosas juntas (siempre alguna planta) a lo largo de la
@@ -330,9 +404,10 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     const s = spotAgainstWall(along ? L : SLOT, along ? SLOT : L, 16);
     if (!s) continue;
     const [x, y] = s, horizontal = along;
-    // Siempre una planta; dos o tres lámparas en todo el piso, una por grupo como mucho
+    // Siempre una planta; hasta cuatro lámparas en todo el piso, una por grupo como mucho: su luz cálida contrasta con
+    // la fría de los tubos, como la de las antorchas del medieval con su luna
     const kinds = Array.from({ length: n }, (_, k) => (k === 0 ? 'planta' : ['planta', 'cajas', 'cajas', 'fuente'][Math.floor(r() * 4)]!));
-    if (lamps < 3 && g % 2 === 1) { kinds[n - 1] = 'lampara'; lamps++; }
+    if (lamps < 4 && g >= 1) { kinds[n - 1] = 'lampara'; lamps++; }
     kinds.forEach((kind, k) => {
       const ox = horizontal ? x + k * SLOT : x, oy = horizontal ? y : y + k * SLOT;
       if (kind === 'planta') plant(ox, oy); else if (kind === 'cajas') boxes(ox, oy); else if (kind === 'fuente') cooler(ox, oy); else lamp(ox, oy);
@@ -340,18 +415,12 @@ export function decorateOficina(world: World, seed: number, layout: Layout, at: 
     claim(x, y, horizontal ? x + L - 1 : x + SLOT - 1, horizontal ? y + SLOT - 1 : y + L - 1, 6);
   }
 
-  // Tubos fluorescentes colgados del techo, por encima de las cabezas (z 33 a 39), sobre el suelo libre: luz fría en
-  // charcos. Uno sobre la copiadora y los demás repartidos. Atravesables también: un vóxel sólido a cualquier altura
-  // haría que esa columna no se pise
+  // La luz fría de los tubos del techo, en charcos sobre el suelo libre: uno sobre la copiadora y los demás
+  // repartidos. Solo la luz: el techo no se ve, y los tubos colgados se leían como rayas sueltas (MAIA)
   const pendant = (px: number, py: number) => {
     const x = Math.round(px), y = Math.round(py);
     for (let dx = -6; dx <= 6; dx++) if (m.get(x + dx, y, 8) || !m.get(x + dx, y, 0)) return false;
-    for (let dx = -6; dx <= 6; dx++) {
-      put(x + dx, y, 34, mat(R.gris!, Math.abs(dx) === 6 ? 2 : 4)); put(x + dx, y - 1, 34, mat(R.gris!, 3));
-      if (Math.abs(dx) <= 5) put(x + dx, y, 33, mat(R.tubo!, 3));
-    }
-    for (const dx of [-5, 5]) for (let z = 35; z <= 39; z++) put(x + dx, y, z, mat(R.gris!, 2));
-    world.lights.push({ id: `tubo-${out.tubos}`, kind: 'lantern', x: x + 0.5, y: y + 0.5, z: 32, color: [0.78, 0.9, 1], intensity: 0.75, radius: 84 });
+    world.lights.push({ id: `tubo-${out.tubos}`, kind: 'lantern', x: x + 0.5, y: y + 0.5, z: 32, color: [0.74, 0.88, 1], intensity: 0.65, radius: 84 });
     out.tubos++;
     return true;
   };

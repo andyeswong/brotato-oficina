@@ -194,7 +194,8 @@ export function addToxicGlow(world: World): number {
     if (cells.length < 120) continue;
     let sx = 0, sy = 0;
     for (const c of cells) { sx += c % W; sy += Math.floor(c / W); }
-    world.lights.push({ id: `toxico-${n++}`, kind: 'lantern', x: sx / cells.length + 0.5, y: sy / cells.length + 0.5, z: 6, color: [0.35, 1, 0.45], intensity: 0.7, radius: 56 });
+    // Verde azulado oscuro y suave (MAIA, 2026-11-04): el verde chillón competía con los materiales que se recogen
+    world.lights.push({ id: `toxico-${n++}`, kind: 'lantern', x: sx / cells.length + 0.5, y: sy / cells.length + 0.5, z: 6, color: [0.25, 0.7, 0.62], intensity: 0.4, radius: 56 });
   }
   return n;
 }
