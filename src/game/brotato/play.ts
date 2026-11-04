@@ -90,6 +90,7 @@ export { HEADINGS } from '@voxpix/world/frame2d';
 // Para medir (fase 4), nunca en una partida normal: empezar en una oleada más avanzada y que MAIA no caiga, para
 // tener cientos de enemigos en pantalla el tiempo que dure la medida. Apagadas, la partida y su huella no cambian
 export interface TestOptions {
+  onlyBoss?: boolean;   // ?solojefe: para las láminas, en la oleada solo queda el jefe y lo suyo
   boss?: string;        // ?jefe=: fuerza el jefe de la oleada 10 en vez de sortearlo
   weapons?: string[];   // ?armas=a,b: empieza con esas armas, para medir y para las láminas
   character?: string;   // no es de pruebas: quién juega (por defecto MAIA)
@@ -239,6 +240,7 @@ export class BrotatoGame {
       const len = Math.hypot(input.dx, input.dy);
       this.moving = len > 0;
       if (this.moving) this.walked += TICK;
+      if (this.test.onlyBoss) for (let i = this.wave.enemies.length - 1; i >= 0; i--) if (!this.wave.enemies[i]!.def.boss && !this.wave.enemies[i]!.mem.summoned) this.wave.enemies.splice(i, 1);
       this.wave.step(TICK, this.moving ? { x: input.dx / len, y: input.dy / len } : { x: 0, y: 0 }, input.interact ?? false, input.dash ?? false);
       // MAIA mira a lo que disparan sus armas (el más cercano al alcance de la de más alcance); sin nadie a tiro, hacia
       // donde anda (Andrés, 2026-10-25). Solo aspecto: no entra en la simulación

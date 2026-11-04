@@ -351,7 +351,7 @@ function newRun(after?: () => void): void {
     const who = roster(registry)[selected] ?? roster(registry)[0]!;
     game = new BrotatoGame(registry, seed, models, looksOf(who.id), level,
       { character: who.id, startWave: Number(q.get('ola') ?? 0) || undefined, immortal: q.has('inmortal'), meta: progress.levels, waitFloor: true,
-        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna'), weapons: q.get('armas')?.split(',').filter((id) => registry.has('weapon', id)), boss: registry.has('enemy', q.get('jefe') ?? '') ? q.get('jefe')! : undefined });
+        shake: Number(q.get('muebles') ?? 0) || undefined, bossHp: q.has('jefevida') ? Number(q.get('jefevida')) : undefined, bossLure: q.has('jefecolumna'), weapons: q.get('armas')?.split(',').filter((id) => registry.has('weapon', id)), boss: registry.has('enemy', q.get('jefe') ?? '') ? q.get('jefe')! : undefined, onlyBoss: q.has('solojefe') });
     quarter = 0;
     runStart = performance.now();
     bakeFloor();
