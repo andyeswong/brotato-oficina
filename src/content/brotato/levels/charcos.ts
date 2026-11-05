@@ -56,7 +56,8 @@ export function roundPuddles(world: World, seed: number, floor: (x: number, y: n
     mx /= cells.length; my /= cells.length;
     const hw = Math.min(mx - x0, x1 + 1 - mx), hh = Math.min(my - y0, y1 + 1 - my);
     const short = Math.min(hw, hh), long = Math.min(Math.max(hw, hh), short * STRETCH + 4);
-    const ex = (flat ? hw : hw >= hh ? long : short) * SHRINK, ey = (flat ? Math.min(hh, hw / ASPECT) : hw >= hh ? short : long) * SHRINK;
+    const s = flat ? 1 : SHRINK;   // la plana llena su caja: con 0,86 la oficina se quedaba con un 32 % menos de agua que frena
+    const ex = (flat ? hw : hw >= hh ? long : short) * s, ey = (flat ? Math.min(hh, hw / ASPECT) : hw >= hh ? short : long) * s;
     // Cuánto de la elipse ocupa la celda: 1 en el borde (con su ondulación), 0 en el centro
     const reach = (c: number) => {
       const cx = c % W, cy = (c - cx) / W;
