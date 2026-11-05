@@ -363,13 +363,15 @@ function newRun(after?: () => void): void {
     flashes.clear();
     screen = 'game';
     after?.();
-    frame(performance.now() / 1000);
     // Calentar: unos cuadros del mundo detrás del letrero, sin que avance la partida (MAIA). Sin esto, el primer cuadro
     // de la oleada cargaba con todo el arranque (en el Flip, 50-67 ms): el reloj traía el tiempo de la carga y el bucle
     // fijo daba de golpe sus 10 ticks de tope. Mientras se calienta, el reloj sigue al día y la oleada empieza con un dt normal
     warmUntil = performance.now() + WARM_MS;
     // Salvo si ya está el letrero de piso (?ir= cruza la salida antes de que acabe el calentamiento): ese se va solo
     setTimeout(() => { if (!sign.classList.contains('entra')) loading.style.display = 'none'; }, WARM_MS);
+    // Lo último: si este cuadro lanza (la GPU pierde el contexto justo aquí), el velo ya tiene quien lo quite. Antes iba
+    // delante y dejaba el velo puesto para siempre con la partida corriendo debajo
+    frame(performance.now() / 1000);
   }, 30);
 }
 
@@ -386,7 +388,7 @@ function bakeFloor(): boolean {
   baked = cur.baked;
   shownArena = g.run.arena;
   // La rejilla del camino de los enemigos, también aquí detrás del letrero: en la oleada era un cuadro de 150-430 ms
-  g.run.arena.warmPath();
+  g.run.arena.warmPath(g.run.isLastWave ? g.run.boss.radius : 0);
   // Precarga (NARUTO, Compositor.prewarm) con el letrero de carga a la vista: los sprites de todo lo que la partida
   // puede enseñar en sus 8 rumbos, y un cuadro tapado que sube el horneado y compila los shaders. Sin ella, el primer
   // cuadro tardaba 86-88 ms
@@ -576,7 +578,15 @@ function frame(time: number): void {
   const vx = scrollAxis(Math.floor(feet[0]), VW, 0, b.width);
   const top = Math.floor(b.cam.project(0, cam.viewDepth - 1 - 2 * TILE, 32)[1]);   // la tapa de la pared del fondo
   const vy = scrollAxis(Math.floor(feet[1]) - 12, VH, top, b.height);
-  compositor.frame(rs, b, viewOptions(vx, vy, time));
+  try {
+    compositor.frame(rs, b, viewOptions(vx, vy, time));
+  } catch (e) {
+    // Entre que la GPU pierde el contexto y que llega su evento, el compositor sigue con un contexto muerto y crear sus
+    // destinos lanza. Ese cuadro no se pinta y ya; sin esto, en el bucle, el error corta next(loop): pantalla negra y partida parada
+    if (!(compositor.canvas as HTMLCanvasElement).getContext('webgl2')?.isContextLost()) throw e;
+    console.warn('[juego] cuadro sin pintar: la GPU acaba de perder el contexto');
+    return;
+  }
   document.body.dataset.enemigos = String(game.current.enemies.length);   // para medir (fase 4)
   // El atlas de sprites (MAX_SPRITE_LAYERS = 1024) y las entidades del mundo: lo más que se puede pedir en un cuadro
   // GpuPath (VoxPix) envuelve al compositor de la GPU en un campo privado: se lee en tiempo de ejecución, solo para medir
