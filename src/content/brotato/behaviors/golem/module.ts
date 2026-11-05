@@ -29,6 +29,7 @@ export default defineEnemyBehavior({
     pieceRange: z.number().positive().default(220),
     phase2: z.number().min(0).max(1).default(0.66),
     phase3: z.number().min(0).max(1).default(0.33),
+    pushForce: z.number().min(0).default(6000),          // como el minotauro embistiendo: arrastra los muebles
   }),
   update(self, dt, api, p) {
     const m = self.mem;
@@ -49,6 +50,10 @@ export default defineEnemyBehavior({
       m.slam -= dt;
       m.toss -= dt;
       steerTowards(self, api.player, self.speed);
+      // No embiste: rompe lo que tenga delante andando (MAIA, 2026-11-04), lo mismo que el minotauro y nada más. En línea
+      // recta se quedaba tras una columna toda la oleada
+      self.push = p.pushForce;
+      self.smash = true;
       if (m.slam <= 0) { m.state = WINDUP; m.t = p.windup[phase]!; }
       else if (m.toss <= 0) { m.state = THROW; m.t = p.tossTime; }
       return;

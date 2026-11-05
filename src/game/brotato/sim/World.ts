@@ -242,6 +242,7 @@ export class World {
   readonly telegraphs: Telegraph[] = [];
   readonly zones: Zone[] = [];
   private stuckT = 0;
+  bossNoFit = false;                   // el jefe no cabía en ningún sitio del mapa (pruebas)
   readonly rings: Ring[] = [];
   readonly fx: WorldFx[] = [];
 
@@ -558,7 +559,11 @@ export class World {
         const enemy = named.boss && this.deps.boss ? this.deps.boss : named;
         const center = this.spawnPoint(g.pattern);
         for (let n = 0; n < g.count; n++) {
-          const pos = this.free(this.patternPoint(g.pattern, center, n, g.count));
+          let pos = this.free(this.patternPoint(g.pattern, center, n, g.count));
+          if (enemy.boss) {
+            const q = this.deps.arena.nearestFit(pos, enemy.radius, this.player, this.deps.spawn.minDistance);
+            if (q) pos = q; else this.bossNoFit = true;
+          }
           this.telegraphs.push({ x: pos.x, y: pos.y, t: TELEGRAPH_TIME, enemy });
         }
         this.nextSpawn[i]! += g.every;
@@ -614,7 +619,7 @@ export class World {
     if (this.overtime) {
       const { arena } = this.deps;
       for (const e of this.enemies) {
-        const d = arena.pathDir(e, this.player);
+        const d = e.def.boss ? arena.pathDir(e, this.player, undefined, e.def.radius) : arena.pathDir(e, this.player);
         if (d) { e.vx = d.x * e.speed; e.vy = d.y * e.speed; }
       }
     }

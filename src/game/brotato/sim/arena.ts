@@ -79,6 +79,11 @@ export interface Mover {
   z: number;
 }
 
+// Cuánto más que su radio se erosiona la rejilla pequeña para sacar la de un jefe (arena.ts, bigFill)
+const BIG_ERODE = -1;
+
+interface BigFlow { ok: Uint8Array; dist: Int32Array; goal: string; around: number[]; reach: number }
+
 export class Arena {
   readonly layout: Layout;
   readonly world: World;                 // el mundo construido (lo que se hornea para la vista)
@@ -99,6 +104,8 @@ export class Arena {
   private flowOk: Uint8Array | null = null;
   private flowDist: Int32Array | null = null;
   private flowGoal = '';
+  // Lo mismo con el radio de un jefe: la de arriba es la de un cuerpo de SPAWN_RADIUS, y por sus huecos no cabe uno de 12
+  private readonly bigFlow = new Map<number, BigFlow>();
   // Las plantas que puso la vegetación, por tipo (vacío si el tema no la lleva)
   plants: Record<string, number> = {};
   // Cuántas rampas pasaron a vidrio (0 si el tema no lo lleva)
@@ -244,6 +251,7 @@ export class Arena {
     this.flowOk = null;
     this.flowWarm = false;
     this.flowGoal = '';
+    this.bigFlow.clear();
     return touched;
   }
 
@@ -348,6 +356,22 @@ export class Arena {
   }
 
   // El punto libre (para aparecer) más cercano a uno dado; si el dado ya está libre, el mismo
+  // Dónde sale un jefe: el generador asegura sitio para un cuerpo de SPAWN_RADIUS, y uno mayor podía salir encajado en una
+  // pared y no moverse en toda la oleada (el gólem en medieval, 2 de 8 semillas). Si cabe en p, p; si no, el sitio libre
+  // más cercano donde quepa, lejos de MAIA si se puede. null si no cabe en ninguno
+  nearestFit(p: Point, r: number, avoid: Point, minDistance: number): Point | null {
+    if (this.fits(p.x, p.y, this.restZ(p.x, p.y, r), r)) return p;
+    let best: Point | null = null, near: Point | null = null, bd = Infinity, nd = Infinity;
+    for (const f of this.free) {
+      if (!this.fits(f.x, f.y, this.floorZ, r)) continue;
+      const d = (f.x - p.x) ** 2 + (f.y - p.y) ** 2;
+      if (d < nd) { nd = d; near = f; }
+      if (d < bd && Math.hypot(f.x - avoid.x, f.y - avoid.y) >= minDistance) { bd = d; best = f; }
+    }
+    const q = best ?? near;
+    return q && { x: q.x, y: q.y };
+  }
+
   nearestFree(p: Point): Point {
     const tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
     if (this.free.some((f) => Math.floor(f.x / TILE) === tx && Math.floor(f.y / TILE) === ty) && this.fits(p.x, p.y, this.floorZ, SPAWN_RADIUS)) return p;
@@ -363,10 +387,54 @@ export class Arena {
   // La rejilla de pathDir, entera, antes de que nadie la pida: la vista la llama detrás del letrero del piso
   // (app/src/juego/main.ts, bakeFloor). Hacerla en la primera pregunta, en plena oleada, costaba 150 ms en un S25 FE, y
   // 430 con seis muebles despiertos (cada celda pregunta el suelo a todos). Sin vista no se llama y la partida es la misma
-  warmPath(): void {
-    if (this.flowOk) return;
-    this.flowBuild();
-    this.flowWarm = true;
+  // radius: además, la del jefe de ese radio (el piso que lo tiene)
+  warmPath(radius = 0): void {
+    if (!this.flowOk) {
+      this.flowBuild();
+      this.flowWarm = true;
+    }
+    if (radius > SPAWN_RADIUS) this.bigGrid(radius);
+  }
+
+  // La rejilla de un jefe sale de erosionar la de SPAWN_RADIUS, no de preguntar a fits celda a celda (eso costaba 350 ms en
+  // el piso del jefe y se notaba al arrastrar muebles): cabe donde cabe el pequeño en todas las celdas a su radio. Además
+  // da holgura: un cuerpo grande que solo cabía en los centros de celda se quedaba tangente a una esquina pequeña, parado,
+  // con la ruta diciéndole que siguiera recto
+  private bigGrid(r: number): BigFlow {
+    let g = this.bigFlow.get(r);
+    if (g) return g;
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW);
+    const e = r + BIG_ERODE, span = Math.ceil(e / FLOW), around: number[] = [];
+    for (let dy = -span; dy <= span; dy++) for (let dx = -span; dx <= span; dx++) if (Math.hypot(dx * FLOW, dy * FLOW) <= e) around.push(dx, dy);
+    g = { ok: new Uint8Array(cols * rows), dist: new Int32Array(cols * rows), goal: '', around, reach: e };
+    this.bigFlow.set(r, g);
+    this.bigFill(g, 0, 0, cols - 1, rows - 1);
+    return g;
+  }
+
+  private bigFill(g: BigFlow, i0: number, j0: number, i1: number, j1: number): void {
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), flow = this.flowOk!, a = g.around;
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      let fit = 1;
+      for (let k = 0; k < a.length && fit; k += 2) {
+        const x = i + a[k]!, y = j + a[k + 1]!;
+        if (x < 0 || y < 0 || x >= cols || y >= rows || !flow[y * cols + x]) fit = 0;
+      }
+      g.ok[j * cols + i] = fit;
+    }
+  }
+
+  // Tras flowBoxes, con lo mismo: las celdas que dependen de las que acaba de rehacer
+  private bigBoxes(): void {
+    const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW);
+    for (const g of this.bigFlow.values()) {
+      const m = FLOW_MARGIN + g.reach + FLOW;
+      for (const d of this.furniture.dirty.values()) {
+        this.bigFill(g, Math.max(0, Math.floor((d.x0 - m) / FLOW)), Math.max(0, Math.floor((d.y0 - m) / FLOW)),
+          Math.min(cols - 1, Math.floor((d.x1 + 1 + m) / FLOW)), Math.min(rows - 1, Math.floor((d.y1 + 1 + m) / FLOW)));
+      }
+      g.goal = '';
+    }
   }
 
   private flowBuild(): void {
@@ -397,7 +465,8 @@ export class Arena {
   // más grande, con las distancias por BFS desde las celdas libres a `near` de `to` (`to` puede ser sólido, como el
   // centro de la fuente, o un hueco donde el grande no cabe); se rehacen cuando cambia la celda de `to` o `near`. Un
   // enemigo pequeño encajado donde el grande no cabe sale hacia la celda con camino más cercana (a 2 o menos)
-  pathDir(from: Point, to: Point, near = PATH_NEAR): Point | null {
+  // radius: el cuerpo de un jefe, con su propia rejilla; llega a `near` más su radio
+  pathDir(from: Point, to: Point, near = PATH_NEAR, radius = 0): Point | null {
     const cols = Math.ceil(this.world.width / FLOW), rows = Math.ceil(this.world.depth / FLOW), n = cols * rows;
     // La rejilla se hace ahora: la primera vez (o tras abrir la salida), o la dejó hecha warmPath y se usa por primera
     // vez; esa se pone al día con lo que se haya movido desde entonces y cuenta como hecha aquí
@@ -409,6 +478,7 @@ export class Arena {
     // mismos ticks que cuando se rehacía entera: con eso las partidas no cambian (la huella de 64 semillas, idéntica)
     if (this.furniture.dirty.size && this.ticks - this.flowAt >= FLOW_REFRESH) {
       if (!fresh) { this.flowAt = this.ticks; this.flowBoxes(); }
+      this.bigBoxes();
       this.furniture.dirty.clear();
       this.flowGoal = '';
     }
@@ -416,11 +486,13 @@ export class Arena {
       this.flowAt = this.ticks;
       if (!this.flowOk) this.flowBuild();
     }
-    const ok = this.flowOk!, dist = this.flowDist!;
+    const big = radius > SPAWN_RADIUS ? this.bigGrid(radius) : null;
+    if (big) near += radius;
+    const ok = big ? big.ok : this.flowOk!, dist = big ? big.dist : this.flowDist!;
     const cell = (p: Point) => Math.min(rows - 1, Math.max(0, Math.floor(p.y / FLOW))) * cols + Math.min(cols - 1, Math.max(0, Math.floor(p.x / FLOW)));
     const goal = `${cell(to)}:${near}`;
-    if (goal !== this.flowGoal) {
-      this.flowGoal = goal;
+    if (goal !== (big ? big.goal : this.flowGoal)) {
+      if (big) big.goal = goal; else this.flowGoal = goal;
       dist.fill(-1);
       const queue = new Int32Array(n);
       let head = 0, tail = 0;
